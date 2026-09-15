@@ -20,11 +20,32 @@ pytestmark = pytest.mark.unit
 
 
 def _sql_enums() -> dict[str, list[str]]:
-    sql = (ROOT / "migrations" / "sql" / "0002_core_schema.up.sql").read_text()
-    return {
-        match.group(1): re.findall(r"'([^']+)'", match.group(2))
-        for match in re.finditer(r"CREATE TYPE (\w+) AS ENUM \((.*?)\);", sql, re.DOTALL)
-    }
+    """Every enum the migrations create, in declaration order, merged.
+
+    Scans all `*.up.sql` rather than naming one file. A hardcoded 0002 could
+    not see the types 0005 adds, so `test_every_python_enum_exists_in_sql`
+    reported them as missing from SQL when they were present - the test was
+    looking in the wrong place, not finding a real gap. Every later migration
+    that adds a type would have hit the same wall.
+
+    A duplicate definition fails loudly rather than letting the last file win:
+    two `CREATE TYPE` statements for one name cannot both apply, so silently
+    overwriting would make this function disagree with the database it is
+    supposed to describe.
+    """
+    enums: dict[str, list[str]] = {}
+    for path in sorted((ROOT / "migrations" / "sql").glob("*.up.sql")):
+        sql = path.read_text()
+        for match in re.finditer(
+            r"^CREATE TYPE (\w+) AS ENUM \((.*?)\);", sql, re.DOTALL | re.MULTILINE
+        ):
+            name = match.group(1)
+            assert name not in enums, (
+                f"duplicate enum definition: {name} is created in "
+                f"{path.name} and in an earlier migration"
+            )
+            enums[name] = re.findall(r"'([^']+)'", match.group(2))
+    return enums
 
 
 def test_every_python_enum_exists_in_sql() -> None:

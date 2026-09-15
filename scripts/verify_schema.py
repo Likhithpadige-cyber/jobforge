@@ -34,10 +34,37 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MODELS_DIR = ROOT / "packages" / "core" / "models"
-UP_SQL = ROOT / "migrations" / "sql" / "0002_core_schema.up.sql"
-DOWN_SQL = ROOT / "migrations" / "sql" / "0002_core_schema.down.sql"
-GRANTS_SQL = ROOT / "migrations" / "sql" / "0003_roles_grants.up.sql"
+SQL_DIR = ROOT / "migrations" / "sql"
 DESIGN = ROOT / "docs" / "DATABASE_DESIGN.md"
+
+
+class SqlFiles:
+    """One or more schema-bearing SQL files, read as a single document.
+
+    Every check below was written against a single file. Rather than thread a
+    list through all of them, this presents the concatenation with the same
+    `read_text()` interface, so adding a migration is one entry here instead
+    of an edit in nine places. Order matters: FK-ordering and down-migration
+    checks read the text positionally, so files are listed in apply order.
+    """
+
+    def __init__(self, *names: str) -> None:
+        self.paths = [SQL_DIR / name for name in names]
+
+    def read_text(self, encoding: str = "utf-8") -> str:
+        return "\n".join(path.read_text(encoding=encoding) for path in self.paths)
+
+    def missing(self) -> list[str]:
+        return [p.name for p in self.paths if not p.is_file()]
+
+
+#: Schema-bearing migrations, in apply order. 0003 and the 0005 grants file
+#: carry privileges rather than schema and are read through GRANTS_SQL.
+UP_SQL = SqlFiles("0002_core_schema.up.sql", "0005_revision_attempts.up.sql")
+DOWN_SQL = SqlFiles("0002_core_schema.down.sql", "0005_revision_attempts.down.sql")
+GRANTS_SQL = SqlFiles(
+    "0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql"
+)
 
 PASS, FAIL, WARN = "PASS", "FAIL", "WARN"
 results: list[tuple[str, str, str]] = []
@@ -51,7 +78,6 @@ def record(status: str, name: str, detail: str = "") -> None:
 def model_tables() -> dict[str, set[str]]:
     """{table_name: {column names}} extracted from the ORM classes."""
     tables: dict[str, set[str]] = {}
-    inherited = {"created_at", "updated_at", "id"}
 
     for path in sorted(MODELS_DIR.glob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -320,6 +346,25 @@ def check_design_constraints() -> None:
         "uq_facts_source": "fact uniqueness by source",
         "uq_jobs_source_external": "job dedupe by source id",
         "ck_profile_facts_verified_requires_actor": "verified fact names a verifier",
+        # 0005 (C3_HARDENING_DESIGN.md A.3). Names follow the repo's
+        # NAMING_CONVENTION (ck_%(table_name)s_%(constraint_name)s), not the
+        # design's ck_attempt_* shorthand, so the ORM and the DDL agree.
+        "uq_revision_attempt_per_approval": "one live attempt per approval",
+        "uq_resume_version_per_application": "resume version allocation backstop",
+        "ck_resume_revision_attempts_outcome_only_on_success":
+            "a semantic negative is never a failed status",
+        "ck_resume_revision_attempts_succeeded_requires_result":
+            "a succeeded attempt has a result",
+        "ck_resume_revision_attempts_failed_requires_class":
+            "a failed attempt is classified",
+        "ck_resume_revision_attempts_open_has_no_result":
+            "an open attempt carries no result",
+        "ck_resume_revision_attempts_abandoned_named_a_human":
+            "abandonment names a human",
+        "ck_resume_revision_attempts_running_has_lease":
+            "a running attempt holds a lease",
+        "ck_resume_revision_attempts_evidence_stale_retry_coherent":
+            "retry counter and its timestamp agree",
     }
     missing = [f"{n} ({d})" for n, d in required.items() if n not in sql]
     if missing:
@@ -398,6 +443,117 @@ def check_security_invariants() -> None:
 
 
 
+def check_audit_role_containment() -> None:
+    """The static half of the app_audit privilege gate (H.5, I.6.6).
+
+    `information_schema.role_table_grants` is the wrong instrument and this
+    script has no database anyway. What it CAN prove is that the migration
+    diff cannot widen the role: every grant is in the matrix, every UPDATE is
+    column-scoped with the exact column list, and no blanket or inherited
+    privilege is introduced. The effective boundary - what the cluster
+    actually resolves after PUBLIC, memberships and defaults - is established
+    at runtime by the integration tests, which is a different claim requiring
+    a different instrument. Neither half is sufficient alone.
+    """
+    grants_raw = GRANTS_SQL.read_text(encoding="utf-8")
+    grants = "\n".join(
+        line for line in grants_raw.splitlines() if not line.strip().startswith("--")
+    )
+    flat = re.sub(r"\s+", " ", grants)
+    problems: list[str] = []
+
+    #: The matrix of I.6.1. Table -> (row privileges, column-scoped UPDATE).
+    matrix: dict[str, tuple[set[str], tuple[str, ...]]] = {
+        "agent_runs": (
+            {"SELECT", "INSERT"},
+            ("status", "steps_completed", "input_tokens", "output_tokens",
+             "cost_usd", "prompt_version", "error_type", "error_message",
+             "duration_ms", "finished_at"),
+        ),
+        "agent_run_steps": (
+            {"SELECT", "INSERT"},
+            ("status", "input_digest", "output", "guardrail_results",
+             "duration_ms", "finished_at"),
+        ),
+        "llm_calls": ({"SELECT", "INSERT"}, ("response_redacted",)),
+        "events": ({"SELECT", "INSERT"}, ()),
+    }
+
+    for statement in re.findall(r"GRANT ([^;]+?) TO ([^;]+?);", flat):
+        privileges, roles = statement
+        if "app_audit" not in roles:
+            continue
+        if " ON " not in privileges:
+            continue
+        head, _, target = privileges.rpartition(" ON ")
+        target = target.strip()
+        if target == "SCHEMA public":
+            if head.strip().upper() != "USAGE":
+                problems.append(f"app_audit holds {head.strip()} on schema public")
+            continue
+        if re.search(r"ALL (TABLES|SEQUENCES|FUNCTIONS) IN SCHEMA", privileges, re.I):
+            problems.append("blanket GRANT ... ON ALL ... IN SCHEMA to app_audit")
+            continue
+        if target not in matrix:
+            problems.append(f"app_audit granted on {target}, which is not in the matrix")
+            continue
+
+        allowed_row, allowed_cols = matrix[target]
+        update_cols = re.search(r"UPDATE\s*\(([^)]*)\)", head, re.I)
+        if update_cols:
+            got = tuple(c.strip() for c in update_cols.group(1).split(",") if c.strip())
+            if got != allowed_cols:
+                problems.append(
+                    f"{target}: UPDATE columns {got} != matrix {allowed_cols}"
+                )
+        else:
+            for word in re.split(r"[,\s]+", head.strip()):
+                privilege = word.upper()
+                if not privilege:
+                    continue
+                if privilege == "UPDATE":
+                    problems.append(
+                        f"{target}: bare GRANT UPDATE to app_audit; the matrix "
+                        "requires a column list"
+                    )
+                elif privilege not in allowed_row:
+                    # DELETE, TRUNCATE, REFERENCES and TRIGGER need no separate
+                    # branch: `allowed_row` only ever holds SELECT and INSERT,
+                    # so anything dangerous fails this test by construction.
+                    problems.append(f"{target}: app_audit granted {privilege}")
+
+    # Role shape. NOINHERIT matters: it is what stops a membership added by
+    # mistake from conferring privileges implicitly.
+    if "CREATE ROLE app_audit LOGIN NOINHERIT" not in flat:
+        problems.append("app_audit is not created LOGIN NOINHERIT")
+    for attribute in ("NOSUPERUSER", "NOCREATEDB", "NOCREATEROLE", "NOBYPASSRLS"):
+        if attribute not in flat:
+            problems.append(f"app_audit is not explicitly {attribute}")
+    if re.search(r"GRANT (app_api|app_agent|app_monitor|app_migrate) TO app_audit", flat):
+        problems.append("app_audit is granted membership of another role")
+    if re.search(r"GRANT app_audit TO ", flat):
+        problems.append("another role is granted membership of app_audit")
+    if re.search(r"ALTER DEFAULT PRIVILEGES[^;]*app_audit", flat):
+        problems.append("ALTER DEFAULT PRIVILEGES names app_audit")
+
+    # Default-deny prologue must exist and precede every grant to the role.
+    revoke_all = flat.find("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_audit")
+    first_grant = flat.find("TO app_audit")
+    if revoke_all < 0:
+        problems.append("no REVOKE ALL ON ALL TABLES ... FROM app_audit prologue")
+    elif 0 <= first_grant < revoke_all:
+        problems.append("a grant to app_audit precedes the default-deny prologue")
+
+    if problems:
+        record(FAIL, "app_audit grant shape", "; ".join(problems[:6]))
+    else:
+        record(
+            PASS,
+            "app_audit grant shape",
+            f"{len(matrix)} tables, column-scoped UPDATE, no blanket grants",
+        )
+
+
 def check_timestamp_timezone_awareness() -> None:
     """Every TIMESTAMPTZ column in SQL must map to a tz-aware Python type.
 
@@ -461,14 +617,19 @@ def check_down_migration() -> None:
 
 def check_migration_chain() -> None:
     versions = sorted((ROOT / "migrations" / "versions").glob("*.py"))
+    #: revision id -> the revision it follows, or None for the base.
     revisions: dict[str, str | None] = {}
     for path in versions:
-        text = path.read_text(encoding="utf-8")
-        rev = re.search(r'^revision: str = "([^"]+)"', text, re.MULTILINE)
-        down = re.search(r'^down_revision: str \| None = (?:"([^"]+)"|None)',
-                         text, re.MULTILINE)
-        if rev:
-            revisions[rev.group(1)] = down.group(1) if down and down.group(1) else None
+        source = path.read_text(encoding="utf-8")
+        revision_match = re.search(
+            r'^revision: str = "([^"]+)"', source, re.MULTILINE
+        )
+        down_match = re.search(
+            r'^down_revision: str \| None = (?:"([^"]+)"|None)', source, re.MULTILINE
+        )
+        if revision_match:
+            parent = down_match.group(1) if down_match else None
+            revisions[revision_match.group(1)] = parent or None
 
     bases = [r for r, d in revisions.items() if d is None]
     heads = [r for r in revisions if r not in set(revisions.values())]
@@ -477,9 +638,16 @@ def check_migration_chain() -> None:
         problems.append(f"{len(bases)} base revisions, expected 1")
     if len(heads) != 1:
         problems.append(f"{len(heads)} heads, expected 1")
-    for rev, down in revisions.items():
-        if down is not None and down not in revisions:
-            problems.append(f"{rev} points at missing revision {down}")
+    # Distinct names from the `re.Match` objects above. Reusing `rev`/`down`
+    # worked at runtime - the for loop rebinds them - but it gave one pair of
+    # names two unrelated types in one function, so a reader (and a type
+    # checker) had to track which half of the function they were in to know
+    # whether `down` was a Match or a string.
+    for revision_id, parent_id in revisions.items():
+        if parent_id is not None and parent_id not in revisions:
+            problems.append(
+                f"{revision_id} points at missing revision {parent_id}"
+            )
 
     if problems:
         record(FAIL, "migration chain is linear", "; ".join(problems))
@@ -498,6 +666,7 @@ def main() -> int:
     check_fk_order()
     check_design_constraints()
     check_security_invariants()
+    check_audit_role_containment()
     check_timestamp_timezone_awareness()
     check_down_migration()
     check_migration_chain()

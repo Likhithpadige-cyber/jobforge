@@ -100,6 +100,11 @@ async def test_expected_indexes_exist(session) -> None:
         "idx_facts_text_trgm",
         "idx_jobs_title_trgm",
         "idx_events_unpublished",
+        # 0005
+        "uq_revision_attempt_per_approval",
+        "uq_resume_version_per_application",
+        "idx_revision_attempts_claimable",
+        "ix_revision_attempts_application_id",
     }
     rows = await session.execute(
         text("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'")
@@ -117,6 +122,10 @@ async def test_expected_triggers_exist(session) -> None:
         "trg_application_status_history_append_only",
         "trg_audit_logs_append_only",
         "trg_events_publish_only",
+        # 0005
+        "trg_resume_revision_attempts_set_updated_at",
+        "trg_resume_revision_attempts_source_immutable",
+        "trg_resume_revision_attempts_transition",
     }
     rows = await session.execute(
         text("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")
@@ -136,7 +145,7 @@ async def test_roles_exist_with_expected_grants(session) -> None:
     roles = {row[0] for row in rows}
     if not roles:
         pytest.skip("roles not created - run `make db-roles`")
-    assert {"app_api", "app_agent", "app_monitor", "app_migrate"} <= roles
+    assert {"app_api", "app_agent", "app_monitor", "app_migrate", "app_audit"} <= roles
 
     # app_agent must hold no write privilege on profile_facts.
     for privilege in ("INSERT", "UPDATE", "DELETE"):

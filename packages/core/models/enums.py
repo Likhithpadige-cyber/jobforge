@@ -196,6 +196,41 @@ class AlertSeverity(StrEnum):
     INFO = "info"
 
 
+class RevisionAttemptStatus(StrEnum):
+    """C3 revision attempt lifecycle (C3_HARDENING_DESIGN.md C.1).
+
+    About the JOB, never about the content: a B5 negative verdict is a
+    SUCCEEDED attempt carrying `RevisionOutcome.FAILED_VERIFICATION`.
+    """
+
+    ACCEPTED = "accepted"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    ABANDONED = "abandoned"
+
+
+class RevisionOutcome(StrEnum):
+    """About the CONTENT. Only ever set on a succeeded attempt."""
+
+    PASSED = "passed"
+    FAILED_VERIFICATION = "failed_verification"
+
+
+class RevisionFailureClass(StrEnum):
+    """Why a revision attempt failed technically. Never a semantic verdict."""
+
+    MODEL_TIMEOUT = "model_timeout"
+    MODEL_OUTPUT_INVALID = "model_output_invalid"
+    BUDGET_EXCEEDED = "budget_exceeded"
+    EVIDENCE_STALE = "evidence_stale"
+    EVIDENCE_LOCKED = "evidence_locked"
+    STATE_CONFLICT = "state_conflict"
+    PERSISTENCE_FAILED = "persistence_failed"
+    LEASE_LOST = "lease_lost"
+    WORKER_LOST = "worker_lost"
+
+
 def _pg(name: str, enum_cls: type[StrEnum]) -> ENUM:
     """Bind a Python enum to an existing PostgreSQL type.
 
@@ -228,6 +263,9 @@ recommendation_enum = _pg("recommendation", Recommendation)
 agent_name_enum = _pg("agent_name", AgentName)
 run_status_enum = _pg("run_status", RunStatus)
 alert_severity_enum = _pg("alert_severity", AlertSeverity)
+revision_attempt_status_enum = _pg("revision_attempt_status", RevisionAttemptStatus)
+revision_outcome_enum = _pg("revision_outcome", RevisionOutcome)
+revision_failure_class_enum = _pg("revision_failure_class", RevisionFailureClass)
 
 
 #: Every PostgreSQL enum type name and its ordered values, used by the
@@ -250,4 +288,7 @@ ENUM_DEFINITIONS: dict[str, list[str]] = {
     "agent_name": [m.value for m in AgentName],
     "run_status": [m.value for m in RunStatus],
     "alert_severity": [m.value for m in AlertSeverity],
+    "revision_attempt_status": [m.value for m in RevisionAttemptStatus],
+    "revision_outcome": [m.value for m in RevisionOutcome],
+    "revision_failure_class": [m.value for m in RevisionFailureClass],
 }

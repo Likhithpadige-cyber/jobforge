@@ -36,6 +36,9 @@ from packages.core.models.enums import (
     JobStatus,
     QuestionClass,
     Recommendation,
+    RevisionAttemptStatus,
+    RevisionFailureClass,
+    RevisionOutcome,
     RunStatus,
     SubmissionMethod,
     SubmissionResult,
@@ -76,6 +79,7 @@ from packages.core.models.operations import (
     ProcessedEvent,
     Setting,
 )
+from packages.core.models.revision import ResumeRevisionAttempt
 
 #: Canonical list of every table, in dependency order. The migration and the
 #: conformance checker both read this, so drift is impossible by construction.
@@ -172,6 +176,10 @@ __all__ = [
     "Recommendation",
     "Resume",
     "ResumeClaim",
+    "ResumeRevisionAttempt",
+    "RevisionAttemptStatus",
+    "RevisionFailureClass",
+    "RevisionOutcome",
     "RunStatus",
     "Setting",
     "SitePolicy",

@@ -106,6 +106,21 @@ CREATE TYPE agent_name AS ENUM ('resume_optimizer','job_application','monitoring
 CREATE TYPE run_status AS ENUM ('running','succeeded','failed','aborted');
 
 CREATE TYPE alert_severity AS ENUM ('critical','high','medium','low','info');
+
+-- C3 durable revision attempts (migration 0005). `status` is about the JOB;
+-- `outcome` is about the CONTENT. A B5 negative verdict is a SUCCEEDED attempt
+-- carrying outcome='failed_verification', never a FAILED one.
+CREATE TYPE revision_attempt_status AS ENUM (
+  'accepted','running','succeeded','failed','abandoned'
+);
+
+CREATE TYPE revision_outcome AS ENUM ('passed','failed_verification');
+
+CREATE TYPE revision_failure_class AS ENUM (
+  'model_timeout','model_output_invalid','budget_exceeded','evidence_stale',
+  'evidence_locked','state_conflict','persistence_failed','lease_lost',
+  'worker_lost'
+);
 ```
 
 ---
@@ -511,6 +526,44 @@ Append-only: `id`, `application_id`, `from_status`, `to_status`, `actor_type` (`
 
 `id`, `kind` (`resume_pdf`/`resume_docx`/`cover_letter_pdf`/`handoff_packet`/`evidence`), `application_id` NULL, `resume_id` NULL, `storage_key`, `bucket`, `content_type`, `size_bytes`, `sha256`, `created_at`, `expires_at`. Files live in MinIO/S3; only metadata is in Postgres.
 
+### 6.9 `resume_revision_attempts`
+
+One row per rework request (migration 0005; C3_HARDENING_DESIGN.md A). Created
+when a human asks for changes, it outlives the generation it describes and is
+never deleted: a failed generation must not erase the evidence that it
+happened, what it cost, or why it failed.
+
+Source binding (immutable): `application_id`, `source_resume_id`,
+`source_resume_version`, `source_approval_id`, `instructions_snapshot`,
+`instructions_digest`, `requested_by`, `requested_at`.
+Lifecycle: `status`, `lease_owner`, `lease_epoch`, `lease_expires_at`,
+`started_at`, `finished_at`.
+Result: `result_resume_id`, `result_version`, `outcome`.
+Failure: `failure_class`, `failure_detail`.
+Retry accounting: `attempt_count`, `retry_exhausted`,
+`evidence_stale_retry_count`, `evidence_stale_retried_at`.
+Lineage and recovery: `agent_run_id`, `replaces_attempt_id`,
+`replaced_by_attempt_id`, `replacement_ordinal`, `abandoned_at`,
+`abandoned_by`, `abandon_reason`, `recovered_at`, `created_at`, `updated_at`.
+
+`uq_revision_attempt_per_approval` (unique on `source_approval_id` where
+`status <> 'abandoned'`) is the rule the table exists to enforce: one source
+changes-requested approval, at most one live attempt.
+`ck_resume_revision_attempts_outcome_only_on_success` makes "a semantic
+negative is never a failed status" a database fact.
+
+Two BEFORE UPDATE triggers guard it. `jobforge_revision_attempt_source_immutable`
+freezes the source bindings, keeps retry counters monotonic, and makes a
+`succeeded` row immutable in every column (an `abandoned` row accepts only
+`replaced_by_attempt_id`, once, from NULL).
+`jobforge_revision_attempt_transition` refuses any `status` change absent from
+the C.1 lifecycle table.
+
+No role holds DELETE. `app_agent` has column-scoped UPDATE only, so a worker
+cannot write `abandoned_by`, `abandon_reason`, `replaces_attempt_id`,
+`recovered_at` or any source binding; `app_audit` holds no privilege here at
+all, because this is not an audit table.
+
 ---
 
 ## 7. Operations tables
@@ -589,6 +642,13 @@ CREATE ROLE app_api  LOGIN;   -- FastAPI: full CRUD on operational tables
 CREATE ROLE app_agent LOGIN;  -- agent workers
 CREATE ROLE app_monitor LOGIN;-- Agent 3
 CREATE ROLE app_migrate LOGIN;-- Alembic only, DDL
+-- Added by 0005 (C3_HARDENING_DESIGN.md I.6). The inference-audit role: may
+-- write agent_runs, agent_run_steps, llm_calls and events - with column-scoped
+-- UPDATE, notably UPDATE (response_redacted) ON llm_calls and nothing wider -
+-- and holds no privilege on any domain table. Strictly subtractive: it lets
+-- audit writes commit outside the domain transaction without ever being able
+-- to touch domain rows.
+CREATE ROLE app_audit LOGIN NOINHERIT;
 
 -- app_agent
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_agent;

@@ -126,6 +126,74 @@ async def agent_engine(postgres_available: bool):  # type: ignore[no-untyped-def
 
 
 @pytest_asyncio.fixture
+async def audit_engine(postgres_available: bool):  # type: ignore[no-untyped-def]
+    """Engine connected as the inference-audit role (0005, I.6).
+
+    Same contract as `agent_engine`: it never falls back to a privileged
+    connection, because a privilege test that silently runs as the owner
+    proves the opposite of what it claims. Skips - or fails, under
+    REQUIRE_SECURITY_TESTS=1 - if the role is missing or cannot log in, which
+    happens when 0005's grants were skipped or `make db-roles` has not run
+    since 0005 was applied.
+    """
+    if not postgres_available:
+        _skip_or_fail("PostgreSQL not reachable")
+    eng = create_async_engine(_url("app_audit"), future=True)
+    try:
+        async with eng.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001
+        await eng.dispose()
+        _skip_or_fail(
+            f"cannot connect as app_audit ({type(exc).__name__}: {exc}). "
+            "The audit-containment invariants are UNVERIFIED."
+        )
+    try:
+        yield eng
+    finally:
+        await eng.dispose()
+
+
+@pytest_asyncio.fixture
+async def revision_attempt(  # type: ignore[no-untyped-def]
+    session: AsyncSession, demo_application, demo_resume, pending_approval
+):
+    """One accepted revision attempt, bound to a real source cycle.
+
+    Inserted with raw SQL like the other fixtures here, so the row exists even
+    when the ORM mapping is what is under test.
+    """
+    attempt_id = uuid7()
+    await session.execute(
+        text(
+            "INSERT INTO resume_revision_attempts ("
+            "  id, application_id, source_resume_id, source_resume_version,"
+            "  source_approval_id, instructions_snapshot, instructions_digest,"
+            "  requested_by, status"
+            ") VALUES ("
+            "  :id, :app, :resume, 1, :approval, 'Tighten the summary.',"
+            "  repeat('a', 64), :user, 'accepted'"
+            ")"
+        ),
+        {
+            "id": attempt_id,
+            "app": demo_application["id"],
+            "resume": demo_resume,
+            "approval": pending_approval,
+            "user": demo_application["user_id"],
+        },
+    )
+    await session.flush()
+    return {
+        "id": attempt_id,
+        "application_id": demo_application["id"],
+        "source_resume_id": demo_resume,
+        "source_approval_id": pending_approval,
+        "user_id": demo_application["user_id"],
+    }
+
+
+@pytest_asyncio.fixture
 async def demo_user(session: AsyncSession):  # type: ignore[no-untyped-def]
     """Demo user. Not a real person and not real contact details."""
     user_id = uuid7()

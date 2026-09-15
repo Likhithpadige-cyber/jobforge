@@ -81,6 +81,14 @@ def test_migration_sql_files_exist_and_are_non_empty() -> None:
         "0002_core_schema.down.sql",
         "0003_roles_grants.up.sql",
         "0003_roles_grants.down.sql",
+        # 0005 splits schema from privileges so JOBFORGE_SKIP_ROLE_GRANTS=1
+        # can skip the grants half without skipping the table. All four halves
+        # are required: a missing grants file would silently produce a database
+        # with the attempts table and no app_audit role.
+        "0005_revision_attempts.up.sql",
+        "0005_revision_attempts.down.sql",
+        "0005_revision_attempts.grants.up.sql",
+        "0005_revision_attempts.grants.down.sql",
     ):
         path = sql_dir / name
         assert path.is_file(), f"{name} missing"

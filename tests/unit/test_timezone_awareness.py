@@ -211,14 +211,38 @@ class TestStaticGuards:
 
     def test_migration_uses_timestamptz_not_timestamp(self) -> None:
         """Item 3: the database schema is correct and must not be changed to
-        accommodate the ORM. This asserts nobody 'fixed' it the wrong way."""
-        sql = (ROOT / "migrations" / "sql" / "0002_core_schema.up.sql").read_text()
-        naive = re.findall(r"\bTIMESTAMP\b(?!TZ)", sql)
-        assert not naive, (
-            f"{len(naive)} naive TIMESTAMP column(s) in the migration; "
-            "the schema should stay TIMESTAMPTZ and the ORM should match it"
+        accommodate the ORM. This asserts nobody 'fixed' it the wrong way.
+
+        Scans every `*.up.sql`, not just 0002. Naming one file meant a naive
+        TIMESTAMP introduced by any later migration would never be seen - the
+        guard would keep passing while the thing it guards stopped being true.
+        Offending filenames are reported, because "there is a naive TIMESTAMP
+        somewhere in the migrations" is not an actionable failure message.
+        """
+        sql_dir = ROOT / "migrations" / "sql"
+        offenders: dict[str, int] = {}
+        aware_total = 0
+        scanned = 0
+        for path in sorted(sql_dir.glob("*.up.sql")):
+            sql = path.read_text()
+            scanned += 1
+            aware_total += sql.count("TIMESTAMPTZ")
+            naive = re.findall(r"\bTIMESTAMP\b(?!TZ)", sql)
+            if naive:
+                offenders[path.name] = len(naive)
+
+        assert scanned, "no migration *.up.sql files found to scan"
+        assert not offenders, (
+            "naive TIMESTAMP column(s) found in "
+            + ", ".join(f"{name} ({count})" for name, count in offenders.items())
+            + "; the schema should stay TIMESTAMPTZ and the ORM should match it"
         )
-        assert sql.count("TIMESTAMPTZ") >= 55
+        # Aggregated across every schema-bearing migration, so adding a file
+        # can only raise this number, never let the total quietly fall.
+        assert aware_total >= 55, (
+            f"only {aware_total} TIMESTAMPTZ columns across {scanned} migration "
+            "file(s); timestamp columns appear to have been removed or retyped"
+        )
 
 
 class TestClockHelpers:

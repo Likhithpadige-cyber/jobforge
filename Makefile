@@ -92,6 +92,15 @@ db-roles:  ## Set app_* role passwords from .env and verify they can connect
 	  -c "ALTER ROLE app_agent  LOGIN PASSWORD '$${APP_AGENT_PASSWORD:-app_agent}';" \
 	  -c "ALTER ROLE app_monitor LOGIN PASSWORD '$${APP_MONITOR_PASSWORD:-app_monitor}';" \
 	  -c "ALTER ROLE app_migrate LOGIN PASSWORD '$${APP_MIGRATE_PASSWORD:-app_migrate}';"
+	@set -a; [ -f .env ] && . ./.env; set +a; \
+	if $(COMPOSE) exec -T postgres psql -U jobforge -d jobforge -tAc \
+	     "SELECT 1 FROM pg_roles WHERE rolname='app_audit'" | grep -q 1; then \
+	  $(COMPOSE) exec -T postgres psql -U jobforge -d jobforge -v ON_ERROR_STOP=1 \
+	    -c "ALTER ROLE app_audit LOGIN PASSWORD '$${APP_AUDIT_PASSWORD:-app_audit}';"; \
+	else \
+	  echo "app_audit absent (0005 not applied, or JOBFORGE_SKIP_ROLE_GRANTS=1);"; \
+	  echo "  the audit-containment tests will SKIP, which is not a pass."; \
+	fi
 	@$(MAKE) --no-print-directory db-verify-roles
 
 db-verify-roles:  ## Prove app_agent can authenticate AND cannot write to facts
