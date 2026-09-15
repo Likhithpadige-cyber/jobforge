@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  backend-lint:
+    name: Backend lint & types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy apps packages workers
+      - name: Schema conformance (models vs migration vs design)
+        run: python3 scripts/verify_schema.py
+      - name: SQLAlchemy name-shadowing audit
+        run: python3 scripts/check_model_shadowing.py
+      - name: Down migration is not stale
+        run: python3 scripts/gen_down_migration.py --check
+
+  backend-test:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: jobforge
+          POSTGRES_PASSWORD: localdev
+          POSTGRES_DB: jobforge
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jobforge"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      ENVIRONMENT: test
+      POSTGRES_HOST: localhost
+      POSTGRES_PASSWORD: localdev
+      REDIS_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Apply migrations
+        run: alembic upgrade head
+      - name: Create role passwords
+        run: |
+          PGPASSWORD=localdev psql -h localhost -U jobforge -d jobforge \
+            -c "ALTER ROLE app_agent LOGIN PASSWORD 'app_agent';" \
+            -c "ALTER ROLE app_api LOGIN PASSWORD 'app_api';" \
+            -c "ALTER ROLE app_monitor LOGIN PASSWORD 'app_monitor';"
+        env:
+          APP_AGENT_PASSWORD: app_agent
+      - name: Run tests
+        run: pytest --cov --cov-report=xml
+        env:
+          APP_AGENT_PASSWORD: app_agent
+          APP_API_PASSWORD: app_api
+      - name: Security invariants must not be skipped
+        # A skipped security test proves nothing. Fail if any were skipped.
+        run: pytest -m safety -p no:randomly --tb=short -rs | tee /tmp/safety.txt
+        env:
+          APP_AGENT_PASSWORD: app_agent
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: coverage.xml
+
+  frontend:
+    name: Frontend lint, types & tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci || npm install
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  security:
+    name: Security checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install pip-audit detect-secrets
+      - name: Dependency audit
+        run: pip-audit -r requirements.txt
+      - name: Secret scan
+        run: detect-secrets scan --baseline .secrets.baseline
+      - name: Assert no CAPTCHA/stealth dependencies
+        # SECURITY.md §7.1: the capability must not exist in the codebase.
+        run: |
+          if grep -rniE '2captcha|anticaptcha|capmonster|deathbycaptcha|puppeteer-extra-plugin-stealth|undetected.chromedriver' \
+             --include='*.py' --include='*.ts' --include='*.tsx' --include='*.json' --include='*.txt' \
+             --exclude-dir=node_modules --exclude-dir=docs . ; then
+            echo "::error::Prohibited CAPTCHA/anti-detection dependency found"
+            exit 1
+          fi
+          echo "no prohibited dependencies found"
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.api
+          target: production
+          push: false
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          target: production
+          push: false

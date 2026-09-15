@@ -1,0 +1,101 @@
+# Tooling configuration only.
+#
+# This project is deliberately NOT an installable package: modules are
+# imported from the repository root via PYTHONPATH (set in the Dockerfiles
+# and via pytest's `pythonpath` below). That avoids an editable-install step
+# in every container and keeps the import graph identical everywhere.
+# Dependencies live in requirements.txt / requirements-dev.txt.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations/versions", ".venv", "apps/web"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # isort
+    "N",         # pep8-naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "C4",        # comprehensions
+    "S",         # bandit (security)
+    "T20",       # no print()
+    "SIM",       # simplify
+    "DTZ",       # flake8-datetimez: no naive datetime construction
+    "RUF",
+]
+ignore = [
+    "S101",   # assert: allowed, pytest needs it
+    "B008",   # function call in default arg: FastAPI Depends() idiom
+]
+
+# DTZ is the tooling-level guard for the TIMESTAMPTZ mismatch: it makes
+# `datetime.now()`, `datetime.utcnow()` and naive `datetime(...)` a lint
+# error rather than something to catch in review.
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105", "S106", "S311"]
+"scripts/*" = ["T20"]          # scripts are allowed to print
+"migrations/*" = ["E501"]
+# clock.py is the one place allowed to call datetime.now directly - it is
+# the wrapper everything else uses.
+"packages/shared/clock.py" = ["DTZ005"]
+# manual.py parses third-party date strings; every path funnels through
+# ensure_utc(), which is asserted by test_dates_are_parsed_or_left_empty.
+"packages/services/ingestion/connectors/manual.py" = ["DTZ007"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+disallow_untyped_defs = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/versions", "apps/web", "\\.venv"]
+
+[[tool.mypy.overrides]]
+module = ["testcontainers.*", "pgvector.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "unit: no external dependencies, runs everywhere",
+    "integration: requires PostgreSQL and Redis",
+    "contract: schema and OpenAPI conformance",
+    "e2e: full stack via Playwright",
+    "eval: LLM evaluation, costs money, not run in normal CI",
+    "safety: safety regression suite, blocking",
+    "slow: takes noticeably longer; deselect with -m 'not slow'",
+]
+env = [
+    "ENVIRONMENT=test",
+    "LLM_MODE=replay",
+    "SUBMISSION_MODE=dry_run",
+    "LOG_LEVEL=WARNING",
+]
+filterwarnings = ["error", "ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["apps", "packages", "workers"]
+omit = ["*/__init__.py", "*/migrations/*", "*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

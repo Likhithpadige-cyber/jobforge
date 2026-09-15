@@ -1,0 +1,150 @@
+name: jobforge
+
+services:
+  postgres:
+    # pgvector image, not plain postgres: the Phase 2 schema needs the
+    # `vector` extension for profile_facts.embedding (DATABASE_DESIGN.md §4.4).
+    image: pgvector/pgvector:pg16
+    container_name: jobforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: ${POSTGRES_DB:-jobforge}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobforge} -d ${POSTGRES_DB:-jobforge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    profiles: ["core", "full"]
+
+  redis:
+    image: redis:7-alpine
+    container_name: jobforge-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles: ["core", "full"]
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+      target: development
+    container_name: jobforge-api
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      S3_ENDPOINT_URL: http://minio:9000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./apps:/app/apps
+      - ./packages:/app/packages
+      - ./workers:/app/workers
+      - ./migrations:/app/migrations
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./alembic.ini:/app/alembic.ini
+      - ./pyproject.toml:/app/pyproject.toml
+      # Read by tests/unit/test_security_fixture_contract.py, which asserts
+      # `make test-security` sets REQUIRE_SECURITY_TESTS=1. Read-only: the
+      # container never needs to write it.
+      - ./Makefile:/app/Makefile:ro
+      # Read by scripts/verify_schema.py, which compares the models and the
+      # migration against docs/DATABASE_DESIGN.md.
+      - ./docs:/app/docs:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    profiles: ["core", "full"]
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+      target: development
+    container_name: jobforge-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_PREFIX: /api/v1
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+      - web_next_cache:/app/.next
+    depends_on:
+      api: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    profiles: ["core", "full"]
+
+  minio:
+    image: minio/minio:latest
+    container_name: jobforge-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles: ["full"]
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: jobforge-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    profiles: ["full"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  web_node_modules:
+  web_next_cache:

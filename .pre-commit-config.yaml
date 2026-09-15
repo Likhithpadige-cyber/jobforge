@@ -1,0 +1,66 @@
+# Pre-commit hooks.
+#   pip install pre-commit && pre-commit install
+#
+# The secret-detection hooks are the important ones here: this repository
+# will hold real personal data and a real Anthropic key in .env, and the
+# cheapest place to stop a leak is before the commit exists (SECURITY.md §3.3).
+
+default_language_version:
+  python: python3.12
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+        exclude: ^apps/web/(tsconfig\.json|\.eslintrc\.json)$
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+      - id: detect-private-key
+      # Note: main-branch protection is configured in GitHub branch rules,
+      # not as a local hook - a local hook would block the initial commit.
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        args: ["--fix", "--exit-non-zero-on-fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ^(package-lock\.json|\.env\.example)$
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.0
+    hooks:
+      - id: mypy
+        additional_dependencies: ["pydantic>=2.10", "types-python-dateutil"]
+        args: ["--config-file=pyproject.toml"]
+        files: ^(apps/api|packages|workers)/
+        exclude: ^apps/web/
+
+  - repo: local
+    hooks:
+      - id: no-env-file
+        name: block committing .env
+        entry: .env must never be committed
+        language: fail
+        files: ^\.env$
+
+      - id: no-real-profile
+        name: block committing real profile data
+        entry: real profile data must not be committed (SECURITY.md §6)
+        language: fail
+        files: ^(seed\.local\.|profile\.local\.|data/)

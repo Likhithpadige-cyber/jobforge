@@ -1,0 +1,69 @@
+# --- secrets (never commit) -------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+.secrets.baseline.local
+
+# --- python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.hypothesis/
+
+# --- node / next ------------------------------------------------------------
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.vercel
+
+# --- docker / infra ---------------------------------------------------------
+docker-compose.override.yml
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+
+# --- data & artifacts (contains real PII - never commit) --------------------
+/data/
+/uploads/
+/artifacts/
+seed.local.json
+profile.local.*
+tests/fixtures/cassettes/*.live.json
+
+# --- editors / os -----------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json.example
+*.swp
+*~
+
+# --- local project backups ---------------------------------------------------
+/backups/

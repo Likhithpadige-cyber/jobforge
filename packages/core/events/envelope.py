@@ -1,0 +1,115 @@
+"""Event envelope and type registry (EVENTS.md §2, §3).
+
+The envelope is transport-agnostic on purpose: nothing here is Redis-specific,
+so moving to SQS later is an adapter swap rather than a rewrite (EVENTS.md §1
+principle 5).
+
+Only the types listed in `KNOWN_EVENT_TYPES` may be emitted. An unregistered
+type raises rather than being written, because EVENTS.md §2 says unknown types
+are DLQ'd and never guessed at - and a producer that can invent a type name
+would silently create events no consumer subscribes to.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Literal
+from uuid import UUID
+
+from packages.shared.clock import utc_now
+from packages.shared.ids import uuid7
+
+ActorType = Literal["agent", "human", "system"]
+AggregateType = Literal["job", "application", "resume", "approval", "submission", "system"]
+
+#: The catalogue from EVENTS.md §3. Kept as a flat set: the CI contract test
+#: in tests/unit asserts this matches the document.
+KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        # jobs
+        "job.discovered", "job.normalized", "job.duplicate_detected",
+        "job.evaluation.requested", "job.evaluated", "job.shortlisted",
+        "job.discarded", "job.expired",
+        # resumes
+        "resume.generation.requested", "resume.generated",
+        "resume.verification.failed", "resume.render.requested", "resume.rendered",
+        "cover_letter.generated",
+        # applications
+        "application.created", "application.questions.extracted",
+        "application.answers.drafted", "application.ready",
+        "application.status.changed", "application.outcome.updated",
+        "application.abandoned",
+        # approvals
+        "approval.requested", "approval.granted", "approval.rejected",
+        "approval.changes_requested", "approval.superseded",
+        # submissions
+        "submission.requested", "submission.started", "submission.succeeded",
+        "submission.failed", "submission.handoff.required",
+        # system
+        "agent.run.started", "agent.run.finished", "agent.run.failed",
+        "guardrail.violation.detected", "policy.blocked", "quota.exhausted",
+        "metrics.snapshot.created", "alert.raised", "alert.resolved",
+        "notification.dispatched", "schedule.tick",
+    }
+)
+
+#: Events a human alone may produce (EVENTS.md §3.4). An agent emitting one of
+#: these would mean an approval had been forged.
+HUMAN_ONLY_EVENT_TYPES: frozenset[str] = frozenset(
+    {"approval.granted", "approval.rejected", "approval.changes_requested"}
+)
+
+
+class UnknownEventTypeError(ValueError):
+    """Raised when a producer tries to emit a type not in the catalogue."""
+
+
+class ForbiddenActorError(ValueError):
+    """Raised when an agent tries to emit a human-only event."""
+
+
+@dataclass(frozen=True)
+class EventEnvelope:
+    """One event, exactly as EVENTS.md §2 specifies."""
+
+    type: str
+    aggregate_type: AggregateType
+    payload: dict[str, Any]
+    correlation_id: UUID
+    actor_type: ActorType
+    actor_id: str | None = None
+    aggregate_id: UUID | None = None
+    causation_id: UUID | None = None
+    trace_id: str | None = None
+    version: int = 1
+    id: UUID = field(default_factory=uuid7)
+    occurred_at: datetime = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if self.type not in KNOWN_EVENT_TYPES:
+            raise UnknownEventTypeError(
+                f"{self.type!r} is not in the EVENTS.md catalogue; add it there first"
+            )
+        if self.type in HUMAN_ONLY_EVENT_TYPES and self.actor_type != "human":
+            raise ForbiddenActorError(
+                f"{self.type!r} may only be emitted by a human actor, "
+                f"not {self.actor_type!r}"
+            )
+
+    def as_row(self) -> dict[str, Any]:
+        """Column mapping for the `events` table (DATABASE_DESIGN.md §7.1)."""
+        return {
+            "id": self.id,
+            "type": self.type,
+            "version": self.version,
+            "aggregate_type": self.aggregate_type,
+            "aggregate_id": self.aggregate_id,
+            "correlation_id": self.correlation_id,
+            "causation_id": self.causation_id,
+            "actor_type": self.actor_type,
+            "actor_id": self.actor_id,
+            "trace_id": self.trace_id,
+            "payload": self.payload,
+            "occurred_at": self.occurred_at,
+        }
