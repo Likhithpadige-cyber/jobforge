@@ -15,6 +15,7 @@ and that the scanner which fixes it is correct about the cases a naive
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -144,3 +145,44 @@ def test_an_e_string_backslash_escape_is_respected() -> None:
         r"SELECT E'a\';b'",
         "SELECT 2",
     ]
+
+# =====================================================================
+# 3. The runner contract: no revision may go back to single-shot execution
+# =====================================================================
+VERSIONS_DIR = Path(__file__).resolve().parents[2] / "migrations" / "versions"
+
+
+def _revision_sources() -> dict[str, str]:
+    return {p.name: p.read_text(encoding="utf-8") for p in sorted(VERSIONS_DIR.glob("*.py"))}
+
+
+def test_every_revision_reading_a_multi_statement_file_splits_it() -> None:
+    """The regression guard for the asyncpg failure, expressed as a rule.
+
+    A revision that hands a multi-statement file to one `op.execute()` applies
+    under the simple query protocol and fails under the extended one. Rather
+    than name the three revisions that were fixed, this derives the rule: if a
+    revision reads a SQL file that splits into more than one statement, that
+    revision must import the scanner. 0004 is exempt by fact, not by name -
+    both of its files are a single statement - and if a future edit makes one
+    of them multi-statement, this test starts requiring the import.
+    """
+    offenders: list[str] = []
+    for name, source in _revision_sources().items():
+        referenced = re.findall(r'_run\(\s*"([^"]+\.sql)"', source)
+        multi = [
+            sql_name
+            for sql_name in referenced
+            if len(split_sql_statements((SQL_DIR / sql_name).read_text(encoding="utf-8"))) > 1
+        ]
+        if multi and "split_sql_statements" not in source:
+            offenders.append(f"{name} executes {', '.join(multi)} without splitting")
+    assert not offenders, "; ".join(offenders)
+
+
+def test_0004_is_genuinely_single_statement() -> None:
+    """0004 is left alone deliberately; this records why, and notices if it
+    ever stops being true."""
+    for direction in ("up", "down"):
+        path = SQL_DIR / f"0004_harden_events_immutability.{direction}.sql"
+        assert len(split_sql_statements(path.read_text(encoding="utf-8"))) == 1

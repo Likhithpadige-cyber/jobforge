@@ -27,6 +27,8 @@ from pathlib import Path
 
 from alembic import op
 
+from packages.shared.sql_script import split_sql_statements
+
 revision: str = "0002_core_schema"
 down_revision: str | None = "0001_baseline"
 branch_labels: str | Sequence[str] | None = None
@@ -36,7 +38,23 @@ SQL_DIR = Path(__file__).resolve().parent.parent / "sql"
 
 
 def _run(filename: str) -> None:
-    op.execute((SQL_DIR / filename).read_text(encoding="utf-8"))
+    """Execute a SQL file statement by statement, in order, on one connection.
+
+    NOT one `op.execute(whole_file)`. Migrations run over asyncpg, which uses
+    PostgreSQL's extended query protocol: the server parses one statement per
+    Parse message and rejects a multi-statement string with "cannot insert
+    multiple commands into a prepared statement". Splitting is done by a
+    scanner that understands dollar-quoted bodies, so the DO blocks and
+    PL/pgSQL functions in this migration survive intact (see
+    packages.shared.sql_script).
+
+    Every statement runs on the same connection inside Alembic's transaction,
+    so transactional DDL is unchanged: a failure part-way through rolls the
+    whole revision back exactly as before.
+    """
+    sql = (SQL_DIR / filename).read_text(encoding="utf-8")
+    for statement in split_sql_statements(sql):
+        op.execute(statement)
 
 
 def upgrade() -> None:
