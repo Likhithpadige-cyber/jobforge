@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Frozen `revision` block for the baseline's revision arm.",
+    "This is exactly the shape guidance_payload(RevisionRequest) returns, checked",
+    "in directly so the baseline needs no database-loaded RevisionRequest."
+  ],
+  "revision": {
+    "prior_resume_version": 1,
+    "reviewer_instructions": "Tighten the summary.",
+    "prior_claims": [
+      {
+        "section": "summary",
+        "path": "/summary/0",
+        "claim_text": "Cloud engineer with verified AWS depth.",
+        "fact_ids": ["f1"]
+      },
+      {
+        "section": "experience",
+        "path": "/experience/0",
+        "claim_text": "Delivered AWS infrastructure work.",
+        "fact_ids": ["f1", "f2"]
+      }
+    ]
+  }
+}

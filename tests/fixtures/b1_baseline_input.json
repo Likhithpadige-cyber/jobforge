@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Frozen B1 input for the pre-hardening baseline (C3_HARDENING_DESIGN.md I.5.1).",
+    "Deterministic by construction: every UUID is UUID(int=n), the model is fixed,",
+    "and nothing here is read from a database, a clock or the environment.",
+    "Mirrors the in-memory context the existing B1 unit tests build, so the",
+    "baseline pins the same shape those tests already exercise."
+  ],
+  "model": "model-x",
+  "context": {
+    "profile_id_int": 10,
+    "base_resume_id_int": 11,
+    "base_resume_version": 1,
+    "base_resume_structure": { "sections": [] },
+    "facts": [
+      { "id_int": 1, "text": "Verified experience", "structured": {}, "fact_type": "experience" },
+      { "id_int": 2, "text": "Verified skill", "structured": {}, "fact_type": "skill" }
+    ],
+    "job": { "id_int": 12, "title": "Engineer", "description_raw": "Build systems" },
+    "evaluation_id_int": 13,
+    "profile_version": 1,
+    "match_matrix": { "requirements": [] },
+    "score": "55",
+    "recommendation": "weak",
+    "score_breakdown": {},
+    "rationale": "Persisted rationale",
+    "gaps": []
+  }
+}

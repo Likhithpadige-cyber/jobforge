@@ -1,0 +1,21 @@
+{
+  "user": "<untrusted>{\"context_digest\":\"f77219d83b8336238ce0f8dd7a83248fd25f12da2bdc502535e58d165f82d396\",\"gaps\":[],\"job_description\":\"Engineer\\nBuild systems\",\"rationale\":\"Persisted rationale\",\"requirements\":[],\"score\":\"55\",\"verified_facts\":[{\"fact_id\":\"00000000-0000-0000-0000-000000000001\",\"section\":\"experience\",\"text\":\"Verified experience\"},{\"fact_id\":\"00000000-0000-0000-0000-000000000002\",\"section\":\"skills\",\"text\":\"Verified skill\"}]}</untrusted>",
+  "provenance": {
+    "purpose": "C2 revision=None user-payload regression only. system, prompt_version and digest are NOT compared against live; see C3_HARDENING_DESIGN.md I.5.0.",
+    "source_archive": "c2.tar.gz",
+    "source_archive_sha256": "5a8ea712b4fb45a0ff4d1bd428b6c080e900c1d639620f21d073fa4ef1ba5a16",
+    "c2_b1_selection_txt_sha256": "a3112a2914bcee2236237ca06995b73ece14f53c3e51818a9ffd16082f37f2df",
+    "c2_prompt_version_historical": "a3112a2914bcee2236237ca06995b73ece14f53c3e51818a9ffd16082f37f2df",
+    "c2_digest_historical": "af1b409d7b0a5cc47b7781985415bbceb29fdb6124dc628093dedf7f499108e1",
+    "c2_call_signature": "prepare_request(context, model)",
+    "isolation": "subprocess; sys.path[0] = extracted archive root",
+    "resolved_modules": {
+      "selection": "/tmp/tmpjsomcdy3/jobforge-phase5/packages/agents/resume_optimizer/selection.py",
+      "context": "/tmp/tmpjsomcdy3/jobforge-phase5/packages/agents/resume_optimizer/context.py",
+      "enums": "/tmp/tmpjsomcdy3/jobforge-phase5/packages/core/models/enums.py",
+      "runtime": "/tmp/tmpjsomcdy3/jobforge-phase5/packages/agents/llm/runtime.py"
+    },
+    "input_fixture": "tests/fixtures/b1_baseline_input.json",
+    "model": "model-x"
+  }
+}
