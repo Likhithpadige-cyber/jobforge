@@ -7,6 +7,10 @@ from packages.core.repositories.jobs import (
     SourceRepository,
 )
 from packages.core.repositories.facts import FactEvidenceRepository, FactRepository
+from packages.core.repositories.revision_attempts import (
+    AttemptSourceConflictError,
+    RevisionAttemptRepository,
+)
 from packages.core.repositories.profile import (
     CHILD_REPOSITORIES,
     CertificationRepository,
@@ -29,7 +33,9 @@ __all__ = [
     "JobEvaluationRepository",
     "JobRepository",
     "ProfileRepository",
+    "AttemptSourceConflictError",
     "ProjectRepository",
+    "RevisionAttemptRepository",
     "SitePolicyRepository",
     "SkillRepository",
     "SourceRepository",

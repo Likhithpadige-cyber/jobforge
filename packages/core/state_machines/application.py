@@ -9,6 +9,7 @@ that is not yet settled is absent - and absent means rejected, not allowed.
     created            -> resume_generating
     resume_generating  -> resume_ready
     resume_generating  -> verification_failed
+    resume_generating  -> changes_requested      (C3 recovery, see below)
     resume_ready       -> awaiting_approval      (temporary bridge, see below)
     awaiting_approval  -> approved
     awaiting_approval  -> changes_requested
@@ -35,6 +36,24 @@ generation attempt and must earn `resume_ready` by passing the same
 verification the first attempt did. Routing it into `resume_generating` means
 B6 - which already refuses to run outside that status - is the only way back
 out, through `resume_ready` or `verification_failed` exactly as before.
+
+**The `resume_generating -> changes_requested` edge is C3's recovery path
+(PO-1).** It exists because a durable revision attempt can fail *after* the
+application has entered generation, and an application with no worker on it
+must not be left in `resume_generating`. Before durable attempts, a failed
+pipeline rolled the whole request back, so the application had never left
+`changes_requested` and no edge was needed; that rollback was what PO-4
+removed, because it also erased the evidence that an attempt had happened at
+all. The transition is therefore the *explicit* form of what used to happen by
+the absence of a commit, and it is recorded in `application_status_history`
+like every other move.
+
+Only a technical failure takes this edge. A semantic negative - B5 finding a
+claim unsupported - is not a failure of the attempt: it produces a real v2 and
+ends at `verification_failed` by B6's own route, which is why that edge is
+untouched. And the edge does not let a rework skip verification: the only way
+back out of `changes_requested` remains `-> resume_generating`, so a recovered
+application must re-acquire its attempt and generate again.
 
 Note what was *not* added, in either phase. There is no `resume_ready ->
 approved` and no `resume_ready -> changes_requested`: a decision is only
@@ -84,7 +103,12 @@ if TYPE_CHECKING:  # `Application` is needed only for the annotation; the
 ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
     ApplicationStatus.CREATED: frozenset({ApplicationStatus.RESUME_GENERATING}),
     ApplicationStatus.RESUME_GENERATING: frozenset(
-        {ApplicationStatus.RESUME_READY, ApplicationStatus.VERIFICATION_FAILED}
+        {
+            ApplicationStatus.RESUME_READY,
+            ApplicationStatus.VERIFICATION_FAILED,
+            # C3 PO-1 recovery. See the module docstring.
+            ApplicationStatus.CHANGES_REQUESTED,
+        }
     ),
     # Temporary bridge while question extraction (A2) is unimplemented; the
     # documented route is resume_ready -> questions_pending -> awaiting_approval.

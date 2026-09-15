@@ -273,7 +273,9 @@ async def _load_application(
     if lock:
         # Serialises concurrent review actions on one application. Two browser
         # tabs both clicking Approve must not both pass their preconditions.
-        stmt = stmt.with_for_update()
+        # A prior read may still live in the identity map after another
+        # transaction commits. Refresh state from the row we now lock.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     application = (await session.execute(stmt)).scalar_one_or_none()
     if application is None:
         raise NotFoundError(f"applications {application_id} not found")

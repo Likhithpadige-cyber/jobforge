@@ -106,6 +106,52 @@ async def test_resume_generating_to_both_outcomes(
     assert await _counts(session, application_id) == (2, 2)
 
 
+async def test_resume_generating_recovers_to_changes_requested(
+    session, demo_application
+) -> None:
+    """C3 PO-1 against the real database.
+
+    The point is that recovery is a *recorded* move. Before durable attempts
+    the application got back to `changes_requested` by the absence of a commit,
+    which left no trace that generation had ever started. Here the history row
+    and the event are the trace, so the assertion is on all three writes rather
+    than on the status alone.
+    """
+    application_id = demo_application["id"]
+    app = await _load(session, application_id)
+    await transition_application(session, app, ApplicationStatus.RESUME_GENERATING)
+    await transition_application(
+        session,
+        app,
+        ApplicationStatus.CHANGES_REQUESTED,
+        actor_type="human",
+        actor_id="reviewer",
+        reason="revision attempt failed technically; returned for retry",
+    )
+    await session.flush()
+
+    assert (
+        await _load(session, application_id)
+    ).status is ApplicationStatus.CHANGES_REQUESTED
+    assert await _counts(session, application_id) == (2, 2)
+    row = (
+        await session.execute(
+            select(ApplicationStatusHistory)
+            .where(
+                ApplicationStatusHistory.application_id == application_id,
+                ApplicationStatusHistory.to_status
+                == ApplicationStatus.CHANGES_REQUESTED,
+            )
+        )
+    ).scalar_one()
+    assert row.from_status is ApplicationStatus.RESUME_GENERATING
+    assert row.actor_type == "human"
+    # And the recovered application can only go back through generation.
+    await transition_application(session, app, ApplicationStatus.RESUME_GENERATING)
+    await session.flush()
+    assert await _counts(session, application_id) == (3, 3)
+
+
 async def test_rejected_transition_leaves_database_untouched(
     session, demo_application
 ) -> None:

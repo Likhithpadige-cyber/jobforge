@@ -93,6 +93,30 @@ class Settings(BaseSettings):
     llm_model_tailoring: str = "claude-sonnet-5"
     llm_model_verification: str = "claude-sonnet-5"
     llm_max_cost_usd_per_run: float = 1.00
+
+    # --- C3 durable revision attempts (C3_HARDENING_DESIGN.md N) ---------
+    # Tunables, not invariants: none appears in a CHECK, a trigger or an index
+    # predicate, and every guarantee in the design holds at every value of
+    # every one of them - including the degenerate ones. Changing one changes
+    # how much the system will try, never what it is allowed to do.
+    #: How many acquisitions one attempt row may have before it is refused.
+    revision_max_attempts: int = 3
+    #: Lease length. Shorter means more frequent takeovers, which costs work
+    #: and not correctness - the fence means the loser writes nothing.
+    revision_lease_ttl_seconds: int = 300
+    #: How many `evidence_stale` retries one attempt row may consume. At 0 the
+    #: class is terminal on first occurrence, which is also correct.
+    revision_evidence_stale_retry_budget: int = 1
+    #: How long a second, identical request will wait for the attempt already
+    #: in flight before giving up. Deliberately NOT derived from the lease TTL:
+    #: the lease is sized for "how long before we assume a worker died" (300s),
+    #: and no HTTP client should be held open that long. This is sized for "how
+    #: long a generation normally takes", so the common case - two clicks on
+    #: one button - returns the same result to both callers.
+    revision_wait_timeout_seconds: int = 45
+    #: Poll interval while waiting. Each tick ends the read transaction so the
+    #: next read sees the other request's commits.
+    revision_wait_poll_seconds: float = 0.25
     llm_tailoring_input_price_per_million: Decimal | None = Field(default=None, ge=0)
     llm_tailoring_output_price_per_million: Decimal | None = Field(default=None, ge=0)
 

@@ -1,6 +1,6 @@
 """Application lifecycle transitions - the deliberately partial graph.
 
-The point of these tests is the *closed* half: only seven edges exist today,
+The point of these tests is the *closed* half: only eight edges exist today,
 so every one of the remaining pairs must be rejected. They are enumerated
 exhaustively rather than sampled, because an accidentally-permitted edge is
 exactly the failure this module exists to prevent.
@@ -31,6 +31,11 @@ IMPLEMENTED: frozenset[tuple[ApplicationStatus, ApplicationStatus]] = frozenset(
         (ApplicationStatus.CREATED, ApplicationStatus.RESUME_GENERATING),
         (ApplicationStatus.RESUME_GENERATING, ApplicationStatus.RESUME_READY),
         (ApplicationStatus.RESUME_GENERATING, ApplicationStatus.VERIFICATION_FAILED),
+        # C3 recovery (PO-1). A durable attempt can fail after the application
+        # has entered generation; this is how it is returned to a state a human
+        # can act from, explicitly and in the history, rather than by the
+        # absence of a commit.
+        (ApplicationStatus.RESUME_GENERATING, ApplicationStatus.CHANGES_REQUESTED),
         # Human review (C2). The first is a temporary bridge around
         # questions_pending while question extraction is unimplemented.
         (ApplicationStatus.RESUME_READY, ApplicationStatus.AWAITING_APPROVAL),
@@ -174,6 +179,46 @@ def test_rework_must_restart_generation() -> None:
     assert ALLOWED_TRANSITIONS[ApplicationStatus.CHANGES_REQUESTED] == frozenset(
         {ApplicationStatus.RESUME_GENERATING}
     )
+
+
+def test_recovery_returns_a_stranded_generation_to_changes_requested() -> None:
+    """C3 PO-1, pinned on its own rather than only through IMPLEMENTED.
+
+    A durable attempt can fail after the application has entered generation.
+    Without this edge the recovery path is impossible by construction - T5
+    raises `IllegalTransitionError`, the service swallows it so the original
+    generation error survives, and the application is stranded in
+    `resume_generating` with nothing working on it.
+    """
+    assert can_transition(
+        ApplicationStatus.RESUME_GENERATING, ApplicationStatus.CHANGES_REQUESTED
+    )
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.RESUME_GENERATING] == frozenset(
+        {
+            ApplicationStatus.RESUME_READY,
+            ApplicationStatus.VERIFICATION_FAILED,
+            ApplicationStatus.CHANGES_REQUESTED,
+        }
+    )
+
+
+def test_recovery_does_not_open_a_route_around_verification() -> None:
+    """The new edge recovers; it must not also become a shortcut.
+
+    Recovery lands in `changes_requested`, whose only exit is still
+    `resume_generating`. So a recovered application has to re-acquire its
+    attempt and generate again - it cannot reach review or approval carrying
+    the verdicts of an attempt that never finished.
+    """
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.CHANGES_REQUESTED] == frozenset(
+        {ApplicationStatus.RESUME_GENERATING}
+    )
+    for target in (
+        ApplicationStatus.RESUME_READY,
+        ApplicationStatus.AWAITING_APPROVAL,
+        ApplicationStatus.APPROVED,
+    ):
+        assert not can_transition(ApplicationStatus.CHANGES_REQUESTED, target)
 
 
 def test_decisions_are_terminal_in_the_current_graph() -> None:

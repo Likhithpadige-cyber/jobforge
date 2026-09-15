@@ -45,16 +45,18 @@ from packages.core.models import (
     Resume,
     ResumeClaim,
 )
-from packages.core.services import resume_revision
+from packages.core.repositories.revision_attempts import RevisionAttemptRepository
+from packages.core.services import resume_review, resume_revision, resume_rework
 from packages.core.services.resume_revision import (
     FINGERPRINT_KEY,
-    regenerate_after_changes,
+    generate_revision,
 )
 from packages.shared.config import Settings
 from tests.integration import test_resume_review as c2
 from tests.integration import test_tailoring_context
 
 inputs = test_tailoring_context.inputs
+
 
 pytestmark = [pytest.mark.integration, pytest.mark.safety]
 
@@ -180,14 +182,45 @@ async def _stage_cassettes(
 
 
 async def _revise(session, tmp_path, demo_application, actor, **staging):
+    """Exercise T3 with a durable attempt and committed, lease-owned T2 state."""
+    app_id = demo_application["id"]
+    actor_id = actor.id
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
-    request = await load_revision_request(session, demo_application["id"])
+    request = await load_revision_request(session, app_id)
     await _stage_cassettes(session, tmp_path, client, request, **staging)
-    return await regenerate_after_changes(
-        session,
-        application_id=demo_application["id"],
-        actor=actor,
-        client=client,
+    attempt, request = await resume_rework._t1_decide_and_record(
+        session, application_id=app_id, approval_id=request.approval_id,
+        actor=actor, instructions=request.instructions,
+    )
+    # Explicit T2 prerequisites; T3 must neither acquire a lease nor decide reuse.
+    await resume_review._load_application(session, app_id, lock=True)
+    settings = Settings()
+    epoch = await RevisionAttemptRepository(session).acquire(
+        attempt.id, owner="test-t3", lease_seconds=settings.revision_lease_ttl_seconds,
+        max_attempts=settings.revision_max_attempts,
+    )
+    assert epoch is not None
+    await resume_revision.begin_generation(
+        session, application_id=app_id, request=request, actor_id=actor_id
+    )
+    await session.commit()
+    return await generate_revision(
+        session, application_id=app_id, client=client, request=request
+    )
+
+
+async def _rework(session, tmp_path, demo_application, actor, **staging):
+    """Exercise decisions and reuse through the real orchestration entry point."""
+    app_id = demo_application["id"]
+    request = await load_revision_request(
+        session, app_id, require_changes_requested=False
+    )
+    client = StructuredClient(Settings(), cassette_dir=tmp_path)
+    if staging:
+        await _stage_cassettes(session, tmp_path, client, request, **staging)
+    return await resume_rework.request_changes_and_regenerate(
+        session, application_id=app_id, approval_id=request.approval_id,
+        actor=actor, note=request.instructions, client=client,
     )
 
 
@@ -294,14 +327,8 @@ async def test_a_foreign_newer_version_blocks_a_revision(
     request = await load_revision_request(session, demo_application["id"])
     assert request.prior_resume_version == 1
 
-    client = StructuredClient(Settings(), cassette_dir=tmp_path)
     with pytest.raises(RevisionNotAvailableError, match="already exists"):
-        await regenerate_after_changes(
-            session,
-            application_id=demo_application["id"],
-            actor=actor,
-            client=client,
-        )
+        await _rework(session, tmp_path, demo_application, actor)
 
 
 # ---------------------------------------------------------------------------
@@ -639,7 +666,7 @@ async def test_a_retried_revision_returns_the_same_version(
     actor = await _changes_requested(
         session, demo_profile, demo_job, demo_application, facts
     )
-    first = await _revise(
+    first = await _rework(
         session,
         tmp_path,
         demo_application,
@@ -647,14 +674,9 @@ async def test_a_retried_revision_returns_the_same_version(
         bullet_text="Delivered AWS infrastructure work.",
     )
 
-    client = StructuredClient(Settings(), cassette_dir=tmp_path)
-    second = await regenerate_after_changes(
-        session, application_id=app_id, actor=actor, client=client
-    )
-
-    assert second.reused is True
+    second = await _rework(session, tmp_path, demo_application, actor)
     assert second.resume_id == first.resume_id
-    assert second.version == first.version
+    assert second.resume_version == first.resume_version == 2
     assert len(await _resumes(session, app_id)) == 2
 
 
@@ -666,7 +688,7 @@ async def test_a_retry_adds_no_history_or_events(
     actor = await _changes_requested(
         session, demo_profile, demo_job, demo_application, facts
     )
-    await _revise(
+    await _rework(
         session,
         tmp_path,
         demo_application,
@@ -680,10 +702,8 @@ async def test_a_retry_adds_no_history_or_events(
         )
     ).scalar_one()
 
-    client = StructuredClient(Settings(), cassette_dir=tmp_path)
-    await regenerate_after_changes(
-        session, application_id=app_id, actor=actor, client=client
-    )
+    reused = await _rework(session, tmp_path, demo_application, actor)
+    assert reused.resume_version == 2
 
     assert await c2._history_count(session, app_id) == history
     assert (
@@ -708,7 +728,7 @@ async def test_the_fingerprint_is_what_recognises_a_retry(
         session, demo_profile, demo_job, demo_application, facts
     )
     request = await load_revision_request(session, app_id)
-    await _revise(
+    await _rework(
         session,
         tmp_path,
         demo_application,
@@ -722,6 +742,11 @@ async def test_the_fingerprint_is_what_recognises_a_retry(
     assert resume_revision.FINGERPRINT_KEY not in (
         (await _resumes(session, app_id))[0].diff_vs_base or {}
     )
+
+    reused = await _rework(session, tmp_path, demo_application, actor)
+    assert reused.resume_id == v2.id
+    assert reused.resume_version == v2.version
+    assert len(await _resumes(session, app_id)) == 2
 
 
 # ---------------------------------------------------------------------------

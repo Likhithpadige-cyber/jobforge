@@ -118,10 +118,17 @@ async def request_resume_changes(
     _csrf: CsrfProtected,
     client: RevisionClient,
 ) -> Any:
-    """Record the human decision and regenerate atomically through C3.
+    """Record the human decision, then regenerate against a durable attempt.
 
-    Exceptions roll back both stages. A successful revision needs fresh human
-    review; verification failure is persisted without opening approval.
+    **This handler does not commit**, unlike every other route in this module.
+    The decision and the revision are no longer one unit of work: the service
+    owns T1-T5 explicitly (see `packages.core.services.resume_rework`) because
+    a failed generation must leave the decision and the attempt record behind
+    rather than erasing them. Committing again here would be a seventh,
+    meaningless boundary on an already-committed session.
+
+    A successful revision needs fresh human review; verification failure is
+    persisted without opening approval. Neither inherits approval.
     """
     state = await request_changes_and_regenerate(
         session,
@@ -131,5 +138,4 @@ async def request_resume_changes(
         note=payload.note,
         client=client,
     )
-    await session.commit()
     return ResumeReviewRead.from_state(state)
