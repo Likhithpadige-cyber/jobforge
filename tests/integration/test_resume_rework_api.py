@@ -128,16 +128,18 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
         attempts = await _attempts(db, app_id)
         assert len(attempts) == 1
         attempt = attempts[0]
-        # The successful T2 lease produced one B1, B2 and B3 execution.
+        # The successful T2 lease produced B1, B2, B3 and one B5 per claim.
         # The identical HTTP retry must add no stage or run.
         steps = (await db.scalars(select(AgentRunStep).where(
             AgentRunStep.guardrail_results["c3_execution"]["application_id"].astext == str(app_id)
         ))).all()
-        assert sorted(step.step_name for step in steps) == ["B1", "B2", "B3"]
+        assert sorted(step.step_name for step in steps) == ["B1", "B2", "B3", "B5", "B5", "B5"]
+        b5_steps = [step for step in steps if step.step_name == "B5"]
+        assert {step.guardrail_results["claim_index"] for step in b5_steps} == {0, 1, 2}
         run_ids = {step.run_id for step in steps}
-        assert len(run_ids) == 3
+        assert len(run_ids) == 6
         runs = (await db.scalars(select(AgentRun).where(AgentRun.id.in_(run_ids)))).all()
-        assert len(runs) == 3
+        assert len(runs) == 6
         assert all(run.status == "succeeded" for run in runs)
         execution = {
             "attempt_id": str(attempt.id), "lease_epoch": attempt.lease_epoch,

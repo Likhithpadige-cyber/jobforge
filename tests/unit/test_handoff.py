@@ -440,7 +440,11 @@ def test_no_jd_or_profile_leakage_in_handoff(context, bullets, selection, senten
 
 
 @pytest.fixture
-def session():
+def session(monkeypatch):
+    from packages.agents.resume_optimizer import verification
+    from tests.unit.fake_inference_audit import FakeInferenceAudit
+
+    monkeypatch.setattr(verification, "DomainInferenceAudit", FakeInferenceAudit)
     value = Mock()
     value.flush = AsyncMock()
     return value
@@ -504,7 +508,7 @@ async def test_wrapper_preserves_negative_verdict_and_guardrail_event(
     run = next(o for o in rows if isinstance(o, AgentRun))
     events = [o for o in rows if isinstance(o, Event)]
     calls = [o for o in rows if isinstance(o, LlmCall)]
-    assert run.status == "failed"  # fail-closed semantics unchanged
+    assert run.status == "succeeded"  # valid negative is a completed inference
     assert len(calls) == 1  # no redraft, no repair
     assert len(events) == 1
     assert events[0].payload["kind"] == "fabrication"

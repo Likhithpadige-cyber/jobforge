@@ -383,8 +383,10 @@ async def generate_revision(
             context=context,
             aggregate_id=request.job_id,
             client=client,
+            writer=writer,
+            claim_index=index,
         )
-        for ref in refs
+        for index, ref in enumerate(refs)
     ]
 
     # B6: coverage gate, append-only version, claims, status move, events.

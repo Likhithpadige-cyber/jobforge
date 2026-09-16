@@ -1,4 +1,4 @@
-"""B5 Claim Verifier. Independent per-claim check; persists nothing.
+"""B5 Claim Verifier. Independent per-claim check; persists audit evidence only.
 
 Fresh, isolated call: this module takes only a single generated claim's text
 and the `TailoringFact` rows it cites - never the job description, the
@@ -40,11 +40,17 @@ from packages.agents.llm.runtime import (
     canonical,
 )
 from packages.agents.resume_optimizer.context import TailoringFact
-from packages.core.events import emit
-from packages.core.models import AgentRun, AgentRunStep, ClaimVerdict, LlmCall
-from packages.shared.clock import utc_now
+from packages.core.db.inference_audit import (
+    DomainInferenceAudit,
+    InferenceAuditUnavailableError,
+    InferenceAuditWriter,
+)
+from packages.core.events import EventEnvelope
+from packages.core.models import ClaimVerdict
 from packages.shared.errors import ValidationError
-from packages.shared.ids import uuid7
+from packages.shared.logging import get_logger
+
+log = get_logger(__name__)
 
 PROMPT = Path(__file__).with_name("prompts") / "b5_verification.txt"
 
@@ -175,63 +181,43 @@ async def verify_claim(
     cited_facts: list[TailoringFact],
     aggregate_id: UUID,
     client: StructuredClient,
+    writer: InferenceAuditWriter | None = None,
+    claim_index: int | None = None,
 ) -> VerificationResult:
-    """Execute only B5 for one claim; persist audit metadata, never a resume."""
+    """Execute B5 for one claim with a separate audit stage and spend ledger."""
     started = monotonic()
-    run = AgentRun(
-        id=uuid7(),
-        agent="resume_optimizer",
-        pipeline="tailoring",
-        status="running",
-        aggregate_type="job",
-        aggregate_id=aggregate_id,
-        correlation_id=aggregate_id,
-        steps_total=1,
-        steps_completed=0,
-        input_tokens=0,
-        output_tokens=0,
-        cost_usd=0,
+    if writer is None:
+        writer = DomainInferenceAudit(session)
+    stage = await writer.begin_stage(
+        agent="resume_optimizer", pipeline="tailoring", step_name="B5",
+        aggregate_type="job", aggregate_id=aggregate_id, correlation_id=aggregate_id,
     )
-    step = AgentRunStep(
-        id=uuid7(), run_id=run.id, step_index=1, step_name="B5", status="running"
-    )
-    session.add(run)
-    await session.flush()
-    session.add(step)
-    await session.flush()
+    # C3 supplies an ordinal from its ordered ClaimRef sequence. It is safe
+    # attribution and never contains generated claim prose.
+    attribution = {"claim_index": claim_index} if claim_index is not None else {}
     result: VerificationResult | None = None
+    primary: BaseException | None = None
+    evidence_failed = False
+    completed = False
     try:
         request = prepare_request(claim_text, cited_facts, client.model)
-        run.prompt_version = request.prompt_version
-        step.input_digest = request.digest
+        await writer.record_request(
+            stage, prompt_version=request.prompt_version, input_digest=request.digest,
+            guardrail_results=attribution,
+        )
         for attempt in range(2):
             try:
-                response = await client.complete(request, spent=run.cost_usd)
+                response = await client.complete(request, spent=writer.spent(stage))
             except ReplayMissError:
                 if attempt:
-                    raise ModelOutputError(
-                        "B5 schema repair has no recorded response"
-                    ) from None
+                    raise ModelOutputError("B5 schema repair has no recorded response") from None
                 raise
-            run.input_tokens += response.input_tokens
-            run.output_tokens += response.output_tokens
-            run.cost_usd += response.cost_usd
-            call = LlmCall(
-                id=uuid7(),
-                run_id=run.id,
-                step_id=step.id,
-                model=request.model,
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-                cost_usd=response.cost_usd,
-                prompt_hash=request.digest,
-                stop_reason=response.stop_reason[:32],
-                prompt_redacted=None,
-                response_redacted=None,
+            call = await writer.record_call(
+                stage, model=request.model, input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens, cost_usd=response.cost_usd,
+                prompt_hash=request.digest, stop_reason=response.stop_reason,
             )
-            session.add(call)
-            await session.flush()
-            if run.cost_usd > client.max_cost:
+            if writer.spent(stage) > client.max_cost:
                 raise CostLimitError("B5 exceeded its run budget")
             try:
                 if response.stop_reason != "tool_use":
@@ -253,31 +239,29 @@ async def verify_claim(
                     }
                 )
                 continue
-            # A well-formed verdict - supported or not - is legitimate,
-            # recordable content, unlike a malformed/rejected response.
+            # A valid negative is a completed inference. B6 still receives its
+            # structured verdict through ClaimNotSupportedError below.
             safe_output = {
                 "verdict": str(result.verdict),
                 "explanation": result.explanation,
             }
-            call.response_redacted = canonical(safe_output)
-            step.output = safe_output
+            await writer.record_call_output(stage, call, response_redacted=canonical(safe_output))
+            await writer.record_step_output(stage, output=safe_output)
             client.record(
                 request, response.model_copy(update={"body": canonical(safe_output)})
             )
+            completed = True
             if result.verdict is not ClaimVerdict.SUPPORTED:
                 raise ClaimNotSupportedError(
                     f"Claim verifier returned {result.verdict}: "
                     "not supported by cited evidence",
                     result=result,
                 )
-            run.status = step.status = "succeeded"
-            run.steps_completed = 1
             return result
         raise ModelOutputError("B5 response validation failed")
-    except Exception as exc:
-        run.status = step.status = "failed"
-        run.error_type = type(exc).__name__
-        run.error_message = "B5 claim verification failed"  # never store raw model text
+    except BaseException as exc:
+        primary = exc
+        evidence_failed = isinstance(exc, InferenceAuditUnavailableError)
         if isinstance(exc, ClaimNotSupportedError | PiiInPromptError):
             pii = isinstance(exc, PiiInPromptError)
             verdict = result.verdict if result is not None else ClaimVerdict.UNSUPPORTED
@@ -296,23 +280,44 @@ async def verify_claim(
                 ),
                 "action_taken": "run_failed",
                 "step": "B5",
-                "run_id": str(run.id),
+                "run_id": str(stage.run_id),
             }
-            step.guardrail_results = {
-                **(step.guardrail_results or {}),
-                "failure": violation,
-            }
-            await emit(
-                session,
-                type="guardrail.violation.detected",
-                aggregate_type="job",
-                aggregate_id=aggregate_id,
-                correlation_id=aggregate_id,
-                actor_id="resume_optimizer",
-                payload=violation,
-            )
+            try:
+                await writer.record_guardrail(
+                    stage, guardrail_results={**attribution, "failure": violation},
+                    event=EventEnvelope(
+                        type="guardrail.violation.detected", aggregate_type="job",
+                        aggregate_id=aggregate_id, correlation_id=aggregate_id,
+                        actor_type="agent", actor_id="resume_optimizer", payload=violation,
+                    ),
+                )
+            except BaseException as evidence_exc:
+                evidence_failed = True
+                if not isinstance(evidence_exc, Exception):
+                    raise
+                log.warning("b5.guardrail_evidence_failed", run_id=str(stage.run_id))
+                # A missing guardrail record must not be mistaken for a valid
+                # negative handoff by verify_claim_for_handoff().
+                if isinstance(exc, ClaimNotSupportedError):
+                    raise evidence_exc from exc
         raise
     finally:
-        run.finished_at = step.finished_at = utc_now()
-        run.duration_ms = step.duration_ms = int((monotonic() - started) * 1000)
-        await session.flush()
+        if not evidence_failed:
+            try:
+                await writer.finish_stage(
+                    stage, status="succeeded" if completed else "failed",
+                    steps_completed=1 if completed else 0,
+                    duration_ms=int((monotonic() - started) * 1000),
+                    error_type=(
+                        type(primary).__name__
+                        if primary is not None and not completed else None
+                    ),
+                    error_message=(
+                        "B5 claim verification failed"
+                        if primary is not None and not completed else None
+                    ),
+                )
+            except Exception:
+                if primary is None or completed:
+                    raise
+                log.warning("b5.outcome_evidence_failed", run_id=str(stage.run_id))

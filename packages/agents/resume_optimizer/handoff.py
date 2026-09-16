@@ -38,6 +38,7 @@ from packages.agents.resume_optimizer.verification import (
     VerificationResult,
     verify_claim,
 )
+from packages.core.db.inference_audit import InferenceAuditWriter
 from packages.core.models import ClaimVerdict, FactStatus
 from packages.shared.clock import utc_now
 from packages.shared.errors import ValidationError
@@ -228,6 +229,8 @@ async def verify_claim_for_handoff(
     context: TailoringContext,
     aggregate_id: UUID,
     client: StructuredClient,
+    writer: InferenceAuditWriter | None = None,
+    claim_index: int | None = None,
 ) -> VerifiedClaim:
     """Run B5 for one claim and keep the structured result either way.
 
@@ -250,6 +253,8 @@ async def verify_claim_for_handoff(
             cited_facts=cited_facts,
             aggregate_id=aggregate_id,
             client=client,
+            writer=writer,
+            claim_index=claim_index,
         )
     except ClaimNotSupportedError as exc:
         if exc.result is None:  # pragma: no cover - defensive
