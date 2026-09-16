@@ -51,6 +51,10 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "guardrail.violation.detected", "policy.blocked", "quota.exhausted",
         "metrics.snapshot.created", "alert.raised", "alert.resolved",
         "notification.dispatched", "schedule.tick",
+        # Inference evidence failures; no stage lifecycle events.
+        "inference.audit.start_failed",
+        "inference.audit.evidence_not_recorded",
+        "inference.audit.outcome_not_recorded",
         # C3 revision-attempt diagnostics (C3_HARDENING_DESIGN Batch 3A).
         # Written by the audit boundary on its own connection so they survive
         # the rollback they usually describe; registered here because the

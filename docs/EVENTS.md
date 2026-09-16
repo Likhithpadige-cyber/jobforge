@@ -174,6 +174,35 @@ column operators reason about:
 The other five are emitted by a caller holding a live lease and carry the
 epoch it was acquired at.
 
+**Inference audit failures (Batch 3B-1A).**
+
+These diagnostics use the independent AuditBoundary connection and a separate
+`INFERENCE_AUDIT_EVENTS` allowlist. They are application-scoped, system-authored
+(`actor_id=inference_audit`), with application correlation. They describe evidence
+failures, not committed domain outcomes or stage lifecycle transitions.
+
+| Event | Producer | Consumer | Meaning |
+|---|---|---|---|
+| `inference.audit.start_failed` | Inference audit writer | A3 | Required pre-call evidence failed; do not invoke the model. |
+| `inference.audit.evidence_not_recorded` | Inference audit writer | A3 | Call/response/output/guardrail evidence failed; do not repair or invoke another call. |
+| `inference.audit.outcome_not_recorded` | Inference audit writer | A3 | Final stage outcome could not be persisted. |
+
+Payload: `{attempt_id, lease_epoch, application_id, approval_id,
+detail: {operation, error_type, run_id, step_id}}`. No exception text, prompt or
+private input is included. Diagnostics are best-effort and cannot mask the
+primary evidence failure. Evidence operations have no retries; after failure the
+writer stops. Model execution must never be repeated to repair missing evidence.
+
+The full immutable context is stored at
+`agent_run_steps.guardrail_results.c3_execution` from stage creation onward.
+`run_id` and the call's `run_id`/`step_id` link all evidence to that context.
+Request/guardrail updates preserve the reserved namespace. Existing guardrail
+payloads and job aggregate/correlation/actor semantics remain unchanged: the
+optional existing `guardrail.violation.detected` envelope is inserted once in the
+same transaction as step findings, with no additional lifecycle event. The caller
+must use this writer instead of also emitting that same event through its domain
+session. No stages are wired to this contract in 3B-1A.
+
 **`guardrail.violation.detected` `kind` values:**
 
 | Kind | Meaning | Default severity |

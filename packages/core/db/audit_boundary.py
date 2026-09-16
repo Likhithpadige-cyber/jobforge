@@ -91,6 +91,16 @@ ORCHESTRATION_EVENTS: frozenset[str] = frozenset(
 )
 
 
+# Separate from orchestration: these diagnose inference evidence failures only.
+INFERENCE_AUDIT_EVENTS: frozenset[str] = frozenset(
+    {
+        "inference.audit.start_failed",
+        "inference.audit.evidence_not_recorded",
+        "inference.audit.outcome_not_recorded",
+    }
+)
+
+
 @dataclass(frozen=True)
 class AuditContext:
     """Which attempt, at which epoch, on which application and approval.
@@ -221,3 +231,36 @@ class AuditBoundary:
                 application_id=str(context.application_id),
             )
             return None
+
+    async def try_record_inference(
+        self,
+        event_type: str,
+        *,
+        context: AuditContext,
+        detail: Mapping[str, Any] | None = None,
+    ) -> UUID | None:
+        """Best-effort inference diagnostic, never a domain outcome or lifecycle event."""
+        if event_type not in INFERENCE_AUDIT_EVENTS:
+            raise ValueError(f"{event_type!r} is not an allowlisted inference audit event")
+        event_id = uuid7()
+        payload = context.as_payload()
+        if detail:
+            payload["detail"] = dict(detail)
+        try:
+            async with audit_session_scope() as session:
+                session.add(
+                    Event(
+                        id=event_id,
+                        type=event_type,
+                        aggregate_type="application",
+                        aggregate_id=context.application_id,
+                        correlation_id=context.application_id,
+                        actor_type="system",
+                        actor_id="inference_audit",
+                        payload=payload,
+                    )
+                )
+        except Exception:
+            log.warning("audit.inference_diagnostic_not_recorded", event_type=event_type)
+            return None
+        return event_id
