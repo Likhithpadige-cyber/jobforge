@@ -27,6 +27,7 @@ from packages.agents.resume_optimizer.selection import (
     select_content,
     validate_selection,
 )
+from packages.core.db.inference_audit import CallHandle, StageHandle
 from packages.core.models import (
     AgentRun,
     AgentRunStep,
@@ -36,6 +37,7 @@ from packages.core.models import (
     Recommendation,
 )
 from packages.shared.config import Settings
+from packages.shared.ids import uuid7
 
 
 @pytest.fixture
@@ -238,11 +240,71 @@ def test_prompt_minimizes_and_redacts_pii(context):
     assert "hidden" not in request.user
 
 
+class MemoryWriter:
+    """Writer test double for B1 algorithm tests; real writers are tested with PostgreSQL.
+
+    Keep the existing metadata assertions, without pretending a Mock is a SQL
+    transaction or duplicating the production writer's SQL in a fake session.
+    """
+    def __init__(self, session):
+        self.session = session
+        self.runs = {}
+        self.steps = {}
+        self.calls = {}
+
+    async def begin_stage(self, **fields):
+        stage = StageHandle(uuid7(), uuid7())
+        step_name, step_index = fields.pop("step_name"), fields.pop("step_index", 1)
+        run = AgentRun(id=stage.run_id, status="running", steps_completed=0,
+                       input_tokens=0, output_tokens=0, cost_usd=Decimal("0"), **fields)
+        step = AgentRunStep(id=stage.step_id, run_id=stage.run_id, step_name=step_name,
+                            step_index=step_index, status="running", guardrail_results={})
+        self.runs[stage.run_id], self.steps[stage.step_id] = run, step
+        self.session.add(run)
+        self.session.add(step)
+        return stage
+
+    async def record_request(self, stage, *, prompt_version, input_digest, guardrail_results):
+        self.runs[stage.run_id].prompt_version = prompt_version
+        self.steps[stage.step_id].input_digest = input_digest
+        self.steps[stage.step_id].guardrail_results = dict(guardrail_results)
+
+    async def record_call(self, stage, **fields):
+        call = LlmCall(id=uuid7(), run_id=stage.run_id, step_id=stage.step_id, **fields)
+        self.calls[call.id] = call
+        self.session.add(call)
+        run = self.runs[stage.run_id]
+        run.input_tokens += fields["input_tokens"]
+        run.output_tokens += fields["output_tokens"]
+        run.cost_usd += fields["cost_usd"]
+        return CallHandle(call.id)
+
+    async def record_call_output(self, stage, call, *, response_redacted):
+        self.calls[call.call_id].response_redacted = response_redacted
+
+    async def record_step_output(self, stage, *, output):
+        self.steps[stage.step_id].output = dict(output)
+
+    async def record_guardrail(self, stage, *, guardrail_results, event=None):
+        from packages.core.models import Event
+        self.steps[stage.step_id].guardrail_results = dict(guardrail_results)
+        if event is not None:
+            self.session.add(Event(**event.as_row()))
+
+    async def finish_stage(self, stage, **fields):
+        for name, value in fields.items():
+            setattr(self.runs[stage.run_id], name, value)
+        self.steps[stage.step_id].status = fields["status"]
+
+    def spent(self, stage):
+        return self.runs[stage.run_id].cost_usd
+
+
 @pytest.fixture
-def session():
-    value = Mock()
-    value.flush = AsyncMock()
-    return value
+def session(monkeypatch):
+    from packages.agents.resume_optimizer import selection
+    monkeypatch.setattr(selection, "DomainInferenceAudit", MemoryWriter)
+    return Mock()
 
 
 def cassette(client, context, output, *, cost="0.001", stop="tool_use"):

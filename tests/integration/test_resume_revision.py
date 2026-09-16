@@ -34,6 +34,8 @@ from packages.agents.resume_optimizer.selection import (
     prepare_request as prepare_b1_request,
 )
 from packages.agents.resume_optimizer.selection import validate_selection
+from packages.core.db.audit_boundary import AuditContext
+from packages.core.db.inference_audit import IndependentInferenceAudit
 from packages.core.models import (
     Application,
     ApplicationStatus,
@@ -58,7 +60,9 @@ from tests.integration import test_tailoring_context
 inputs = test_tailoring_context.inputs
 
 
-pytestmark = [pytest.mark.integration, pytest.mark.safety]
+pytestmark = [
+    pytest.mark.integration, pytest.mark.safety, pytest.mark.usefixtures("audit_boundary_engine")
+]
 
 TIGHTEN = "Tighten the summary; it over-claims scope."
 
@@ -205,7 +209,11 @@ async def _revise(session, tmp_path, demo_application, actor, **staging):
     )
     await session.commit()
     return await generate_revision(
-        session, application_id=app_id, client=client, request=request
+        session, application_id=app_id, client=client, request=request,
+        writer=IndependentInferenceAudit(context=AuditContext(
+            attempt_id=attempt.id, lease_epoch=epoch, application_id=app_id,
+            approval_id=request.approval_id,
+        )),
     )
 
 

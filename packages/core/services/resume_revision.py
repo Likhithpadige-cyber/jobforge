@@ -60,6 +60,7 @@ from packages.agents.resume_optimizer.revision import (
 )
 from packages.agents.resume_optimizer.selection import select_content
 from packages.agents.resume_optimizer.summary import draft_summary
+from packages.core.db.inference_audit import InferenceAuditWriter
 from packages.core.events import emit
 from packages.core.models import Application, ApplicationStatus, Resume
 from packages.core.state_machines.application import transition_application
@@ -310,6 +311,7 @@ async def generate_revision(
     application_id: UUID,
     client: StructuredClient,
     request: RevisionRequest,
+    writer: InferenceAuditWriter,
 ) -> RevisionResult:
     """T3. Generate, verify and persist the next resume version.
 
@@ -332,6 +334,10 @@ async def generate_revision(
     application into `resume_generating`. `request` is passed in rather than
     re-loaded so every stage of one attempt reasons about the same source
     cycle, whatever has happened to "the latest" since.
+
+    The caller must supply the inference writer explicitly. C3 orchestration
+    constructs it from the committed T2 lease; there is no domain-writer default.
+    Only B1 uses it in this slice. B2/B3/B5 keep their existing session behavior.
 
     Does not commit: the caller owns this boundary, and the resume, its claims
     and its verification status must land together or not at all.
@@ -357,6 +363,7 @@ async def generate_revision(
         context=context,
         client=client,
         revision=guidance_payload(request),
+        writer=writer,
     )
     drafting = await draft_content(
         session, context=context, selection=selection, client=client

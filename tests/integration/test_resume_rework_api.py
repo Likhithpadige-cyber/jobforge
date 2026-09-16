@@ -17,6 +17,7 @@ from packages.core.cache import get_redis
 from packages.core.db import get_session
 from packages.core.db.audit_boundary import AuditContext
 from packages.core.models import (
+    AgentRunStep,
     Application,
     ApplicationStatus,
     ApplicationStatusHistory,
@@ -42,7 +43,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.safety]
 
 
 @pytest.fixture
-async def scenario(session, engine, demo_profile, demo_job, demo_application, inputs, tmp_path):
+async def scenario(
+    session, engine, demo_profile, demo_job, demo_application, inputs, tmp_path,
+    audit_boundary_engine,
+):
     _, _, facts = inputs
     app_id = demo_application["id"]
     await c2._ready(session, demo_profile, demo_job, demo_application, facts)
@@ -120,6 +124,19 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
         assert len(await c2._events(db, app_id, "approval.changes_requested")) == 1
         assert len(await c2._events(db, app_id, "resume.generation.requested")) == 1
         assert not await c2._events(db, app_id, "approval.granted")
+        attempts = await _attempts(db, app_id)
+        assert len(attempts) == 1
+        attempt = attempts[0]
+        # The actual HTTP orchestration injected the successful T2 lease context;
+        # the identical replay above created no second B1 stage.
+        steps = (await db.scalars(select(AgentRunStep).where(
+            AgentRunStep.guardrail_results["c3_execution"]["application_id"].astext == str(app_id)
+        ))).all()
+        assert len(steps) == 1 and steps[0].step_name == "B1"
+        assert steps[0].guardrail_results["c3_execution"] == {
+            "attempt_id": str(attempt.id), "lease_epoch": attempt.lease_epoch,
+            "application_id": str(app_id), "approval_id": str(approval_id),
+        }
     assert (await post(scenario, note="Different instructions")).status_code == 409
     http = scenario[0]
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})

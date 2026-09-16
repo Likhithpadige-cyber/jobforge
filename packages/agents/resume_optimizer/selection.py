@@ -1,8 +1,8 @@
 """B1 content selection only. No resume is written; only runtime audit rows.
 
 B0 is the sole fact source. The caller must pass its authorized, freshly loaded
-context. Audit rows and guardrail events use the caller's transaction, like A5;
-callers must commit failed-run audit records if retaining a failed attempt.
+context. Non-C3 evidence uses the caller's transaction. C3 explicitly supplies
+an independent writer so B1 evidence survives a later domain rollback.
 """
 
 from __future__ import annotations
@@ -31,11 +31,17 @@ from packages.agents.llm.runtime import (
     canonical,
 )
 from packages.agents.resume_optimizer.context import TailoringContext, validate_match_matrix
-from packages.core.events import emit
-from packages.core.models import AgentRun, AgentRunStep, FactStatus, FactType, LlmCall
-from packages.shared.clock import utc_now
+from packages.core.db.inference_audit import (
+    DomainInferenceAudit,
+    InferenceAuditUnavailableError,
+    InferenceAuditWriter,
+)
+from packages.core.events import EventEnvelope
+from packages.core.models import FactStatus, FactType
 from packages.shared.errors import ValidationError
-from packages.shared.ids import uuid7
+from packages.shared.logging import get_logger
+
+log = get_logger(__name__)
 
 Section = Literal["experience", "projects", "skills", "education", "certifications"]
 SECTIONS = {
@@ -126,7 +132,7 @@ def prepare_request(
     # outbox; suspicious postings are not rejected by the scanner's contract.
     job_text = "\n".join(str(context.job.get(key) or "") for key in ("title", "description_raw"))
     findings = scan(job_text)
-    payload = {
+    payload: dict[str, Any] = {
         "verified_facts": [
             {"fact_id": str(f.id), "section": SECTIONS[f.fact_type], "text": prompt_text(f.text)}
             for f in sorted(context.facts, key=lambda f: str(f.id))
@@ -208,7 +214,7 @@ def validate_selection(
     prompt_version: str,
     requires_human_review: bool = False,
 ) -> SelectionResult:
-    def unique_keys(pairs):
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result = {}
         for key, value in pairs:
             if key in result:
@@ -260,6 +266,7 @@ async def select_content(
     context: TailoringContext,
     client: StructuredClient,
     revision: dict[str, Any] | None = None,
+    writer: InferenceAuditWriter | None = None,
 ) -> SelectionResult:
     """Execute only B1; persist audit metadata and validated IDs, never a resume.
 
@@ -270,68 +277,51 @@ async def select_content(
     generation could not have produced.
     """
     started = monotonic()
-    run = AgentRun(
-        id=uuid7(),
-        agent="resume_optimizer",
-        pipeline="tailoring",
-        status="running",
-        aggregate_type="job",
-        aggregate_id=context.job["id"],
+    # C3 must supply its writer through generate_revision; only non-C3 callers
+    # use the domain default. Neither choice changes request preparation.
+    if writer is None:
+        if revision is not None:
+            raise ValueError("C3 selection requires an explicit inference audit writer")
+        writer = DomainInferenceAudit(session)
+    stage = await writer.begin_stage(
+        agent="resume_optimizer", pipeline="tailoring", step_name="B1",
+        aggregate_type="job", aggregate_id=context.job["id"],
         correlation_id=context.job["id"],
-        steps_total=1,
-        steps_completed=0,
-        input_tokens=0,
-        output_tokens=0,
-        cost_usd=0,
     )
-    step = AgentRunStep(id=uuid7(), run_id=run.id, step_index=1, step_name="B1", status="running")
-    session.add(run)
-    await session.flush()
-    session.add(step)
-    await session.flush()
+    guardrail: dict[str, Any] = {}
+    primary: BaseException | None = None
+    evidence_failed = False
+    succeeded = False
     try:
         request, findings = prepare_request(context, client.model, revision=revision)
-        run.prompt_version = request.prompt_version
-        step.input_digest = request.digest
         # Do not store excerpts, which may contain PII from attacker input.
         guardrail = {k: v for k, v in findings.as_payload().items() if k != "excerpts"}
-        step.guardrail_results = guardrail
+        await writer.record_request(
+            stage, prompt_version=request.prompt_version, input_digest=request.digest,
+            guardrail_results=guardrail,
+        )
         if findings.findings:
-            await emit(
-                session,
-                type="guardrail.violation.detected",
-                aggregate_type="job",
-                aggregate_id=context.job["id"],
-                correlation_id=context.job["id"],
-                actor_id="resume_optimizer",
-                payload=guardrail,
+            await writer.record_guardrail(
+                stage, guardrail_results=guardrail,
+                event=EventEnvelope(
+                    type="guardrail.violation.detected", aggregate_type="job",
+                    aggregate_id=context.job["id"], correlation_id=context.job["id"],
+                    actor_type="agent", actor_id="resume_optimizer", payload=guardrail,
+                ),
             )
         for attempt in range(2):
             try:
-                response = await client.complete(request, spent=run.cost_usd)
+                response = await client.complete(request, spent=writer.spent(stage))
             except ReplayMissError:
                 if attempt:
                     raise ModelOutputError("B1 schema repair has no recorded response") from None
                 raise
-            run.input_tokens += response.input_tokens
-            run.output_tokens += response.output_tokens
-            run.cost_usd += response.cost_usd
-            call = LlmCall(
-                id=uuid7(),
-                run_id=run.id,
-                step_id=step.id,
-                model=request.model,
-                input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens,
-                cost_usd=response.cost_usd,
-                prompt_hash=request.digest,
-                stop_reason=response.stop_reason[:32],
-                prompt_redacted=None,
-                response_redacted=None,
+            call = await writer.record_call(
+                stage, model=request.model, input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens, cost_usd=response.cost_usd,
+                prompt_hash=request.digest, stop_reason=response.stop_reason,
             )
-            session.add(call)
-            await session.flush()
-            if run.cost_usd > client.max_cost:
+            if writer.spent(stage) > client.max_cost:
                 raise CostLimitError("B1 exceeded its run budget")
             try:
                 if response.stop_reason != "tool_use":
@@ -359,21 +349,21 @@ async def select_content(
                 )
                 continue
             safe_output = {"selections": [item.model_dump() for item in result.selections]}
-            call.response_redacted = canonical(safe_output)
-            step.output = {
+            await writer.record_call_output(stage, call, response_redacted=canonical(safe_output))
+            await writer.record_step_output(stage, output={
                 **safe_output,
                 "evaluation_id": str(context.evaluation_id),
                 "gap_requirement_indices": [gap.requirement_index for gap in result.material_gaps],
-            }
+            })
             client.record(request, response.model_copy(update={"body": canonical(safe_output)}))
-            run.status = step.status = "succeeded"
-            run.steps_completed = 1
+            succeeded = True
             return result
         raise ModelOutputError("B1 response validation failed")
-    except Exception as exc:
-        run.status = step.status = "failed"
-        run.error_type = type(exc).__name__
-        run.error_message = "B1 content selection failed"  # never store raw model text
+    except BaseException as exc:
+        # Cancellation must remain cancellation. A secondary evidence failure
+        # must likewise never replace the original provider/validation error.
+        primary = exc
+        evidence_failed = isinstance(exc, InferenceAuditUnavailableError)
         if isinstance(exc, UngroundedSelectionError | PiiInPromptError):
             grounding = isinstance(exc, UngroundedSelectionError)
             violation = {
@@ -387,20 +377,34 @@ async def select_content(
                 else "B1 prompt contains unredacted private data",
                 "action_taken": "run_failed",
                 "step": "B1",
-                "run_id": str(run.id),
+                "run_id": str(stage.run_id),
             }
-            step.guardrail_results = {**(step.guardrail_results or {}), "failure": violation}
-            await emit(
-                session,
-                type="guardrail.violation.detected",
-                aggregate_type="job",
-                aggregate_id=context.job["id"],
-                correlation_id=context.job["id"],
-                actor_id="resume_optimizer",
-                payload=violation,
-            )
+            try:
+                await writer.record_guardrail(
+                    stage, guardrail_results={**guardrail, "failure": violation},
+                    event=EventEnvelope(
+                        type="guardrail.violation.detected", aggregate_type="job",
+                        aggregate_id=context.job["id"], correlation_id=context.job["id"],
+                        actor_type="agent", actor_id="resume_optimizer", payload=violation,
+                    ),
+                )
+            except Exception:
+                evidence_failed = True
+                log.warning("b1.guardrail_evidence_failed", run_id=str(stage.run_id))
         raise
     finally:
-        run.finished_at = step.finished_at = utc_now()
-        run.duration_ms = step.duration_ms = int((monotonic() - started) * 1000)
-        await session.flush()
+        # A failed writer is stopped, including after an uncertain commit. Do
+        # not attempt finalization through it or repeat a call to repair evidence.
+        if not evidence_failed:
+            try:
+                await writer.finish_stage(
+                    stage, status="succeeded" if succeeded else "failed",
+                    steps_completed=1 if succeeded else 0,
+                    duration_ms=int((monotonic() - started) * 1000),
+                    error_type=type(primary).__name__ if primary is not None else None,
+                    error_message="B1 content selection failed" if primary is not None else None,
+                )
+            except Exception:
+                if primary is None:
+                    raise
+                log.warning("b1.outcome_evidence_failed", run_id=str(stage.run_id))

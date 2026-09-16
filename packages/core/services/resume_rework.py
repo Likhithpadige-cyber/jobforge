@@ -44,6 +44,7 @@ from packages.agents.resume_optimizer.revision import (
     load_revision_request,
 )
 from packages.core.db.audit_boundary import AuditBoundary, AuditContext
+from packages.core.db.inference_audit import IndependentInferenceAudit
 from packages.core.models import (
     ApplicationStatus,
     ApprovalStatus,
@@ -378,6 +379,7 @@ async def _run_attempt(
             application_id=application_id,
             client=client,
             request=request,
+            writer=IndependentInferenceAudit(context=context),
         )
         await session.commit()
     except BaseException as exc:
