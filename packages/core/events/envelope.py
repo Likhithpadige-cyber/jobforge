@@ -51,6 +51,19 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "guardrail.violation.detected", "policy.blocked", "quota.exhausted",
         "metrics.snapshot.created", "alert.raised", "alert.resolved",
         "notification.dispatched", "schedule.tick",
+        # C3 revision-attempt diagnostics (C3_HARDENING_DESIGN Batch 3A).
+        # Written by the audit boundary on its own connection so they survive
+        # the rollback they usually describe; registered here because the
+        # catalogue is the contract for what may exist in `events` at all,
+        # independent of which writer produced a row.
+        "revision.attempt.failure_record_failed",
+        "revision.attempt.fenced_out_before_failure",
+        "revision.attempt.failure_not_recorded",
+        "revision.attempt.success_not_recorded",
+        "revision.attempt.recovery_failed",
+        "revision.attempt.wait_timed_out",
+        "revision.attempt.reconciled",
+        "revision.attempt.reconcile_skipped",
     }
 )
 

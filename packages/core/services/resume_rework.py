@@ -43,6 +43,7 @@ from packages.agents.resume_optimizer.revision import (
     RevisionRequest,
     load_revision_request,
 )
+from packages.core.db.audit_boundary import AuditBoundary, AuditContext
 from packages.core.models import (
     ApplicationStatus,
     ApprovalStatus,
@@ -65,6 +66,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     from packages.shared.config import Settings
 
 log = get_logger(__name__)
+
+#: Stateless, so constructing one per call site costs nothing and no instance
+#: outlives the transaction it reports on.
+audit = AuditBoundary()
 
 
 def instructions_digest(instructions: str) -> str:
@@ -168,6 +173,7 @@ async def request_changes_and_regenerate(
             session,
             attempt_id=attempt_id,
             application_id=application_id,
+            approval_id=request.approval_id,
             resume_id=completed.resume_id,
             version=completed.version,
             verification_status=completed.verification_status,
@@ -200,6 +206,7 @@ async def _reconcile(
     *,
     attempt_id: UUID,
     application_id: UUID,
+    approval_id: UUID,
     resume_id: UUID,
     version: int,
     verification_status: str,
@@ -230,6 +237,19 @@ async def _reconcile(
         attempt_id=str(attempt_id),
         resume_id=str(resume_id),
         version=version,
+    )
+    # Both outcomes are recorded, not just the skip. "We adopted a result the
+    # attempt never claimed" and "we declined to, because someone else holds
+    # the lease" are different stories about the same crash window, and an
+    # operator reconstructing one needs to know which happened.
+    await audit.try_record(
+        "revision.attempt.reconciled" if reconciled else "revision.attempt.reconcile_skipped",
+        context=AuditContext(
+            attempt_id=attempt_id,
+            application_id=application_id,
+            approval_id=approval_id,
+        ),
+        detail={"resume_id": str(resume_id), "version": version, "outcome": outcome.value},
     )
 
 
@@ -315,11 +335,15 @@ async def _run_attempt(
     # attempts, the loser blocked on the application row lock for the whole
     # pipeline and then found the winner's work by fingerprint. Committing T1
     # releases that lock, so the wait is explicit now rather than emergent.
+    # One context for every diagnostic below. Built after the lease so
+    # `lease_epoch` is the real fence value, and frozen primitives so it
+    # survives the rollbacks T3 and T5 are built around.
     epoch = await _acquire_or_wait(
         session,
         attempts=attempts,
         attempt_id=attempt_id,
         application_id=application_id,
+        approval_id=request.approval_id,
         owner=owner,
         settings=settings,
     )
@@ -336,6 +360,12 @@ async def _run_attempt(
             "a revision for this review is already running and did not finish "
             "within the wait window; reload the review and retry"
         )
+    context = AuditContext(
+        attempt_id=attempt_id,
+        application_id=application_id,
+        approval_id=request.approval_id,
+        lease_epoch=epoch,
+    )
     await resume_revision.begin_generation(
         session, application_id=application_id, request=request, actor_id=actor_id
     )
@@ -353,7 +383,7 @@ async def _run_attempt(
     except BaseException as exc:
         await session.rollback()
         if not await _t4_prime_record_failure(
-            session, attempt_id=attempt_id, owner=owner, epoch=epoch, exc=exc
+            session, context=context, owner=owner, epoch=epoch, exc=exc
         ):
             # The whole point of PO-4 is that a failure leaves evidence. If
             # the fenced UPDATE matched no row, it did not - and continuing
@@ -368,12 +398,12 @@ async def _run_attempt(
                 epoch=epoch,
                 cause=type(exc).__name__,
             )
-        await _t5_recover(
-            session,
-            attempt_id=attempt_id,
-            application_id=application_id,
-            actor_id=actor_id,
-        )
+            await audit.try_record(
+                "revision.attempt.failure_not_recorded",
+                context=context,
+                detail={"owner": owner, "cause": type(exc).__name__},
+            )
+        await _t5_recover(session, context=context, actor_id=actor_id)
         raise
 
     # --- T4: the attempt succeeded, whatever the verdict said ------------
@@ -408,6 +438,18 @@ async def _run_attempt(
             owner=owner,
             epoch=epoch,
         )
+        # The domain result is committed by now. Audit policy: past this
+        # point an audit failure must never cause regeneration, so this is
+        # `try_record` and its return value is deliberately ignored.
+        await audit.try_record(
+            "revision.attempt.success_not_recorded",
+            context=context,
+            detail={
+                "owner": owner,
+                "result_resume_id": str(result.resume_id),
+                "result_version": result.version,
+            },
+        )
     return await resume_review.review_state(session, application_id)
 
 
@@ -417,6 +459,7 @@ async def _acquire_or_wait(
     attempts: RevisionAttemptRepository,
     attempt_id: UUID,
     application_id: UUID,
+    approval_id: UUID,
     owner: str,
     settings: Settings,
 ) -> int | None:
@@ -468,6 +511,21 @@ async def _acquire_or_wait(
                 attempt_id=str(attempt_id),
                 waited_seconds=settings.revision_wait_timeout_seconds,
             )
+            # `lease_epoch` is left None on purpose: this caller never
+            # acquired, so it holds no epoch, and writing 0 would put a
+            # plausible-looking lie in a column operators reason about.
+            await audit.try_record(
+                "revision.attempt.wait_timed_out",
+                context=AuditContext(
+                    attempt_id=attempt_id,
+                    application_id=application_id,
+                    approval_id=approval_id,
+                ),
+                detail={
+                    "waited_seconds": settings.revision_wait_timeout_seconds,
+                    "holder_status": str(current.status),
+                },
+            )
             return None
         await asyncio.sleep(settings.revision_wait_poll_seconds)
 
@@ -475,7 +533,7 @@ async def _acquire_or_wait(
 async def _t4_prime_record_failure(
     session: AsyncSession,
     *,
-    attempt_id: UUID,
+    context: AuditContext,
     owner: str,
     epoch: int,
     exc: BaseException,
@@ -494,6 +552,11 @@ async def _t4_prime_record_failure(
     replacing the cause of the failure with a second failure is worse.
     """
     settings = get_settings()
+    # `epoch` is passed rather than read off `context.lease_epoch`, which is
+    # `int | None`: T4' is unreachable without a held lease, and expressing
+    # that as a required argument is stronger than narrowing an Optional with
+    # a runtime assert that `python -O` would strip.
+    attempt_id = context.attempt_id
     failure_class, detail = classify(exc)
     try:
         status = await RevisionAttemptRepository(session).fail(
@@ -506,9 +569,21 @@ async def _t4_prime_record_failure(
             evidence_stale_budget=settings.revision_evidence_stale_retry_budget,
         )
         await session.commit()
-    except Exception:
+    except Exception as bookkeeping_exc:
         await session.rollback()
         log.exception("resume_rework.failure_record_failed", attempt_id=str(attempt_id))
+        # The audit row goes to a different database connection, so it can
+        # still land when the domain one is the thing that broke - which is
+        # the case this event exists for.
+        await audit.try_record(
+            "revision.attempt.failure_record_failed",
+            context=context,
+            detail={
+                "owner": owner,
+                "bookkeeping_error": type(bookkeeping_exc).__name__,
+                "original_cause": type(exc).__name__,
+            },
+        )
         return False
     if status is None:
         log.warning(
@@ -516,6 +591,11 @@ async def _t4_prime_record_failure(
             attempt_id=str(attempt_id),
             owner=owner,
             epoch=epoch,
+        )
+        await audit.try_record(
+            "revision.attempt.fenced_out_before_failure",
+            context=context,
+            detail={"owner": owner, "original_cause": type(exc).__name__},
         )
         return False
     log.info(
@@ -530,8 +610,7 @@ async def _t4_prime_record_failure(
 async def _t5_recover(
     session: AsyncSession,
     *,
-    attempt_id: UUID,
-    application_id: UUID,
+    context: AuditContext,
     actor_id: UUID,
 ) -> None:
     """T5. Return the application to `changes_requested`.
@@ -559,6 +638,7 @@ async def _t5_recover(
     retryable path safe to reach repeatedly without a counter.
     """
     attempts = RevisionAttemptRepository(session)
+    attempt_id, application_id = context.attempt_id, context.application_id
     try:
         # Match T1/T2 and inspect eligibility only after acquisition is
         # excluded by the application lock. A pre-lock read can go stale.
@@ -590,3 +670,7 @@ async def _t5_recover(
         # `resume_generating`. Both are exactly the reaper's predicate -
         # detectable, and re-runnable. Never auto-replaced (PO-3).
         log.exception("resume_rework.recovery_failed", attempt_id=str(attempt_id))
+        # The one diagnostic that already cost a batch: a missing
+        # state-machine edge made every recovery raise, and the only evidence
+        # was this log line, which nothing queried and no test asserted on.
+        await audit.try_record("revision.attempt.recovery_failed", context=context)

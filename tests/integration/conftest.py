@@ -86,6 +86,30 @@ async def engine(postgres_available: bool):  # type: ignore[no-untyped-def]
 
 
 @pytest_asyncio.fixture
+async def audit_boundary_engine(engine):  # type: ignore[no-untyped-def]
+    """The process-wide audit engine, pointed at the test database.
+
+    Depends on `engine` only to inherit its skip conditions (PostgreSQL
+    reachable, migrations applied). It shares no connection with it - that
+    separation is the property the audit boundary exists for, so a fixture
+    that reused the domain engine would quietly disprove nothing.
+
+    Uses the documented fallback DSN (no `app_audit` role) so the durability
+    tests run on an unprovisioned machine; `test_audit_boundary.py` covers the
+    provisioned shape separately and skips when the role is absent.
+    """
+    from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
+    from packages.shared.config import Settings
+
+    await dispose_audit_engine()
+    await init_audit_engine(Settings(audit_database_url=_url()))
+    try:
+        yield
+    finally:
+        await dispose_audit_engine()
+
+
+@pytest_asyncio.fixture
 async def session(engine) -> AsyncIterator[AsyncSession]:  # type: ignore[no-untyped-def]
     """A session whose work is always rolled back, so tests never leak rows."""
     maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)

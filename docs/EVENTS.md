@@ -142,6 +142,38 @@ Legend — **P** = producer, **C** = consumers.
 | `notification.dispatched` | A3 | — | `{notification_id, channel, kind}` |
 | `schedule.tick` | scheduler | ING, A3 | `{tick_id, schedule_name, scheduled_for}` |
 
+**Revision-attempt diagnostics (C3).** Written by the audit boundary on its
+own connection, in its own transaction, so they survive the rollback of the
+domain transaction they describe - which is usually the point. Every one of
+them records the orchestrator noticing something wrong and continuing anyway,
+so an absent diagnostic and a healthy run look identical in the domain tables
+and are told apart only here. Producer is the API in every case; `actor_type`
+is `system`, and they are filed against the **application** aggregate so they
+interleave with its status transitions rather than needing a second query.
+
+| Event | P | C | Payload |
+|---|---|---|---|
+| `revision.attempt.failure_record_failed` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch, detail: {owner, bookkeeping_error, original_cause}}` |
+| `revision.attempt.fenced_out_before_failure` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch, detail: {owner, original_cause}}` |
+| `revision.attempt.failure_not_recorded` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch, detail: {owner, cause}}` |
+| `revision.attempt.success_not_recorded` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch, detail: {owner, result_resume_id, result_version}}` |
+| `revision.attempt.recovery_failed` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch}` |
+| `revision.attempt.wait_timed_out` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch: null, detail: {waited_seconds, holder_status}}` |
+| `revision.attempt.reconciled` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch: null, detail: {resume_id, version, outcome}}` |
+| `revision.attempt.reconcile_skipped` | API | A3 | `{attempt_id, application_id, approval_id, lease_epoch: null, detail: {resume_id, version, outcome}}` |
+
+**`lease_epoch` is `null` on three of these**, for two different reasons, and
+in both cases writing `0` instead would put a plausible-looking lie in a
+column operators reason about:
+
+* `wait_timed_out` - the caller never acquired, so it holds no epoch at all.
+* `reconciled` and `reconcile_skipped` - the reconciler takes its own epoch
+  inside a single guarded statement and never surfaces it, precisely so no
+  caller can fence with a value it did not acquire under.
+
+The other five are emitted by a caller holding a live lease and carry the
+epoch it was acquired at.
+
 **`guardrail.violation.detected` `kind` values:**
 
 | Kind | Meaning | Default severity |

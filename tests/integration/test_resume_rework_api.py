@@ -1,6 +1,7 @@
 """Authenticated HTTP C3 integration with real PostgreSQL and replayed model calls."""
 
 import asyncio
+import contextlib
 
 import httpx
 import pytest
@@ -14,6 +15,7 @@ from packages.agents.resume_optimizer.revision import load_revision_request
 from packages.core.auth import create_session
 from packages.core.cache import get_redis
 from packages.core.db import get_session
+from packages.core.db.audit_boundary import AuditContext
 from packages.core.models import (
     Application,
     ApplicationStatus,
@@ -220,6 +222,31 @@ async def _status_events(db, application_id, edge):
     ]
 
 
+async def _audit_events(db, application_id, event_type=None):
+    """Diagnostics the audit boundary wrote for this application.
+
+    Read from the DOMAIN connection on purpose. These rows were written on a
+    different connection in a different transaction, so seeing them here is
+    itself the assertion: an uncommitted or same-transaction write would be
+    invisible from this side.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(Event)
+                .where(
+                    Event.aggregate_id == application_id,
+                    Event.type.startswith("revision.attempt."),
+                )
+                .order_by(Event.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [e for e in rows if event_type is None or e.type == event_type]
+
+
 async def _claim_count(db, application_id) -> int:
     """Claims across every resume of this application.
 
@@ -403,6 +430,310 @@ async def test_http_terminal_failure_recovers_and_refuses_an_automatic_retry(
         assert len(await _attempts(db, app_id)) == 1
 
 
+async def test_a_fenced_out_failure_report_is_durable_not_just_logged(
+    scenario, monkeypatch, audit_boundary_engine
+):
+    """Batch 3A's reason for existing, end to end.
+
+    The attempt is fenced out of recording its own failure - the exact state
+    that used to leave nothing behind but a `log.warning` nobody queried. The
+    domain transaction that discovered it is rolled back; the diagnostic must
+    still be on disk, and it must name the attempt, the epoch and the owner
+    that could not write.
+
+    Note what is NOT asserted differently from before: the application, the
+    approval and the attempt all end exactly where the Batch 2 tests already
+    say they do. 3A adds evidence; it changes no T1-T5 outcome.
+    """
+    from packages.core.repositories.revision_attempts import RevisionAttemptRepository
+    from packages.core.services import resume_revision
+    from packages.shared.errors import DependencyUnavailableError
+
+    _, app_id, approval_id, maker, *_ = scenario
+
+    original_persist = resume_revision.persist_resume
+
+    async def fail_after_persistence(*args, **kwargs):
+        await original_persist(*args, **kwargs)
+        raise DependencyUnavailableError("Simulated persistence boundary failure")
+
+    async def fenced_out(*args, **kwargs):
+        # What a real takeover looks like from this worker: the guarded
+        # UPDATE matches no row and the repository reports it honestly.
+        return None
+
+    monkeypatch.setattr(resume_revision, "persist_resume", fail_after_persistence)
+    monkeypatch.setattr(RevisionAttemptRepository, "fail", fenced_out)
+
+    response = await post(scenario)
+    assert response.status_code == 503, response.text
+
+    async with maker() as db:
+        fenced = await _audit_events(db, app_id, "revision.attempt.fenced_out_before_failure")
+        assert len(fenced) == 1
+        assert fenced[0].actor_type == "system"
+        assert fenced[0].payload["attempt_id"]
+        assert fenced[0].payload["application_id"] == str(app_id)
+        assert fenced[0].payload["approval_id"] == str(approval_id)
+        assert fenced[0].payload["lease_epoch"] == 1
+        assert fenced[0].payload["detail"]["original_cause"] == "DependencyUnavailableError"
+        assert fenced[0].published is False
+
+        # The caller-side companion: PO-4 promises evidence, and this says the
+        # promise was not kept for the attempt row itself.
+        not_recorded = await _audit_events(db, app_id, "revision.attempt.failure_not_recorded")
+        assert len(not_recorded) == 1
+
+        # And the human decision is untouched by any of it.
+        assert (await db.get(Approval, approval_id)).status == (
+            ApprovalStatus.CHANGES_REQUESTED
+        )
+
+
+# =====================================================================
+# Replay while a lease is live (Codex review, _already_decided)
+#
+# The invariant: an idempotent replay of an already-recorded human decision
+# must not change application state while another worker owns a live revision
+# lease. A review traced the path and found no production bug - `_t1` skips
+# `request_changes` when the decision matches, and `_decidable_approval`
+# refuses outright from `resume_generating`. What was missing was any test
+# that would NOTICE if that stopped being true, which matters more than usual
+# here: adding `resume_generating -> changes_requested` for T5 made the
+# transition these paths decline to perform a legal one. The state machine no
+# longer refuses it on their behalf; only they do.
+#
+# So these tests pin the absence of an effect. No production code changes.
+# =====================================================================
+async def _drain(task, *, timeout: float = 60) -> None:
+    """Let an in-flight request FINISH. Cancel only if it refuses to.
+
+    **Completion first, cancellation as a last resort, and the order is the
+    whole point.** An earlier version cancelled any task that was not already
+    done, which in the `finally` of these tests meant cancelling a request that
+    had only just been unparked and still had to finish generating, commit and
+    return. Cancelling an httpx/ASGI request mid-flight tears the app out from
+    under AnyIO's memory object streams without closing them; the stream is
+    collected later and raises from `__del__`, which pytest reports as a
+    `PytestUnraisableExceptionWarning` against whichever test happened to
+    trigger the GC. The symptom therefore lands on an innocent test in a
+    different part of the file, which is a genuinely awful thing to debug.
+
+    So: wait for the task, and only cancel if it is still running after
+    `timeout` - at which point something is actually wrong and a cancelled
+    stream is the lesser problem. Exceptions are retrieved and swallowed
+    either way, because if we are here in a `finally` an assertion has usually
+    already failed and that assertion is the failure worth seeing.
+    """
+    if task is None:
+        return
+    if not task.done():
+        try:
+            await asyncio.wait_for(task, timeout=timeout)
+            return
+        except TimeoutError:
+            # Genuinely stuck. Now cancellation is the right call.
+            task.cancel()
+        except Exception:
+            # The request itself raised. Retrieved, so no "exception was never
+            # retrieved" warning, and not re-raised over the primary failure.
+            return
+    with contextlib.suppress(asyncio.CancelledError, Exception):
+        await task
+
+
+async def test_a_duplicate_request_during_generation_changes_no_state(
+    scenario, monkeypatch, audit_boundary_engine
+):
+    """A second identical HTTP request arrives while the winner is generating.
+
+    It must reach the bounded wait and leave everything exactly as it found
+    it: the application still `resume_generating`, the lease still the
+    winner's at the same epoch, no recovery history, no recovery event, no
+    diagnostic. Asserted against a snapshot taken before the duplicate, so
+    the test cannot pass by comparing a value with itself.
+
+    **Both overlaps are synchronised on events, never on elapsed time.** An
+    earlier version slept 0.75s and hoped the duplicate had got far enough.
+    That is the shape of a test that passes on a developer laptop and fails in
+    CI once a year, and the failure would look like a concurrency bug in the
+    code under test rather than a bug in the test - the most expensive kind of
+    false signal this suite could produce.
+    """
+    from packages.core.repositories.revision_attempts import RevisionAttemptRepository
+    from packages.core.services import resume_revision
+
+    _, app_id, approval_id, maker, *_ = scenario
+    released = asyncio.Event()
+    started = asyncio.Event()
+    waiting = asyncio.Event()
+    original_generate = resume_revision.generate_revision
+    original_get = RevisionAttemptRepository.get
+
+    async def pause_inside_generation(*args, **kwargs):
+        # T2 has committed by now: the application is in `resume_generating`
+        # and the lease is held. This is the window the replay must not
+        # disturb.
+        started.set()
+        await released.wait()
+        return await original_generate(*args, **kwargs)
+
+    async def signal_once_waiting(self, entity_id, include_deleted=False):
+        # `_acquire_or_wait` calls this exactly once per poll tick, and only
+        # AFTER `acquire()` returned None and `session.rollback()` ran - it is
+        # the single call site of `.get()` in the whole rework module. So
+        # reaching here means the duplicate has genuinely failed acquisition
+        # and settled into the wait path, which is the state the snapshot
+        # below needs to be true. The winner never gets here: it acquires on
+        # its first tick and returns.
+        row = await original_get(self, entity_id, include_deleted)
+        waiting.set()
+        return row
+
+    monkeypatch.setattr(resume_revision, "generate_revision", pause_inside_generation)
+    monkeypatch.setattr(RevisionAttemptRepository, "get", signal_once_waiting)
+
+    winner = asyncio.create_task(post(scenario))
+    duplicate = None
+    try:
+        await asyncio.wait_for(started.wait(), timeout=30)
+
+        async with maker() as db:
+            before = (await _attempts(db, app_id))[0]
+            snapshot = (
+                (await db.get(Application, app_id)).status,
+                before.id,
+                before.lease_owner,
+                before.lease_epoch,
+                before.attempt_count,
+                len(await _history(db, app_id, RECOVERY_EDGE)),
+                len(await _audit_events(db, app_id)),
+            )
+        assert snapshot[0] == "resume_generating"
+        assert snapshot[2] is not None, "the winner should hold the lease here"
+
+        # The replay. It cannot acquire, so it waits; the point is what it
+        # does NOT do while waiting.
+        duplicate = asyncio.create_task(post(scenario))
+        await asyncio.wait_for(waiting.wait(), timeout=30)
+
+        async with maker() as db:
+            during = (await _attempts(db, app_id))[0]
+            assert (
+                (await db.get(Application, app_id)).status,
+                during.id,
+                during.lease_owner,
+                during.lease_epoch,
+                during.attempt_count,
+                len(await _history(db, app_id, RECOVERY_EDGE)),
+                len(await _audit_events(db, app_id)),
+            ) == snapshot
+
+        released.set()
+        assert (await asyncio.wait_for(winner, timeout=60)).status_code == 200
+        assert (await asyncio.wait_for(duplicate, timeout=60)).status_code == 200
+
+        async with maker() as db:
+            # One attempt, one new resume, and the replay adopted the winner's
+            # result rather than recovering or regenerating.
+            attempts = await _attempts(db, app_id)
+            assert len(attempts) == 1 and attempts[0].id == snapshot[1]
+            assert len(await c3._resumes(db, app_id)) == 2
+            assert await _history(db, app_id, RECOVERY_EDGE) == []
+            assert await _audit_events(db, app_id) == []
+            assert (await db.get(Approval, approval_id)).status == (
+                ApprovalStatus.CHANGES_REQUESTED
+            )
+    finally:
+        # Idempotent, and the reason this is a `finally`: an assertion above
+        # leaves the winner parked on `released.wait()` for ever, and a test
+        # that hangs teaches nobody anything.
+        released.set()
+        await _drain(winner)
+        await _drain(duplicate)
+
+
+async def test_the_c2_service_refuses_a_decision_during_generation(
+    scenario, monkeypatch, demo_application
+):
+    """The same window, one layer down, called directly rather than over HTTP.
+
+    `resume_review.request_changes` is C2's entry point and has no knowledge
+    of leases. Its protection is `_decidable_approval`, which requires
+    `awaiting_approval`. This asserts the refusal AND that nothing moved -
+    `transition_application` raises before mutating, so a leaked write here
+    would mean the guard ran in the wrong order.
+    """
+    from packages.core.services import resume_revision
+
+    _, app_id, approval_id, maker, *_ = scenario
+    released = asyncio.Event()
+    started = asyncio.Event()
+    original = resume_revision.generate_revision
+
+    async def pause_inside_generation(*args, **kwargs):
+        started.set()
+        await released.wait()
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(resume_revision, "generate_revision", pause_inside_generation)
+    winner = asyncio.create_task(post(scenario))
+    await asyncio.wait_for(started.wait(), timeout=10)
+
+    try:
+        async with maker() as db:
+            application = await db.get(Application, app_id)
+            assert application.status == "resume_generating"
+            # The fixture dict, not the ORM row: `c2._actor` reads
+            # `["user_id"]`, which only the fixture carries. Passing a
+            # hand-built `{"id": ...}` was inventing a shape the helper never
+            # had - `scenario` already depends on `demo_application`, so this
+            # is the same object every neighbouring test uses.
+            actor = await c2._actor(db, demo_application)
+            before = (
+                (await db.get(Approval, approval_id)).status,
+                len(await c2._events(db, app_id, "approval.changes_requested")),
+                len(await _history(db, app_id, RECOVERY_EDGE)),
+            )
+            with pytest.raises(resume_review.ReviewStateError):
+                await resume_review.request_changes(
+                    db, application_id=app_id, actor=actor, note="a different note"
+                )
+            await db.rollback()
+
+        async with maker() as db:
+            assert (await db.get(Application, app_id)).status == "resume_generating"
+            assert (
+                (await db.get(Approval, approval_id)).status,
+                len(await c2._events(db, app_id, "approval.changes_requested")),
+                len(await _history(db, app_id, RECOVERY_EDGE)),
+            ) == before
+
+        # Let the winner finish and assert it did, rather than leaving that to
+        # cleanup. A refused replay must not have damaged the request that was
+        # legitimately in flight, and a swallowed result could not tell us so.
+        released.set()
+        assert (await asyncio.wait_for(winner, timeout=60)).status_code == 200
+    finally:
+        # Release first, then let the winner run to completion: it is a live
+        # HTTP request, and tearing it down here is what leaked an AnyIO
+        # stream into the next test.
+        released.set()
+        await _drain(winner)
+
+
+async def test_a_clean_run_writes_no_diagnostics(scenario, audit_boundary_engine):
+    """The other half, and the one that keeps the first honest.
+
+    Diagnostics that fire on the happy path are noise, and noise is how a real
+    one gets ignored. A successful revision must leave none.
+    """
+    assert (await post(scenario)).status_code == 200
+    _, app_id, _, maker, *_ = scenario
+    async with maker() as db:
+        assert await _audit_events(db, app_id) == []
+
+
 async def test_http_verification_failure_stops_and_retry_reuses(scenario, tmp_path):
     _, app_id, _, maker, model, revision = scenario
     async with maker() as db:
@@ -581,19 +912,24 @@ async def test_application_lock_precedes_attempt_access(
 
         async def run():
             if phase == "acquire":
-                epoch = await resume_rework._acquire_or_wait(
+                acquired_epoch = await resume_rework._acquire_or_wait(
                     worker, attempts=RevisionAttemptRepository(worker),
                     attempt_id=attempt_id, application_id=app_id,
-                    owner="winner", settings=Settings(),
+                    approval_id=approval_id, owner="winner", settings=Settings(),
                 )
-                assert epoch == 1
+                assert acquired_epoch == 1
                 await resume_revision.begin_generation(
                     worker, application_id=app_id, request=request, actor_id=actor_id
                 )
                 await worker.commit()
             else:
                 await resume_rework._t5_recover(
-                    worker, attempt_id=attempt_id, application_id=app_id, actor_id=actor_id
+                    worker,
+                    context=AuditContext(
+                        attempt_id=attempt_id, application_id=app_id,
+                        approval_id=approval_id, lease_epoch=epoch,
+                    ),
+                    actor_id=actor_id,
                 )
 
         task = asyncio.create_task(run())

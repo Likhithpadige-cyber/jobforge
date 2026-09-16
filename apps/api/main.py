@@ -27,7 +27,12 @@ from apps.api.routers import (
     resumes,
 )
 from packages.core.cache import close_redis, init_redis
-from packages.core.db import dispose_engine, init_engine
+from packages.core.db import (
+    dispose_audit_engine,
+    dispose_engine,
+    init_audit_engine,
+    init_engine,
+)
 from packages.shared.config import get_settings
 from packages.shared.errors import AppError
 from packages.shared.ids import uuid7_str
@@ -60,6 +65,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         log.error("api.startup.database_failed", error=type(exc).__name__)
 
+    # Separate engine, separate pool, separate failure. A domain database that
+    # is up while the audit one is not is a real state, and the API reports it
+    # rather than refusing to start.
+    #
+    # To be clear about what that does and does not buy today: in this batch a
+    # failed audit engine means the orchestration diagnostics are lost, and
+    # nothing more. It does NOT stop a model call - `AuditBoundary.record()`
+    # exists and raises `AuditUnavailableError` for a caller that wants to
+    # gate on evidence, but no caller does yet. Wiring the inference stages to
+    # refuse to start without a landed audit write is Batch 3B's job, and
+    # until then this startup path has no fail-closed behaviour to defer to.
+    try:
+        await init_audit_engine(settings)
+    except Exception as exc:
+        log.error("api.startup.audit_database_failed", error=type(exc).__name__)
+
     try:
         await init_redis(settings)
     except Exception as exc:
@@ -71,6 +92,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     finally:
         log.info("api.stopping")
         await close_redis()
+        await dispose_audit_engine()
         await dispose_engine()
         log.info("api.stopped")
 

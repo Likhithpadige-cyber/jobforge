@@ -70,6 +70,20 @@ class Settings(BaseSettings):
     postgres_db: str = "jobforge"
     database_url: PostgresDsn | None = None
 
+    #: The inference-audit connection, as the `app_audit` role (migration
+    #: 0005 grants). Left unset, the audit boundary falls back to a SEPARATE
+    #: engine and session on `database_url` - see `audit_dsn_is_separate`.
+    #: The fallback keeps the property Batch 3A exists for (an audit write in
+    #: its own transaction survives a domain rollback) while leaving privilege
+    #: separation to an ops step, so an unprovisioned dev box is degraded
+    #: rather than broken.
+    audit_database_url: PostgresDsn | None = None
+
+    #: Deliberately small. The audit path writes short rows outside the
+    #: request's transaction; it should not be able to starve the domain pool.
+    audit_db_pool_size: int = 2
+    audit_db_max_overflow: int = 2
+
     db_pool_size: int = 5
     db_max_overflow: int = 5
     db_pool_timeout_seconds: int = 30
@@ -213,6 +227,36 @@ class Settings(BaseSettings):
         return not self.is_local
 
     @property
+    def audit_dsn(self) -> str:
+        """The DSN the audit engine connects with. Never None."""
+        return str(self.audit_database_url or self.database_url)
+
+    @property
+    def audit_dsn_is_separate(self) -> bool:
+        """Whether a distinct audit DSN was configured at all.
+
+        **This is a statement about configuration, not about privilege.** It
+        was briefly called `audit_privileges_enforced`, which claimed more than
+        it could know: the value is true for *any* explicit DSN, including the
+        domain DSN or a superuser one, so an operator could read "privileges
+        enforced" off a connection with no isolation whatsoever. Reporting an
+        unverified guarantee is worse than reporting none, because it is the
+        kind of line an incident review quotes.
+
+        What it does tell you is real and worth logging: false means the
+        documented fallback is in use and audit rows are written on the same
+        credentials as the domain. Transaction independence holds either way -
+        that comes from the separate engine, not from the role.
+
+        Effective privilege is a property of the cluster, not of a URL, and is
+        established where it can actually be established: by
+        `tests/integration/test_app_audit_privileges.py`, which asks
+        PostgreSQL through `has_table_privilege` rather than inferring from
+        configuration.
+        """
+        return self.audit_database_url is not None
+
+    @property
     def sync_database_url(self) -> str:
         """Alembic and psql-style tooling want the sync driver."""
         return str(self.database_url).replace("postgresql+asyncpg://", "postgresql+psycopg://")
@@ -237,6 +281,7 @@ class Settings(BaseSettings):
             "s3_secret_access_key",
             "session_secret",
             "database_url",
+            "audit_database_url",
             "redis_url",
         }
         dumped: dict[str, object] = {}
