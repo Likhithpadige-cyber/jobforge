@@ -328,7 +328,11 @@ def test_prepare_request_has_no_job_text(context, selection):
 
 
 @pytest.fixture
-def session():
+def session(monkeypatch):
+    from packages.agents.resume_optimizer import drafting
+    from tests.unit.fake_inference_audit import FakeInferenceAudit
+
+    monkeypatch.setattr(drafting, "DomainInferenceAudit", FakeInferenceAudit)
     value = Mock()
     value.flush = AsyncMock()
     return value

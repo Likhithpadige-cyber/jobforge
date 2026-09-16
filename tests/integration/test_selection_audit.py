@@ -394,12 +394,16 @@ async def test_b1_survives_real_later_t3_failure(
         )
     await session.rollback()
     runs, steps, calls, _ = await evidence(engine, demo_job)
-    assert len(runs) == len(steps) == len(calls) == 1
-    assert steps[0].step_name == "B1" and runs[0].status == "succeeded"
-    execution = steps[0].guardrail_results["c3_execution"]
+    assert len(runs) == len(steps) == len(calls) == 2
+    by_stage = {step.step_name: step for step in steps}
+    by_run = {run.id: run for run in runs}
+    assert set(by_stage) == {"B1", "B2"}
+    assert by_run[by_stage["B1"].run_id].status == "succeeded"
+    assert by_run[by_stage["B2"].run_id].status == "failed"
+    execution = by_stage["B1"].guardrail_results["c3_execution"]
     assert execution["application_id"] == str(demo_application["id"])
     assert execution["lease_epoch"] > 0
-    # B2 still has domain durability: no changed transaction semantics here.
+    assert by_stage["B2"].guardrail_results["c3_execution"] == execution
 
 
 async def test_guardrail_write_failure_keeps_original_validation_error(

@@ -17,6 +17,7 @@ from packages.core.cache import get_redis
 from packages.core.db import get_session
 from packages.core.db.audit_boundary import AuditContext
 from packages.core.models import (
+    AgentRun,
     AgentRunStep,
     Application,
     ApplicationStatus,
@@ -127,16 +128,22 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
         attempts = await _attempts(db, app_id)
         assert len(attempts) == 1
         attempt = attempts[0]
-        # The actual HTTP orchestration injected the successful T2 lease context;
-        # the identical replay above created no second B1 stage.
+        # The successful T2 lease produced one B1, B2 and B3 execution.
+        # The identical HTTP retry must add no stage or run.
         steps = (await db.scalars(select(AgentRunStep).where(
             AgentRunStep.guardrail_results["c3_execution"]["application_id"].astext == str(app_id)
         ))).all()
-        assert len(steps) == 1 and steps[0].step_name == "B1"
-        assert steps[0].guardrail_results["c3_execution"] == {
+        assert sorted(step.step_name for step in steps) == ["B1", "B2", "B3"]
+        run_ids = {step.run_id for step in steps}
+        assert len(run_ids) == 3
+        runs = (await db.scalars(select(AgentRun).where(AgentRun.id.in_(run_ids)))).all()
+        assert len(runs) == 3
+        assert all(run.status == "succeeded" for run in runs)
+        execution = {
             "attempt_id": str(attempt.id), "lease_epoch": attempt.lease_epoch,
             "application_id": str(app_id), "approval_id": str(approval_id),
         }
+        assert all(step.guardrail_results["c3_execution"] == execution for step in steps)
     assert (await post(scenario, note="Different instructions")).status_code == 409
     http = scenario[0]
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})

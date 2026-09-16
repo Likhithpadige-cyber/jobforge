@@ -337,7 +337,7 @@ async def generate_revision(
 
     The caller must supply the inference writer explicitly. C3 orchestration
     constructs it from the committed T2 lease; there is no domain-writer default.
-    Only B1 uses it in this slice. B2/B3/B5 keep their existing session behavior.
+    B1, B2 and B3 use it; B5 keeps its existing session behavior.
 
     Does not commit: the caller owns this boundary, and the resume, its claims
     and its verification status must land together or not at all.
@@ -366,10 +366,10 @@ async def generate_revision(
         writer=writer,
     )
     drafting = await draft_content(
-        session, context=context, selection=selection, client=client
+        session, context=context, selection=selection, client=client, writer=writer
     )
     summary = await draft_summary(
-        session, context=context, selection=selection, client=client
+        session, context=context, selection=selection, client=client, writer=writer
     )
 
     # B5 on every claim, with no reuse of v1's verdicts. A sentence that is

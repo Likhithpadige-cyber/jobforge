@@ -288,7 +288,11 @@ def test_selection_result_not_mutated(context, selection, output):
 
 
 @pytest.fixture
-def session():
+def session(monkeypatch):
+    from packages.agents.resume_optimizer import summary
+    from tests.unit.fake_inference_audit import FakeInferenceAudit
+
+    monkeypatch.setattr(summary, "DomainInferenceAudit", FakeInferenceAudit)
     value = Mock()
     value.flush = AsyncMock()
     return value

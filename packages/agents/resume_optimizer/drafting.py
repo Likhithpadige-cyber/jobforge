@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from time import monotonic
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as SchemaError
@@ -39,11 +39,17 @@ from packages.agents.llm.runtime import (
 )
 from packages.agents.resume_optimizer.context import TailoringContext, TailoringFact
 from packages.agents.resume_optimizer.selection import SelectionResult
-from packages.core.events import emit
-from packages.core.models import AgentRun, AgentRunStep, FactStatus, LlmCall
-from packages.shared.clock import utc_now
+from packages.core.db.inference_audit import (
+    DomainInferenceAudit,
+    InferenceAuditUnavailableError,
+    InferenceAuditWriter,
+)
+from packages.core.events import EventEnvelope
+from packages.core.models import FactStatus
 from packages.shared.errors import ValidationError
-from packages.shared.ids import uuid7
+from packages.shared.logging import get_logger
+
+log = get_logger(__name__)
 
 PROMPT = Path(__file__).with_name("prompts") / "b2_drafting.txt"
 
@@ -168,8 +174,8 @@ def prepare_request(
                     "facts": [
                         {
                             "id": item["fact_id"],
-                            "text": facts_by_id[item["fact_id"]].text,
-                            "structured": facts_by_id[item["fact_id"]].structured,
+                            "text": facts_by_id[cast(str, item["fact_id"])].text,
+                            "structured": facts_by_id[cast(str, item["fact_id"])].structured,
                         }
                         for item in approved
                     ],
@@ -261,62 +267,48 @@ async def draft_content(
     context: TailoringContext,
     selection: SelectionResult,
     client: StructuredClient,
+    writer: InferenceAuditWriter | None = None,
 ) -> DraftingResult:
-    """Execute only B2; persist audit metadata and validated bullets, never a resume."""
+    """Execute only B2; persist audit metadata and validated output."""
     started = monotonic()
-    run = AgentRun(
-        id=uuid7(),
+    if writer is None:
+        writer = DomainInferenceAudit(session)
+    stage = await writer.begin_stage(
         agent="resume_optimizer",
         pipeline="tailoring",
-        status="running",
+        step_name="B2",
         aggregate_type="job",
         aggregate_id=context.job["id"],
         correlation_id=context.job["id"],
-        steps_total=1,
-        steps_completed=0,
-        input_tokens=0,
-        output_tokens=0,
-        cost_usd=0,
     )
-    step = AgentRunStep(
-        id=uuid7(), run_id=run.id, step_index=1, step_name="B2", status="running"
-    )
-    session.add(run)
-    await session.flush()
-    session.add(step)
-    await session.flush()
+    primary: BaseException | None = None
+    evidence_failed = False
+    succeeded = False
     try:
         request = prepare_request(context, selection, client.model)
-        run.prompt_version = request.prompt_version
-        step.input_digest = request.digest
+        await writer.record_request(
+            stage,
+            prompt_version=request.prompt_version,
+            input_digest=request.digest,
+            guardrail_results={},
+        )
         for attempt in range(2):
             try:
-                response = await client.complete(request, spent=run.cost_usd)
+                response = await client.complete(request, spent=writer.spent(stage))
             except ReplayMissError:
                 if attempt:
-                    raise ModelOutputError(
-                        "B2 schema repair has no recorded response"
-                    ) from None
+                    raise ModelOutputError("B2 schema repair has no recorded response") from None
                 raise
-            run.input_tokens += response.input_tokens
-            run.output_tokens += response.output_tokens
-            run.cost_usd += response.cost_usd
-            call = LlmCall(
-                id=uuid7(),
-                run_id=run.id,
-                step_id=step.id,
+            call = await writer.record_call(
+                stage,
                 model=request.model,
                 input_tokens=response.input_tokens,
                 output_tokens=response.output_tokens,
                 cost_usd=response.cost_usd,
                 prompt_hash=request.digest,
-                stop_reason=response.stop_reason[:32],
-                prompt_redacted=None,
-                response_redacted=None,
+                stop_reason=response.stop_reason,
             )
-            session.add(call)
-            await session.flush()
-            if run.cost_usd > client.max_cost:
+            if writer.spent(stage) > client.max_cost:
                 raise CostLimitError("B2 exceeded its run budget")
             try:
                 if response.stop_reason != "tool_use":
@@ -342,25 +334,17 @@ async def draft_content(
                 )
                 continue
             safe_output = {"bullets": [item.model_dump() for item in result.bullets]}
-            call.response_redacted = canonical(safe_output)
-            step.output = safe_output
-            client.record(
-                request, response.model_copy(update={"body": canonical(safe_output)})
-            )
-            run.status = step.status = "succeeded"
-            run.steps_completed = 1
+            await writer.record_call_output(stage, call, response_redacted=canonical(safe_output))
+            await writer.record_step_output(stage, output=safe_output)
+            client.record(request, response.model_copy(update={"body": canonical(safe_output)}))
+            succeeded = True
             return result
         raise ModelOutputError("B2 response validation failed")
-    except Exception as exc:
-        run.status = step.status = "failed"
-        run.error_type = type(exc).__name__
-        run.error_message = "B2 content drafting failed"  # never store raw model text
+    except BaseException as exc:
+        primary = exc
+        evidence_failed = isinstance(exc, InferenceAuditUnavailableError)
         if isinstance(
-            exc,
-            UnapprovedFactError
-            | NumeralGuardError
-            | MixedSectionError
-            | PiiInPromptError,
+            exc, UnapprovedFactError | NumeralGuardError | MixedSectionError | PiiInPromptError
         ):
             pii = isinstance(exc, PiiInPromptError)
             violation = {
@@ -376,23 +360,38 @@ async def draft_content(
                 ),
                 "action_taken": "run_failed",
                 "step": "B2",
-                "run_id": str(run.id),
+                "run_id": str(stage.run_id),
             }
-            step.guardrail_results = {
-                **(step.guardrail_results or {}),
-                "failure": violation,
-            }
-            await emit(
-                session,
-                type="guardrail.violation.detected",
-                aggregate_type="job",
-                aggregate_id=context.job["id"],
-                correlation_id=context.job["id"],
-                actor_id="resume_optimizer",
-                payload=violation,
-            )
+            try:
+                await writer.record_guardrail(
+                    stage,
+                    guardrail_results={"failure": violation},
+                    event=EventEnvelope(
+                        type="guardrail.violation.detected",
+                        aggregate_type="job",
+                        aggregate_id=context.job["id"],
+                        correlation_id=context.job["id"],
+                        actor_type="agent",
+                        actor_id="resume_optimizer",
+                        payload=violation,
+                    ),
+                )
+            except Exception:
+                evidence_failed = True
+                log.warning("b2.guardrail_evidence_failed", run_id=str(stage.run_id))
         raise
     finally:
-        run.finished_at = step.finished_at = utc_now()
-        run.duration_ms = step.duration_ms = int((monotonic() - started) * 1000)
-        await session.flush()
+        if not evidence_failed:
+            try:
+                await writer.finish_stage(
+                    stage,
+                    status="succeeded" if succeeded else "failed",
+                    steps_completed=1 if succeeded else 0,
+                    duration_ms=int((monotonic() - started) * 1000),
+                    error_type=type(primary).__name__ if primary is not None else None,
+                    error_message="B2 content drafting failed" if primary is not None else None,
+                )
+            except Exception:
+                if primary is None:
+                    raise
+                log.warning("b2.outcome_evidence_failed", run_id=str(stage.run_id))
