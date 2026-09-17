@@ -75,8 +75,12 @@ client for selection, drafting, summary, and claim verification.
 
 ## Remaining limits
 
-- The documented maximum of three rework cycles is not enforced by the existing
-  C3 service or this integration. Manual-authoring handling remains future work.
+- Three distinct human resume approvals may request changes per application.
+  Migration `0006` counts approvals that moved from `pending` to
+  `changes_requested`; retries, replacement attempts, and recovery for the
+  same approval do not consume another cycle. A fourth new decision returns
+  HTTP `409` with code `rework_limit_reached`. The third revised resume may
+  still be approved. Manual-authoring handling remains future work.
 - Generation runs inside the HTTP request. Durable background execution and
   automatic retry/backoff require a worker/consumer implementation; the current
   workers directory has none.

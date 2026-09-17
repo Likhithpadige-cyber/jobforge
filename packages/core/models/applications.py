@@ -445,6 +445,11 @@ class Approval(TimestampMixin, UUIDPrimaryKeyMixin, Base):
             "requested_at",
             postgresql_where=sa_text("status = 'pending'"),
         ),
+        Index(
+            "ix_approvals_resume_rework_cycles",
+            "application_id",
+            postgresql_where=sa_text("kind = 'resume' AND status = 'changes_requested'"),
+        ),
     )
 
 

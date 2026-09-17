@@ -136,7 +136,7 @@ Both operations answer the same question: *which verified facts about this candi
 | B6 | deterministic | Persist `resumes` + `resume_claims` with verdicts. Any `unsupported` or `overreach` → `resume.verification.failed`, application to `verification_failed`, human review. Otherwise emit `resume.generated` and request rendering. |
 | B7 | deterministic | Diff against base resume; store the diff for the review UI. |
 
-**Rework loop:** on `approval.changes_requested`, B1–B6 re-run with the reviewer's instructions added as an explicit, trusted instruction block (distinct from untrusted JD data). Maximum 3 rework cycles, then the application requires manual resume authoring.
+**Rework loop:** on `approval.changes_requested`, B1–B6 re-run with the reviewer's instructions added as an explicit, trusted instruction block (distinct from untrusted JD data). At most three distinct human request-changes decisions are allowed per application; technical retries of one decision do not count again. A fourth decision returns `409 rework_limit_reached`. The third revised resume remains approvable. A manual-authoring workflow is not yet implemented.
 
 ### 3.5 Prompt architecture
 

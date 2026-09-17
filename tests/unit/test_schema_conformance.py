@@ -88,6 +88,8 @@ def test_migration_sql_files_exist_and_are_non_empty() -> None:
         "0005_revision_attempts.up.sql",
         "0005_revision_attempts.down.sql",
         "0005_revision_attempts.grants.up.sql",
+        "0006_resume_rework_limit.up.sql",
+        "0006_resume_rework_limit.down.sql",
         "0005_revision_attempts.grants.down.sql",
     ):
         path = sql_dir / name

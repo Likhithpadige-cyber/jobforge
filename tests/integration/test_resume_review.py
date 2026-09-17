@@ -16,12 +16,15 @@ rather than a hand-built row that could be shaped to pass.
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Annotated
 
 import pytest
 from pydantic import ValidationError as SchemaValidationError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from apps.api.routers.resume_review import (
     approve_resume,
@@ -205,6 +208,29 @@ async def _request_changes(session, application_id, actor, note):
     )
     await session.commit()
     return state
+
+
+async def _historical_rework_decision(session, application_id, actor_id):
+    """Create an older decision through the same pending-to-decided DB transition."""
+    approval_id = uuid7()
+    await session.execute(
+        text(
+            "INSERT INTO approvals (id, application_id, kind, status, "
+            "subject_snapshot, requested_at) VALUES "
+            "(:id, :app, 'resume', 'pending', '{}'::jsonb, "
+            "now() - interval '10 days')"
+        ),
+        {"id": approval_id, "app": application_id},
+    )
+    await session.execute(
+        text(
+            "UPDATE approvals SET status = 'changes_requested', "
+            "decided_by = :actor, decided_at = now(), "
+            "changes_requested = 'historical decision' WHERE id = :id"
+        ),
+        {"id": approval_id, "actor": actor_id},
+    )
+    return approval_id
 
 
 # ---------------------------------------------------------------------------
@@ -892,6 +918,137 @@ async def test_request_changes_is_idempotent(
     assert second.decided_at == first.decided_at
     assert len(await _events(session, app_id, "approval.changes_requested")) == 1
     assert await _history_count(session, app_id) == history
+
+
+@pytest.mark.parametrize("prior_cycles", [0, 1, 2, 3])
+async def test_historical_decisions_define_the_human_cycle_limit(
+    session, demo_profile, demo_job, demo_application, inputs, prior_cycles
+):
+    _, _, facts = inputs
+    app_id = demo_application["id"]
+    await _ready(session, demo_profile, demo_job, demo_application, facts)
+    actor = await _actor(session, demo_application)
+    for _ in range(prior_cycles):
+        await _historical_rework_decision(session, app_id, actor.id)
+    await _start(session, app_id, actor)
+    before_history = await _history_count(session, app_id)
+    before_events = len(await _events(session, app_id, "approval.changes_requested"))
+
+    if prior_cycles == 3:
+        with pytest.raises(service.ReworkLimitReachedError) as exc:
+            await service.request_changes(
+                session, application_id=app_id, actor=actor, note="Improve the summary"
+            )
+        assert exc.value.to_problem()["code"] == "rework_limit_reached"
+        assert (await _approvals(session, app_id))[-1].status is ApprovalStatus.PENDING
+        assert (await _application(session, app_id)).status is ApplicationStatus.AWAITING_APPROVAL
+        assert await _history_count(session, app_id) == before_history
+        assert len(await _events(session, app_id, "approval.changes_requested")) == before_events
+    else:
+        await service.request_changes(
+            session, application_id=app_id, actor=actor, note="Improve the summary"
+        )
+        approvals = await _approvals(session, app_id)
+        assert sum(a.status is ApprovalStatus.CHANGES_REQUESTED for a in approvals) == (
+            prior_cycles + 1
+        )
+
+
+async def test_database_rejects_fourth_decision_and_protects_counted_rows(
+    session, demo_profile, demo_job, demo_application, inputs
+):
+    _, _, facts = inputs
+    app_id = demo_application["id"]
+    await _ready(session, demo_profile, demo_job, demo_application, facts)
+    actor = await _actor(session, demo_application)
+    historical = [
+        await _historical_rework_decision(session, app_id, actor.id) for _ in range(3)
+    ]
+    await _start(session, app_id, actor)
+    pending = (await _approvals(session, app_id))[-1]
+    with pytest.raises(DBAPIError, match="rework limit reached"):
+        async with session.begin_nested():
+            await session.execute(
+                text(
+                    "UPDATE approvals SET status = 'changes_requested', "
+                    "decided_by = :actor, decided_at = now() WHERE id = :id"
+                ),
+                {"id": pending.id, "actor": actor.id},
+            )
+    for statement in (
+        "UPDATE approvals SET status = 'superseded' WHERE id = :id",
+        "DELETE FROM approvals WHERE id = :id",
+    ):
+        with pytest.raises(DBAPIError, match="counted resume rework decision"):
+            async with session.begin_nested():
+                await session.execute(text(statement), {"id": historical[0]})
+    assert (await _approvals(session, app_id))[-1].status is ApprovalStatus.PENDING
+
+
+async def test_preexisting_over_limit_history_stays_intact_and_blocks_new_decision(
+    session, demo_profile, demo_job, demo_application, inputs
+):
+    _, _, facts = inputs
+    app_id = demo_application["id"]
+    await _ready(session, demo_profile, demo_job, demo_application, facts)
+    actor = await _actor(session, demo_application)
+    for _ in range(3):
+        await _historical_rework_decision(session, app_id, actor.id)
+    # Emulate a database already containing four decisions before 0006.
+    await session.execute(
+        text("ALTER TABLE approvals DISABLE TRIGGER trg_approvals_resume_rework_cycles")
+    )
+    await _historical_rework_decision(session, app_id, actor.id)
+    await session.execute(
+        text("ALTER TABLE approvals ENABLE TRIGGER trg_approvals_resume_rework_cycles")
+    )
+    await _start(session, app_id, actor)
+    with pytest.raises(service.ReworkLimitReachedError):
+        await service.request_changes(
+            session, application_id=app_id, actor=actor, note="Another revision"
+        )
+    assert sum(
+        a.status is ApprovalStatus.CHANGES_REQUESTED
+        for a in await _approvals(session, app_id)
+    ) == 4
+
+
+async def test_two_simultaneous_fourth_requests_cannot_record_a_cycle(
+    session, engine, demo_profile, demo_job, demo_application, inputs
+):
+    _, _, facts = inputs
+    app_id = demo_application["id"]
+    await _ready(session, demo_profile, demo_job, demo_application, facts)
+    actor = await _actor(session, demo_application)
+    actor_id = actor.id
+    for _ in range(3):
+        await _historical_rework_decision(session, app_id, actor_id)
+    await _start(session, app_id, actor)
+    before_history = await _history_count(session, app_id)
+    maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async def request_once():
+        async with maker() as db:
+            loaded_actor = await db.get(User, actor_id)
+            assert loaded_actor is not None
+            try:
+                await service.request_changes(
+                    db, application_id=app_id, actor=loaded_actor, note="Fourth request"
+                )
+            except service.ReworkLimitReachedError as exc:
+                await db.rollback()
+                return exc.to_problem()["code"]
+            await db.commit()
+            return "accepted"
+
+    assert await asyncio.gather(request_once(), request_once()) == [
+        "rework_limit_reached",
+        "rework_limit_reached",
+    ]
+    await session.refresh(await _application(session, app_id))
+    assert (await _application(session, app_id)).status is ApplicationStatus.AWAITING_APPROVAL
+    assert (await _approvals(session, app_id))[-1].status is ApprovalStatus.PENDING
+    assert await _history_count(session, app_id) == before_history
 
 
 async def test_request_changes_requires_awaiting_approval(

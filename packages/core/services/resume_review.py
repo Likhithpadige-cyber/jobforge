@@ -37,7 +37,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from packages.core.events import emit
@@ -98,6 +98,18 @@ class MissingNoteError(ValidationError):
     "Changes requested" with no note is an instruction to guess. The whole
     value of the state is the sentence that says what to change.
     """
+
+
+class ReworkLimitReachedError(ConflictError):
+    """A fourth distinct human resume rework decision is forbidden."""
+
+    error_type = "https://jobforge.local/errors/rework-limit-reached"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This application has already used its three request-changes cycles",
+            code="rework_limit_reached",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +768,18 @@ async def request_changes(
             application_id=str(application_id),
         )
         return await review_state(session, application_id)
+
+    cycles_used = (
+        await session.execute(
+            select(func.count(Approval.id)).where(
+                Approval.application_id == application_id,
+                Approval.kind == ApprovalKind.RESUME,
+                Approval.status == ApprovalStatus.CHANGES_REQUESTED,
+            )
+        )
+    ).scalar_one()
+    if cycles_used >= 3:
+        raise ReworkLimitReachedError()
 
     approval = await _decidable_approval(context, session, application_id)
     application, resume = context.application, context.resume

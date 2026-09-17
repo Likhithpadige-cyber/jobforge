@@ -94,6 +94,7 @@ async def test_expected_indexes_exist(session) -> None:
     expected = {
         "uq_application_per_job",
         "uq_one_pending_approval",
+        "ix_approvals_resume_rework_cycles",
         "uq_facts_source",
         "uq_jobs_source_external",
         "idx_facts_embedding",
@@ -116,6 +117,7 @@ async def test_expected_indexes_exist(session) -> None:
 async def test_expected_triggers_exist(session) -> None:
     expected = {
         "trg_applications_require_real_approval",
+        "trg_approvals_resume_rework_cycles",
         "trg_resume_claims_facts_verified",
         "trg_cover_letter_claims_facts_verified",
         "trg_profile_facts_protect_verified",

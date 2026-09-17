@@ -60,8 +60,16 @@ class SqlFiles:
 
 #: Schema-bearing migrations, in apply order. 0003 and the 0005 grants file
 #: carry privileges rather than schema and are read through GRANTS_SQL.
-UP_SQL = SqlFiles("0002_core_schema.up.sql", "0005_revision_attempts.up.sql")
-DOWN_SQL = SqlFiles("0002_core_schema.down.sql", "0005_revision_attempts.down.sql")
+UP_SQL = SqlFiles(
+    "0002_core_schema.up.sql",
+    "0005_revision_attempts.up.sql",
+    "0006_resume_rework_limit.up.sql",
+)
+DOWN_SQL = SqlFiles(
+    "0002_core_schema.down.sql",
+    "0005_revision_attempts.down.sql",
+    "0006_resume_rework_limit.down.sql",
+)
 GRANTS_SQL = SqlFiles(
     "0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql"
 )

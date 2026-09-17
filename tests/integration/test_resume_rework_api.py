@@ -30,6 +30,7 @@ from packages.core.models import (
     ResumeRevisionAttempt,
     RevisionAttemptStatus,
     RevisionFailureClass,
+    User,
 )
 from packages.core.repositories.revision_attempts import RevisionAttemptRepository
 from packages.core.services import resume_review, resume_revision, resume_rework
@@ -99,6 +100,130 @@ async def post(scenario, **body):
         f"/api/v1/applications/{app_id}/resume-review/request-changes",
         json={"approval_id": str(approval_id), "note": c3.TIGHTEN, **body},
     )
+
+
+async def _stage_next_cycle(scenario, tmp_path):
+    http, app_id, first_approval_id, maker, model, _ = scenario
+    opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
+    assert opened.status_code == 200, opened.text
+    approval_id = opened.json()["approval_id"]
+    async with maker() as db:
+        first = await db.get(Approval, first_approval_id)
+        assert first is not None and first.decided_by is not None
+        actor = await db.get(User, first.decided_by)
+        assert actor is not None
+        savepoint = await db.begin_nested()
+        await resume_review.request_changes(
+            db, application_id=app_id, actor=actor, note=c3.TIGHTEN
+        )
+        request = await load_revision_request(db, app_id)
+        await c3._stage_cassettes(
+            db, tmp_path, model, request, bullet_text="Built infrastructure with AWS."
+        )
+        await savepoint.rollback()
+        await db.commit()
+    return approval_id
+
+
+async def _cycle_count(db, app_id):
+    approvals = (await db.scalars(select(Approval).where(
+        Approval.application_id == app_id,
+        Approval.status == ApprovalStatus.CHANGES_REQUESTED,
+    ))).all()
+    return len(approvals)
+
+
+async def test_three_human_cycles_survive_failures_and_third_revision_is_approvable(
+    scenario, monkeypatch, tmp_path
+):
+    from packages.shared.errors import DependencyUnavailableError
+
+    http, app_id, first_id, maker, _, _ = scenario
+    original = resume_revision.persist_resume
+    failures_left = 2
+
+    async def fail_twice(*args, **kwargs):
+        nonlocal failures_left
+        if failures_left:
+            failures_left -= 1
+            raise DependencyUnavailableError("simulated technical failure")
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(resume_revision, "persist_resume", fail_twice)
+    for expected_attempts in (1, 2):
+        response = await post(scenario)
+        assert response.status_code == 503, response.text
+        async with maker() as db:
+            assert await _cycle_count(db, app_id) == 1
+            attempts = await _attempts(db, app_id)
+            assert len(attempts) == 1
+            assert attempts[0].attempt_count == expected_attempts
+    monkeypatch.setattr(resume_revision, "persist_resume", original)
+    assert (await post(scenario)).status_code == 200
+
+    second_id = await _stage_next_cycle(scenario, tmp_path)
+    failure_once = True
+
+    async def fail_once(*args, **kwargs):
+        nonlocal failure_once
+        if failure_once:
+            failure_once = False
+            raise DependencyUnavailableError("simulated crash recovery")
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(resume_revision, "persist_resume", fail_once)
+    second_body = {"approval_id": second_id, "note": c3.TIGHTEN}
+    endpoint = f"/api/v1/applications/{app_id}/resume-review/request-changes"
+    assert (await http.post(endpoint, json=second_body)).status_code == 503
+    async with maker() as db:
+        assert await _cycle_count(db, app_id) == 2
+    monkeypatch.setattr(resume_revision, "persist_resume", original)
+    assert (await http.post(endpoint, json=second_body)).status_code == 200
+
+    third_id = await _stage_next_cycle(scenario, tmp_path)
+    third_body = {"approval_id": third_id, "note": c3.TIGHTEN}
+    third = await http.post(endpoint, json=third_body)
+    assert third.status_code == 200, third.text
+    assert third.json()["resume_version"] == 4
+    assert (await http.post(endpoint, json=third_body)).status_code == 200
+
+    async with maker() as db:
+        assert await _cycle_count(db, app_id) == 3
+        assert len(await _attempts(db, app_id)) == 3
+        assert len(await c2._events(db, app_id, "approval.changes_requested")) == 3
+
+    opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
+    assert opened.status_code == 200, opened.text
+    fourth_id = opened.json()["approval_id"]
+    fourth_body = {"approval_id": fourth_id, "note": c3.TIGHTEN}
+    async with maker() as db:
+        before = (
+            len(await _attempts(db, app_id)),
+            len(await c3._resumes(db, app_id)),
+            await c2._history_count(db, app_id),
+            len(await c2._events(db, app_id, "approval.changes_requested")),
+        )
+    rejected = await http.post(endpoint, json=fourth_body)
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.headers["content-type"].startswith("application/problem+json")
+    assert rejected.json()["code"] == "rework_limit_reached"
+    async with maker() as db:
+        assert (await db.get(Approval, fourth_id)).status is ApprovalStatus.PENDING
+        assert (await db.get(Application, app_id)).status is ApplicationStatus.AWAITING_APPROVAL
+        assert (
+            len(await _attempts(db, app_id)),
+            len(await c3._resumes(db, app_id)),
+            await c2._history_count(db, app_id),
+            len(await c2._events(db, app_id, "approval.changes_requested")),
+        ) == before
+    approved = await http.post(
+        f"/api/v1/applications/{app_id}/resume-review/approve", json={}
+    )
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["application_status"] == "approved"
+    later = await http.post(endpoint, json=fourth_body)
+    assert later.status_code == 409
+    assert later.json()["code"] == "rework_limit_reached"
 
 
 async def test_http_regenerates_and_retries_without_another_version(scenario):
@@ -397,9 +522,8 @@ async def test_http_failure_keeps_decision_and_attempt_then_retry_reuses_it(
         assert len(attempts) == 1
         assert attempts[0].id == attempt_id
         assert attempts[0].status is RevisionAttemptStatus.SUCCEEDED
-        # Two acquisitions of one attempt, not two attempts. This is the
-        # single assertion that distinguishes "retry" from "start over", and
-        # it is what the three-cycle limit will later be counted against.
+        # Two acquisitions of one attempt, not two attempts. Human cycles
+        # count decided approvals, not execution acquisitions.
         assert attempts[0].attempt_count == 2
         assert attempts[0].result_version == 2
         # Never stamped: this attempt was never terminal.
