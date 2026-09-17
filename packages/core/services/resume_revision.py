@@ -337,7 +337,7 @@ async def generate_revision(
 
     The caller must supply the inference writer explicitly. C3 orchestration
     constructs it from the committed T2 lease; there is no domain-writer default.
-    B1, B2 and B3 use it; B5 keeps its existing session behavior.
+    B1, B2, B3 and each B5 claim use it.
 
     Does not commit: the caller owns this boundary, and the resume, its claims
     and its verification status must land together or not at all.

@@ -23,12 +23,11 @@ cost real money. Now the evidence survives and the application is returned to
 absence of one. The end state a reviewer sees is the same; the audit trail is
 not.
 
-**Partial delivery, deliberately.** This batch makes the *attempt* durable. It
-does not introduce `AuditBoundary` or the `app_audit` session, so
-`agent_runs` / `agent_run_steps` / `llm_calls` rows still ride the domain
-transaction and still roll back with a failed T3. The attempt row is not the
-whole audit solution - it is the part that records that an attempt existed,
-what it cost the user in time, and why it stopped.
+The attempt and inference evidence have separate durability paths. T1/T2/T4/T5
+record the decision, lease, outcome, and recovery. During T3, B1, B2, B3, and
+each B5 claim use `IndependentInferenceAudit` to commit run/step/call evidence
+through `app_audit` outside the domain transaction. Their measured inference
+evidence survives a failed T3 even when the resume and domain events roll back.
 """
 
 from __future__ import annotations

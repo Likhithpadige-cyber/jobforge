@@ -1,4 +1,4 @@
-"""Inference evidence writers used by B1; later stages keep domain-session evidence.
+"""Inference evidence writers for B1, B2, B3, and per-claim B5.
 
 Every independent operation commits once, on the audit connection. The domain
 writer uses one savepoint per operation and never commits the caller's transaction.
@@ -170,7 +170,8 @@ class DomainInferenceAudit:
     """Atomic savepoints in the caller's transaction; no independent durability.
 
     Releasing a savepoint does not commit evidence. The domain caller still owns
-    commit/rollback. B1 uses this writer by default for non-C3 calls.
+    commit/rollback. B1, B2, B3, and B5 use this writer by default for
+    non-C3 calls.
     """
 
     def __init__(self, session: AsyncSession) -> None:

@@ -184,8 +184,9 @@ class StructuredClient:
             raise CostLimitError("Insufficient budget for the bounded B1 call")
         raw = await self.transport(request)
         # Validate usage separately from model content. Once usable usage is
-        # available, always return it so B1 audits/budgets the charged attempt
-        # before rejecting malformed content (including missing tool input).
+        # available, always return it so the calling stage audits and budgets
+        # the charged attempt before rejecting malformed content.
+        # This includes responses with missing tool input.
         try:
             usage = raw["usage"]
             input_tokens, output_tokens = usage["input_tokens"], usage["output_tokens"]

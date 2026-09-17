@@ -201,7 +201,11 @@ payloads and job aggregate/correlation/actor semantics remain unchanged: the
 optional existing `guardrail.violation.detected` envelope is inserted once in the
 same transaction as step findings, with no additional lifecycle event. The caller
 must use this writer instead of also emitting that same event through its domain
-session. No stages are wired to this contract in 3B-1A.
+session. B1 selection, B2 drafting, B3 summary, and each B5 claim use this contract
+during C3 revision generation. B5 records a valid negative verdict as a
+completed inference; its existing guardrail event still reports the semantic
+violation, while B6 persists failed verification. No additional stage lifecycle
+event is emitted.
 
 **`guardrail.violation.detected` `kind` values:**
 
