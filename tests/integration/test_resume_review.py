@@ -51,6 +51,7 @@ from packages.core.models import (
     ResumeClaim,
     User,
 )
+from packages.core.services import applications as applications_service
 from packages.core.services import resume_review as service
 from packages.shared.ids import uuid7
 from tests.integration import test_resume_read_api as c1
@@ -83,9 +84,16 @@ async def _second_user(session) -> User:
 
 
 async def _ready(session, demo_profile, demo_job, demo_application, facts):
-    """An application sitting in `resume_ready` with a clean tailored resume."""
+    """An application sitting in `questions_pending` with a clean tailored
+    resume - the M9 extraction step already ran (zero questions, the
+    ordinary case for a synthetic fixture with no ATS form), same as the
+    real pipeline: `resume_ready -> questions_pending` before review ever
+    opens."""
     result = await c1._generate(
         session, demo_profile, demo_job, demo_application["id"], facts
+    )
+    await applications_service.prepare_application(
+        session, application_id=demo_application["id"], questions=[]
     )
     await session.flush()
     return result
@@ -343,7 +351,7 @@ async def test_review_cannot_be_opened_from_approved(
     await _start(session, app_id, actor)
     await _approve(session, app_id, actor)
 
-    with pytest.raises(service.ReviewStateError, match="resume_ready"):
+    with pytest.raises(service.ReviewStateError, match="questions_pending"):
         await _start(session, app_id, actor)
 
 
@@ -714,7 +722,7 @@ async def test_approve_is_idempotent(
 async def test_approve_requires_awaiting_approval(
     session, demo_profile, demo_job, demo_application, inputs
 ):
-    """No `resume_ready -> approved` shortcut, at any layer."""
+    """No `questions_pending -> approved` shortcut, at any layer."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     await _ready(session, demo_profile, demo_job, demo_application, facts)
@@ -723,7 +731,7 @@ async def test_approve_requires_awaiting_approval(
     with pytest.raises(service.ReviewStateError, match="awaiting_approval"):
         await _approve(session, app_id, actor)
     assert (await _application(session, app_id)).status is (
-        ApplicationStatus.RESUME_READY
+        ApplicationStatus.QUESTIONS_PENDING
     )
     assert len(await _events(session, app_id, "approval.granted")) == 0
 

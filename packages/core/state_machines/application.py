@@ -1,16 +1,18 @@
 """Application lifecycle state machine (ARCHITECTURE.md §7.2).
 
 **Deliberately partial.** The full lifecycle diagram in ARCHITECTURE.md covers
-rework, approval, submission and error paths, but only the initial
-resume-generation path is unambiguous today. Guessing the rest would bake a
-wrong graph into the one place the system trusts to be right, so every edge
-that is not yet settled is absent - and absent means rejected, not allowed.
+rework, approval, submission and error paths, but only the resume-generation
+and question-extraction path is unambiguous today. Guessing the rest would
+bake a wrong graph into the one place the system trusts to be right, so every
+edge that is not yet settled is absent - and absent means rejected, not
+allowed.
 
     created            -> resume_generating
     resume_generating  -> resume_ready
     resume_generating  -> verification_failed
     resume_generating  -> changes_requested      (C3 recovery, see below)
-    resume_ready       -> awaiting_approval      (temporary bridge, see below)
+    resume_ready       -> questions_pending       (M9, see below)
+    questions_pending  -> awaiting_approval       (M9, see below)
     awaiting_approval  -> approved
     awaiting_approval  -> changes_requested
     changes_requested  -> resume_generating       (rework, see below)
@@ -18,16 +20,24 @@ that is not yet settled is absent - and absent means rejected, not allowed.
 Every other pair fails closed, including self transitions. Adding an edge is a
 deliberate act: write it here, with the documentation that justifies it.
 
-**The `resume_ready -> awaiting_approval` edge is a documented temporary
-bridge.** ARCHITECTURE.md §7.2 routes review through `questions_pending`
-(`resume_ready -> questions_pending -> awaiting_approval`), and that remains
-the intended long-term path. `questions_pending` is owned by the
-question-extraction phase (A2), which is not implemented, so today there is no
-way to reach human review at all. Rather than build an unrelated phase to
-unblock review, C2 bridges directly and this comment records the debt: when
-question extraction lands, route through `questions_pending` and revisit this
-edge. `questions_pending` deliberately keeps its place in the graph and its
-empty exit set, so nothing here pretends the intended path has gone away.
+**The `resume_ready -> questions_pending -> awaiting_approval` path is M9's.**
+It replaces the `resume_ready -> awaiting_approval` bridge C2 used while
+question extraction (A2) did not exist. The first edge is
+`packages.core.services.applications.prepare_application`'s: it extracts,
+classifies, grounds and drafts, persists the `application_questions` /
+`application_answers` rows, and moves the application into
+`questions_pending` - always, even when extraction produced zero questions,
+because the state records that extraction happened, not how many results it
+found. The second edge remains `resume_review.enter_review`'s, unchanged
+except its precondition (`questions_pending` rather than `resume_ready`): a
+human still explicitly opens review through the one existing endpoint
+(`POST /applications/{id}/resume-review`), which still only ever creates the
+`resume` approval. The `answers` approval this package may also need is a
+separate, independently created-and-decided `ApprovalKind.ANSWERS` record
+(`packages.core.services.applications.approve_answers` /
+`request_changes_answers`) - it needs no "open" step of its own, because
+unlike a resume decision it triggers no regeneration pipeline that would
+need a pending row to wait against.
 
 **The `changes_requested -> resume_generating` edge is C3's rework path.**
 It is the single edge regeneration needs, and it deliberately lands in
@@ -110,13 +120,12 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
             ApplicationStatus.CHANGES_REQUESTED,
         }
     ),
-    # Temporary bridge while question extraction (A2) is unimplemented; the
-    # documented route is resume_ready -> questions_pending -> awaiting_approval.
-    ApplicationStatus.RESUME_READY: frozenset({ApplicationStatus.AWAITING_APPROVAL}),
+    # M9. Extraction/classification/drafting only; no human input yet.
+    ApplicationStatus.RESUME_READY: frozenset({ApplicationStatus.QUESTIONS_PENDING}),
     ApplicationStatus.VERIFICATION_FAILED: frozenset(),
-    # Intentionally still closed: the long-term entry point to review, kept in
-    # the graph so the intended path is visible rather than forgotten.
-    ApplicationStatus.QUESTIONS_PENDING: frozenset(),
+    # M9. Left by the same worker execution that entered it, once questions
+    # (zero or more) have been extracted and drafted.
+    ApplicationStatus.QUESTIONS_PENDING: frozenset({ApplicationStatus.AWAITING_APPROVAL}),
     ApplicationStatus.AWAITING_APPROVAL: frozenset(
         {ApplicationStatus.APPROVED, ApplicationStatus.CHANGES_REQUESTED}
     ),

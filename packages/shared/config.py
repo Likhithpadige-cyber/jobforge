@@ -218,6 +218,13 @@ class Settings(BaseSettings):
     rate_limit_artifact_download_per_user: int = 120
     rate_limit_artifact_download_window_seconds: int = 3600
 
+    # ------------------------------------------------------- applications (M9)
+    #: Preparation is deterministic (no provider budget), but it is still a
+    #: pipeline-triggering write per application; sized like first-draft/
+    #: revision rather than like a read.
+    rate_limit_application_prepare_per_user: int = 20
+    rate_limit_application_prepare_window_seconds: int = 3600
+
     # ------------------------------------------------------------- crypto
     #: base64 of 32 random bytes; encrypts users.totp_secret_enc only.
     #: Deliberately separate from session_secret - see SECURITY.md 3.4.

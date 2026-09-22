@@ -33,6 +33,7 @@ from packages.core.models import (
     User,
 )
 from packages.core.repositories.revision_attempts import RevisionAttemptRepository
+from packages.core.services import applications as applications_service
 from packages.core.services import resume_review, resume_revision, resume_rework
 from packages.shared.config import Settings
 from packages.shared.ids import uuid7
@@ -104,6 +105,14 @@ async def post(scenario, **body):
 
 async def _stage_next_cycle(scenario, tmp_path):
     http, app_id, first_approval_id, maker, model, _ = scenario
+    # M9. The prior cycle's regeneration landed back at resume_ready; the
+    # owner re-triggers question preparation before review can reopen for
+    # this new version, the same explicit way as after the first generation.
+    async with maker() as db:
+        await applications_service.prepare_application(
+            db, application_id=app_id, questions=[]
+        )
+        await db.commit()
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
     assert opened.status_code == 200, opened.text
     approval_id = opened.json()["approval_id"]
@@ -212,6 +221,16 @@ async def test_three_human_cycles_survive_failures_and_third_revision_is_approva
         assert len(await _attempts(db, app_id)) == 3
         assert len(await c2._events(db, app_id, "approval.changes_requested")) == 3
 
+    # M9. The third rework cycle landed the application back at resume_ready;
+    # the owner re-triggers question preparation (zero questions - this
+    # suite is about C3 rework, not M9 extraction) the same explicit way as
+    # after the first generation, before review can reopen.
+    async with maker() as db:
+        await applications_service.prepare_application(
+            db, application_id=app_id, questions=[]
+        )
+        await db.commit()
+
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
     assert opened.status_code == 200, opened.text
     fourth_id = opened.json()["approval_id"]
@@ -252,7 +271,9 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
     state = first.json()
     assert state["application_status"] == "resume_ready"
     assert state["resume_version"] == 2
-    assert state["can_start_review"] and not state["can_approve"]
+    # M9. Review cannot reopen until question preparation runs again for
+    # this new version - resume_ready alone no longer means reviewable.
+    assert not state["can_start_review"] and not state["can_approve"]
     second = await post(scenario)
     assert second.status_code == 200
     assert second.json()["resume_id"] == state["resume_id"]
@@ -293,6 +314,13 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
         assert all(step.guardrail_results["c3_execution"] == execution for step in steps)
     assert (await post(scenario, note="Different instructions")).status_code == 409
     http = scenario[0]
+    # M9. As above: the owner re-triggers question preparation for the
+    # regenerated version before review can reopen.
+    async with maker() as db:
+        await applications_service.prepare_application(
+            db, application_id=app_id, questions=[]
+        )
+        await db.commit()
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
     assert opened.status_code == 200
     assert opened.json()["approval_id"] != str(approval_id)

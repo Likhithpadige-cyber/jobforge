@@ -48,6 +48,7 @@ from packages.core.models import (
     ResumeClaim,
 )
 from packages.core.repositories.revision_attempts import RevisionAttemptRepository
+from packages.core.services import applications as applications_service
 from packages.core.services import resume_review, resume_revision, resume_rework
 from packages.core.services.resume_revision import (
     FINGERPRINT_KEY,
@@ -208,13 +209,23 @@ async def _revise(session, tmp_path, demo_application, actor, **staging):
         session, application_id=app_id, request=request, actor_id=actor_id
     )
     await session.commit()
-    return await generate_revision(
+    result = await generate_revision(
         session, application_id=app_id, client=client, request=request,
         writer=IndependentInferenceAudit(context=AuditContext(
             attempt_id=attempt.id, lease_epoch=epoch, application_id=app_id,
             approval_id=request.approval_id,
         )),
     )
+    if result.application_status is ApplicationStatus.RESUME_READY:
+        # M9. A reworked resume lands back at resume_ready like any other
+        # generation; the owner re-triggers question preparation the same
+        # explicit way they did the first time (no auto mode) before review
+        # can reopen. Zero questions here too - this suite tests resume
+        # rework, not M9's own extraction.
+        await applications_service.prepare_application(
+            session, application_id=app_id, questions=[]
+        )
+    return result
 
 
 async def _rework(session, tmp_path, demo_application, actor, **staging):
@@ -365,9 +376,16 @@ async def test_a_revision_produces_a_new_verified_version(
     assert result.version == 2
     assert result.prior_resume_version == 1
     assert result.verification_status == "passed"
+    # generate_revision's own result is captured before the M9 gate the
+    # _revise test helper runs immediately after it - resume_ready is what
+    # generation itself produced.
     assert result.application_status is ApplicationStatus.RESUME_READY
     assert result.reused is False
-    assert (await _application_status(session, app_id)) is ApplicationStatus.RESUME_READY
+    # By the time _revise returns, M9's zero-question prepare has already
+    # advanced the application past the point generate_revision left it.
+    assert (
+        await _application_status(session, app_id)
+    ) is ApplicationStatus.QUESTIONS_PENDING
 
 
 async def test_v1_and_its_claims_survive_untouched(

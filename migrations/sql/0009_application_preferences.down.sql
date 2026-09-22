@@ -1,0 +1,2 @@
+ALTER TABLE application_answers DROP CONSTRAINT ck_application_answers_agent_requires_facts;
+ALTER TABLE profiles DROP COLUMN accepted_employment_types;

@@ -1,6 +1,6 @@
 """Application lifecycle transitions - the deliberately partial graph.
 
-The point of these tests is the *closed* half: only eight edges exist today,
+The point of these tests is the *closed* half: only nine edges exist today,
 so every one of the remaining pairs must be rejected. They are enumerated
 exhaustively rather than sampled, because an accidentally-permitted edge is
 exactly the failure this module exists to prevent.
@@ -36,9 +36,12 @@ IMPLEMENTED: frozenset[tuple[ApplicationStatus, ApplicationStatus]] = frozenset(
         # can act from, explicitly and in the history, rather than by the
         # absence of a commit.
         (ApplicationStatus.RESUME_GENERATING, ApplicationStatus.CHANGES_REQUESTED),
-        # Human review (C2). The first is a temporary bridge around
-        # questions_pending while question extraction is unimplemented.
-        (ApplicationStatus.RESUME_READY, ApplicationStatus.AWAITING_APPROVAL),
+        # Question extraction (M9). Entered and left within one worker
+        # execution - see packages/core/services/applications.py - so both
+        # edges are always exercised together, never one without the other.
+        (ApplicationStatus.RESUME_READY, ApplicationStatus.QUESTIONS_PENDING),
+        (ApplicationStatus.QUESTIONS_PENDING, ApplicationStatus.AWAITING_APPROVAL),
+        # Human review (C2).
         (ApplicationStatus.AWAITING_APPROVAL, ApplicationStatus.APPROVED),
         (ApplicationStatus.AWAITING_APPROVAL, ApplicationStatus.CHANGES_REQUESTED),
         # Rework (C3). The only exit from changes_requested, and it returns to
@@ -139,14 +142,13 @@ def test_skipped_states_rejected(current, target) -> None:
 @pytest.mark.parametrize(
     ("current", "target"),
     [
-        (ApplicationStatus.RESUME_READY, ApplicationStatus.QUESTIONS_PENDING),
         (ApplicationStatus.APPROVED, ApplicationStatus.SUBMISSION_READY),
         (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMITTING),
         (ApplicationStatus.VERIFICATION_FAILED, ApplicationStatus.RESUME_GENERATING),
     ],
 )
 def test_unimplemented_lifecycle_paths_rejected(current, target) -> None:
-    """Unimplemented question, submission and failure-retry paths stay closed."""
+    """Unimplemented submission and failure-retry paths stay closed."""
     assert not can_transition(current, target)
 
 
@@ -164,14 +166,23 @@ def test_review_is_only_reachable_through_awaiting_approval() -> None:
     )
 
 
-def test_questions_pending_remains_the_documented_long_term_entry() -> None:
-    """The bridge does not delete the intended path.
+def test_questions_pending_leads_only_to_awaiting_approval() -> None:
+    """M9's sole exit from `questions_pending`.
 
-    `questions_pending` keeps its place in the graph with no exits, so when
-    question extraction lands the route can be restored rather than rediscovered.
+    No path from `questions_pending` to a decision (`approved` /
+    `changes_requested`) or back into generation: extraction results are
+    reviewed, never used to skip review.
     """
-    assert ApplicationStatus.QUESTIONS_PENDING in ALLOWED_TRANSITIONS
-    assert ALLOWED_TRANSITIONS[ApplicationStatus.QUESTIONS_PENDING] == frozenset()
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.QUESTIONS_PENDING] == frozenset(
+        {ApplicationStatus.AWAITING_APPROVAL}
+    )
+    for target in (
+        ApplicationStatus.APPROVED,
+        ApplicationStatus.CHANGES_REQUESTED,
+        ApplicationStatus.RESUME_GENERATING,
+        ApplicationStatus.RESUME_READY,
+    ):
+        assert not can_transition(ApplicationStatus.QUESTIONS_PENDING, target)
 
 
 def test_rework_must_restart_generation() -> None:

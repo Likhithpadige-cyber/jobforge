@@ -389,6 +389,14 @@ class ApplicationAnswer(TimestampMixin, UUIDPrimaryKeyMixin, Base):
             "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
             name="confidence_range",
         ),
+        # M9. Mirrors ck_resume_claims_claim_has_facts, scoped to 'agent'
+        # only - a 'derived' answer cites a profile column or preference via
+        # value_structured, not a profile_facts row, so requiring fact_ids
+        # there would mean fabricating a fact for something that is not one.
+        CheckConstraint(
+            "source <> 'agent' OR cardinality(fact_ids) > 0",
+            name="agent_requires_facts",
+        ),
         Index("ix_application_answers_application_id", "application_id"),
     )
 

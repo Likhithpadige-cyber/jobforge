@@ -29,6 +29,10 @@ from packages.core.db.audit_session import dispose_audit_engine, init_audit_engi
 from packages.core.events.monitoring import schedule_snapshot, snapshot_jobs
 from packages.core.events.runtime import DeliveryRuntime, OutboxRelay, RetryPolicy, StreamConsumer
 from packages.core.models import Event
+from packages.core.services.applications import (
+    prepare_application,
+    questions_from_event_payload,
+)
 from packages.core.services.artifacts import render_resume
 from packages.services.rendering import production_renderers
 from packages.services.rendering.store import (
@@ -41,6 +45,10 @@ from packages.shared.config import Settings, get_settings
 from packages.shared.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
+
+WorkerKind = Literal[
+    "relay", "monitor", "scheduler", "optimizer", "first-draft", "render", "application"
+]
 
 
 def build_artifact_store(settings: Settings) -> ArtifactStore:
@@ -109,7 +117,7 @@ async def serve(step: Callable[[], Awaitable[object]], stop: asyncio.Event,
 
 
 async def run(
-    kind: Literal["relay", "monitor", "scheduler", "optimizer", "first-draft", "render"],
+    kind: WorkerKind,
 ) -> None:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_format)
@@ -127,7 +135,7 @@ async def run(
         await verify_role(
             engine,
             "app_agent"
-            if kind in {"relay", "optimizer", "first-draft", "render"}
+            if kind in {"relay", "optimizer", "first-draft", "render", "application"}
             else "app_monitor",
         )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -185,6 +193,26 @@ async def run(
                     "cg.render",
                     {"resume.render.requested": render},
                 )
+            elif kind == "application":
+                # M9. Deterministic and offline, same as "render": no model,
+                # no provider budget. Question extraction, classification and
+                # grounding are all pattern/database matches, not inference.
+                async def prepare(db: AsyncSession, event: Event) -> str:
+                    application_id = UUID(str(event.payload["application_id"]))
+                    questions = questions_from_event_payload(event.payload)
+                    await prepare_application(
+                        db,
+                        application_id=application_id,
+                        questions=questions,
+                        causation_id=event.id,
+                    )
+                    return "completed"
+
+                runtime = DeliveryRuntime(
+                    sessions,
+                    "cg.application",
+                    {"application.questions.requested": prepare},
+                )
             elif kind == "optimizer":
                 selected = os.environ.get("WORKER_PROFILE_ID")
                 handler = evaluation_handler(
@@ -224,7 +252,7 @@ async def run(
 
 
 def main(
-    kind: Literal["relay", "monitor", "scheduler", "optimizer", "first-draft", "render"],
+    kind: WorkerKind,
 ) -> None:
     try:
         asyncio.run(run(kind))

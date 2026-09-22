@@ -93,6 +93,7 @@ Legend — **P** = producer, **C** = consumers.
 | Event | P | C | Payload |
 |---|---|---|---|
 | `application.created` | API | **A1**, A3 | `{application_id, job_id, evaluation_id, score, priority}` |
+| `application.questions.requested` | API (owner) | A2 | `{application_id, questions: [{question_text, input_type, external_field_id, options, is_required, max_length}]}` - the M9 trigger; mirrors `resume.first_draft.requested`/`resume.render.requested`, an owner-initiated request event rather than a bare API-layer call, so it carries its own idempotency/replay through the worker machinery. `questions` is the owner-supplied capture itself (AGENT_DESIGN.md §4.1's third sourcing method - M9 does not scrape a live ATS form), carried in the event because the worker, not the API request, is what persists `application_questions`/`application_answers` |
 | `application.questions.extracted` | A2 | A3, API(SSE) | `{application_id, total, by_class: {factual_safe, derived, uncertain, judgement, sensitive, unanswerable}}` |
 | `application.answers.drafted` | A2 | A3, API(SSE) | `{application_id, auto_answered, human_required, blanks}` |
 | `application.ready` | A2 | A3, API(SSE) | `{application_id, submission_method, target_domain}` |

@@ -282,6 +282,9 @@ OWNER_ONLY = frozenset(
     {
         ("POST", "/api/v1/profiles/{profile_id}/master-resumes"),
         ("POST", "/api/v1/jobs/{job_id}/first-draft"),
+        # M9. Preparation is the one cost-shaped, pipeline-triggering action,
+        # same as first-draft above - owner only.
+        ("POST", "/api/v1/applications/{application_id}/prepare"),
         ("PUT", "/api/v1/profile"),
         ("POST", "/api/v1/profile/certifications"),
         ("PATCH", "/api/v1/profile/certifications/{entity_id}"),
@@ -347,6 +350,13 @@ OWNER_AND_REVIEWER = frozenset(
         ("POST", "/api/v1/applications/{application_id}/resume-review"),
         ("POST", "/api/v1/applications/{application_id}/resume-review/approve"),
         ("POST", "/api/v1/applications/{application_id}/resume-review/request-changes"),
+        # M9. Viewing, editing, approving and requesting changes for prepared
+        # answers is shared review access, same as resume review above -
+        # preparation itself (owner only) is in OWNER_ONLY.
+        ("GET", "/api/v1/applications/{application_id}/questions"),
+        ("PATCH", "/api/v1/applications/{application_id}/answers/{answer_id}"),
+        ("POST", "/api/v1/applications/{application_id}/package/approve"),
+        ("POST", "/api/v1/applications/{application_id}/package/request-changes"),
     }
 )
 

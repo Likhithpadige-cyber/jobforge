@@ -81,6 +81,14 @@ class Profile(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     )
     min_salary: Mapped[int | None] = mapped_column(Integer)
     max_salary: Mapped[int | None] = mapped_column(Integer)
+    #: M9. NULL = no preference, so employment-type filtering is opt-in per
+    #: candidate rather than a rule baked into JobForge for everyone. Values
+    #: are the same normalized vocabulary
+    #: `packages.services.ingestion.normalize.extract_employment_type`
+    #: already produces (`full_time`, `part_time`, `contract`, `internship`,
+    #: `temporary`), so a job's employment_type can be compared directly
+    #: against this array with no separate mapping table.
+    accepted_employment_types: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     links: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 

@@ -66,6 +66,7 @@ UP_SQL = SqlFiles(
     "0006_resume_rework_limit.up.sql",
     "0007_evaluation_assessment.up.sql",
     "0008_artifact_binding.up.sql",
+    "0009_application_preferences.up.sql",
 )
 DOWN_SQL = SqlFiles(
     "0002_core_schema.down.sql",
@@ -73,6 +74,7 @@ DOWN_SQL = SqlFiles(
     "0006_resume_rework_limit.down.sql",
     "0007_evaluation_assessment.down.sql",
     "0008_artifact_binding.down.sql",
+    "0009_application_preferences.down.sql",
 )
 GRANTS_SQL = SqlFiles(
     "0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql"
@@ -382,6 +384,8 @@ def check_design_constraints() -> None:
             "a running attempt holds a lease",
         "ck_resume_revision_attempts_evidence_stale_retry_coherent":
             "retry counter and its timestamp agree",
+        # 0009 (M9). An agent-authored answer must cite at least one fact.
+        "ck_application_answers_agent_requires_facts": "no uncited agent answer",
     }
     missing = [f"{n} ({d})" for n, d in required.items() if n not in sql]
     if missing:

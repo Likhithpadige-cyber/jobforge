@@ -414,18 +414,20 @@ Full catalogue with payload schemas and versioning rules in [EVENTS.md](./EVENTS
                                   submission_failed ──▶ (retry ▸ submitting | abandon)
 ```
 
-**Implementation status (temporary bridge).** The diagram above is the
-intended long-term lifecycle. The implemented graph in
-`packages/core/state_machines/application.py` is a strict subset of it, with
-one deliberate exception: `resume_ready -> awaiting_approval` is implemented as
-a **temporary bridge** because `questions_pending` is owned by the
-question-extraction phase (A2), which is not built. Without the bridge there is
-no way to reach human review at all. When A2 lands, review should be routed
-`resume_ready -> questions_pending -> awaiting_approval` and the bridge edge
-revisited. `questions_pending` remains in the graph with no exits so the
-intended path stays visible. No `resume_ready -> approved` or
-`resume_ready -> changes_requested` shortcut exists: a decision is reachable
-only from `awaiting_approval`.
+**Implementation status.** The diagram above is the intended long-term
+lifecycle; the implemented graph in `packages/core/state_machines/application.py`
+is a strict subset of it. As of M9, review is routed
+`resume_ready -> questions_pending -> awaiting_approval`: the former
+`resume_ready -> awaiting_approval` temporary bridge (used while question
+extraction did not exist) has been removed. The worker
+(`prepare_application`) owns the first edge - extraction, classification and
+answer drafting complete before the application enters `questions_pending`,
+always, including when extraction produced zero questions, so the audit
+trail shows that it happened either way. The second edge remains a human
+action, `resume_review.enter_review`, unchanged except that it now requires
+`questions_pending` instead of `resume_ready`. No `resume_ready -> approved`
+or `resume_ready -> changes_requested` shortcut exists: a decision is
+reachable only from `awaiting_approval`.
 
 **Invariants:**
 - `submission_ready` is reachable **only** through `approved`. There is no path from any state directly to `submitting`.

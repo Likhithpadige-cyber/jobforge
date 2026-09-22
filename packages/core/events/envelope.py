@@ -37,7 +37,14 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "resume.verification.failed", "resume.render.requested", "resume.rendered",
         "cover_letter.generated",
         # applications
-        "application.created", "application.questions.extracted",
+        "application.created",
+        # M9. The request/result pair for question extraction, matching the
+        # existing resume.first_draft.requested/resume.render.requested
+        # shape: an owner-initiated trigger with its own event, not a bare
+        # API-layer call, so the worker/idempotency/replay machinery already
+        # built for those two pipelines applies here unchanged.
+        "application.questions.requested",
+        "application.questions.extracted",
         "application.answers.drafted", "application.ready",
         "application.status.changed", "application.outcome.updated",
         "application.abandoned",

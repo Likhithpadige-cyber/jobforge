@@ -154,6 +154,7 @@ Single-user in practice; modeled multi-user so approvals have a real `decided_by
 | `willing_to_relocate` | BOOLEAN | |
 | `target_roles` | TEXT[] | e.g. Cloud Engineer, AWS Cloud Engineer, DevOps Engineer, Infrastructure Engineer |
 | `min_salary`, `max_salary` | INTEGER | Used only to filter jobs, never auto-disclosed |
+| `accepted_employment_types` | TEXT[] NULL | M9. NULL = no preference (unrestricted). Values share the vocabulary `extract_employment_type` already produces (`full_time`, `part_time`, `contract`, `internship`, `temporary`); a job whose own `employment_type` is not in this list, or is NULL/unmatched, does not auto-advance |
 | `links` | JSONB | linkedin, github, portfolio |
 | `version` | INTEGER | optimistic lock |
 | `created_at`, `updated_at` | TIMESTAMPTZ | |
@@ -469,9 +470,12 @@ CREATE INDEX idx_claims_resume ON resume_claims(resume_id, verdict);
 CONSTRAINT chk_sensitive_human_only CHECK (
   NOT (requires_human = true AND source = 'agent' AND answered_by IS NULL)
 );
+CONSTRAINT chk_agent_requires_facts CHECK (
+  source <> 'agent' OR cardinality(fact_ids) > 0
+);
 ```
 
-Together with the question classifier, this means a `sensitive` or `judgement` question cannot hold an agent-authored answer without a human's user id attached to it.
+Together with the question classifier, this means a `sensitive` or `judgement` question cannot hold an agent-authored answer without a human's user id attached to it. `chk_agent_requires_facts` (migration 0009) mirrors `chk_claim_has_facts`: an `agent`-sourced answer must cite at least one `profile_facts` row. It is deliberately scoped to `agent` only - a `derived` answer (M9: a preference like `accepted_employment_types`, or a profile column such as email/city, or a computed value like years of experience) is grounded in something that is not a `profile_facts` row, and records what it was derived from in `value_structured` (e.g. `{"derived_from": "profile.accepted_employment_types"}`) rather than in `fact_ids`, so requiring citations there would mean fabricating a fact for something that is not one.
 
 ### 6.5 `approvals`
 

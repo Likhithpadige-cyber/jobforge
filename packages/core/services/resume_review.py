@@ -454,7 +454,7 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
     )
 
     can_start = (
-        application.status is ApplicationStatus.RESUME_READY and readiness.ready
+        application.status is ApplicationStatus.QUESTIONS_PENDING and readiness.ready
     )
     decidable = (
         application.status is ApplicationStatus.AWAITING_APPROVAL
@@ -504,7 +504,17 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
 async def enter_review(
     session: AsyncSession, *, application_id: UUID, actor: User
 ) -> ReviewState:
-    """Open human review: `resume_ready -> awaiting_approval`.
+    """Open human review: `questions_pending -> awaiting_approval` (M9).
+
+    Requires `questions_pending`, not `resume_ready`: M9's
+    `prepare_application` extracts and drafts application questions first
+    (`resume_ready -> questions_pending`), and only once that has happened -
+    even when it produced zero questions - is the package ready for a human
+    to look at. The `answers` approval this package may also need is a
+    separate, independently decided `ApprovalKind.ANSWERS` row
+    (`packages.core.services.applications.approve_answers`); this function
+    is unchanged from C2 otherwise and still only ever creates the `resume`
+    approval.
 
     Idempotent by state rather than by token. A retry finds the application
     already in `awaiting_approval` with a pending approval bound to this exact
@@ -532,9 +542,9 @@ async def enter_review(
             "for the current resume version"
         )
 
-    if application.status is not ApplicationStatus.RESUME_READY:
+    if application.status is not ApplicationStatus.QUESTIONS_PENDING:
         raise ReviewStateError(
-            f"review can only be opened from resume_ready, not {application.status}"
+            f"review can only be opened from questions_pending, not {application.status}"
         )
 
     readiness = evaluate_readiness(

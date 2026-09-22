@@ -158,6 +158,71 @@ async def test_grounding_case(case, tmp_path):
         assert first.counts["required_met"] == int(case["cited"])
         assert bool(first.strengths) == case["cited"]
         assert canonical(matrix) == before
+    elif kind == "m9_classification":
+        # M9's classification gate is a pure text/input-type match with no
+        # database and no model - the escalate-only sensitive classifier
+        # runs first and unconditionally, so a question matching both a
+        # sensitive pattern and an ordinary factual one still lands on
+        # sensitive (m9-sensitive-beats-factual-pattern exercises exactly
+        # that no-de-escalation-path property).
+        from packages.core.models.enums import QuestionClass
+        from packages.core.services.applications import classify_question
+
+        result = classify_question(case["question_text"], case["input_type"])
+        assert result is QuestionClass(case["expected_class"])
+    elif kind == "m9_grounding":
+        # Grounding never reaches outside the `facts`/profile it is handed -
+        # a foreign, deleted or unverified fact is represented here by its
+        # simple absence from that list, which is the only way grounding
+        # could ever see one; the real cross-profile/status scoping query
+        # is proven against PostgreSQL in
+        # tests/integration/test_applications.py, not offline.
+        from uuid import uuid4
+
+        from packages.core.models.enums import AnswerSource, QuestionClass
+        from packages.core.models.facts import ProfileFact
+        from packages.core.models.identity import Profile
+        from packages.core.services.applications import draft_answer
+
+        profile_fields: dict[str, object] = {
+            "id": uuid4(), "user_id": uuid4(), "full_name": "Offline Candidate",
+            "email": "offline@example.invalid", "phone": "555-0100",
+            "location_city": "Austin", "location_state": "Texas",
+            "location_country": "USA", "willing_to_relocate": True,
+            "target_roles": [], "accepted_employment_types": None, "links": {},
+        }
+        profile_fields.update(case.get("profile_overrides", {}))
+        profile = Profile(**profile_fields)  # type: ignore[arg-type]
+        facts = [
+            ProfileFact(id=uuid4(), profile_id=profile.id, fact_type=f["fact_type"],
+                       text=f["text"], source_table="certifications", source_id=uuid4(),
+                       status="verified")  # type: ignore[arg-type]
+            for f in case.get("facts", [])
+        ]
+        drafted = draft_answer(
+            case["question_text"], QuestionClass(case["question_class"]),
+            profile=profile, experiences=[], facts=facts,
+        )
+        assert drafted.source is AnswerSource(case["expected_source"])
+        assert (drafted.value is None) == case["expected_value_is_none"]
+        assert drafted.requires_human == case["expected_requires_human"]
+        if drafted.source is AnswerSource.AGENT:
+            assert drafted.fact_ids, "an agent-sourced answer must cite something"
+        else:
+            assert drafted.fact_ids == [], "only source=agent may carry a citation"
+    elif kind == "m9_employment_gate":
+        # The candidate-preference gate: never a database, never inferred
+        # full-time merely because a posting looks ordinary - only an
+        # explicit match may auto-advance.
+        from packages.core.services.applications import draft_employment_type_answer
+
+        drafted = draft_employment_type_answer(
+            job_employment_type=case["job_employment_type"],
+            accepted_employment_types=case["accepted_employment_types"],
+        )
+        assert drafted.value == case["expected_value"]
+        assert drafted.requires_human == case["expected_requires_human"]
+        assert drafted.fact_ids == []
     else:
         pytest.fail(f"Unknown corpus case kind: {kind}")
 
@@ -170,6 +235,17 @@ def test_corpus_inventory_and_positive_controls():
         "fabricated_certifications", "fabricated_education", "unsupported_skills",
         "work_authorization", "verified_facts", "evidence_citations", "structured_output",
         "prompt_injection", "unknown_evidence", "rationale_grounding", "unsupported_numerals",
+        # M9.
+        "sensitive_question_auto_answer_attempt",
+        "deterministic_sensitive_classifier_vs_deescalation",
+        "ambiguous_question_fact_mapping",
+        "fabricated_answer_from_absent_fact",
+        "foreign_or_deleted_or_unverified_fact",
+        "unsupported_numerical_claim",
+        "unresolved_question",
+        "explicit_accepted_employment_type",
+        "explicit_rejected_employment_type",
+        "missing_employment_type",
     }
     assert sum(case.get("verdict") == "supported" for case in corpus) >= 5
     assert sum(case.get("verdict") in ("unsupported", "overreach") for case in corpus) >= 5

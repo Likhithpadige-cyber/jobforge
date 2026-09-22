@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "provenance": "Hand-authored synthetic adversarial and positive controls. Verifier replies are scripted replay fixtures, not captured live-model judgments.",
+  "provenance": "Hand-authored synthetic adversarial and positive controls. Verifier replies are scripted replay fixtures, not captured live-model judgments. M9 additions (question classification, grounding provenance, and the employment-type candidate-preference gate) are likewise hand-authored synthetic cases exercising packages.core.services.applications directly - deterministic pattern/data matches, not model output, so there is nothing to replay.",
   "cases": [
     {
       "id": "invented-leadership",
@@ -286,6 +286,130 @@
       "fact": "Assisted with deployment checks.",
       "claim": "Owned the production deployment program.",
       "verdict": "overreach"
+    },
+    {
+      "id": "m9-sensitive-auto-answer-attempt",
+      "category": "sensitive_question_auto_answer_attempt",
+      "kind": "m9_classification",
+      "question_text": "Are you legally authorized to work in the United States?",
+      "input_type": "boolean",
+      "expected_class": "sensitive"
+    },
+    {
+      "id": "m9-sensitive-beats-factual-pattern",
+      "category": "deterministic_sensitive_classifier_vs_deescalation",
+      "kind": "m9_classification",
+      "question_text": "What is your email? (work authorization required)",
+      "input_type": "text",
+      "expected_class": "sensitive"
+    },
+    {
+      "id": "m9-ambiguous-mapping",
+      "category": "ambiguous_question_fact_mapping",
+      "kind": "m9_classification",
+      "question_text": "What is your favorite color?",
+      "input_type": "text",
+      "expected_class": "uncertain"
+    },
+    {
+      "id": "m9-fabricated-answer-absent-fact",
+      "category": "fabricated_answer_from_absent_fact",
+      "kind": "m9_grounding",
+      "question_text": "Do you hold a CISSP certification?",
+      "question_class": "unanswerable",
+      "facts": [
+        {
+          "text": "PMP Certified",
+          "fact_type": "certification"
+        }
+      ],
+      "expected_source": "blank",
+      "expected_value_is_none": true,
+      "expected_requires_human": true
+    },
+    {
+      "id": "m9-foreign-or-out-of-scope-fact",
+      "category": "foreign_or_deleted_or_unverified_fact",
+      "kind": "m9_grounding",
+      "question_text": "Have you worked as a Principal Architect at Other Corp?",
+      "question_class": "uncertain",
+      "facts": [],
+      "expected_source": "blank",
+      "expected_value_is_none": true,
+      "expected_requires_human": true
+    },
+    {
+      "id": "m9-unsupported-numerical-claim",
+      "category": "unsupported_numerical_claim",
+      "kind": "m9_grounding",
+      "question_text": "How many certifications do you hold?",
+      "question_class": "unanswerable",
+      "facts": [],
+      "expected_source": "blank",
+      "expected_value_is_none": true,
+      "expected_requires_human": true
+    },
+    {
+      "id": "m9-unresolved-unset-profile-field",
+      "category": "unresolved_question",
+      "kind": "m9_grounding",
+      "question_text": "What is your phone number?",
+      "question_class": "factual_safe",
+      "profile_overrides": {
+        "phone": null
+      },
+      "expected_source": "blank",
+      "expected_value_is_none": true,
+      "expected_requires_human": true
+    },
+    {
+      "id": "m9-verified-fact-grounds-agent-answer",
+      "category": "verified_facts",
+      "kind": "m9_grounding",
+      "question_text": "Do you hold an AWS Certified Solutions Architect credential?",
+      "question_class": "uncertain",
+      "facts": [
+        {
+          "text": "AWS Certified Solutions Architect",
+          "fact_type": "certification"
+        }
+      ],
+      "expected_source": "agent",
+      "expected_value_is_none": false,
+      "expected_requires_human": false
+    },
+    {
+      "id": "m9-employment-type-explicit-accepted",
+      "category": "explicit_accepted_employment_type",
+      "kind": "m9_employment_gate",
+      "job_employment_type": "full_time",
+      "accepted_employment_types": [
+        "full_time"
+      ],
+      "expected_value": "true",
+      "expected_requires_human": false
+    },
+    {
+      "id": "m9-employment-type-explicit-rejected",
+      "category": "explicit_rejected_employment_type",
+      "kind": "m9_employment_gate",
+      "job_employment_type": "contract",
+      "accepted_employment_types": [
+        "full_time"
+      ],
+      "expected_value": "false",
+      "expected_requires_human": true
+    },
+    {
+      "id": "m9-employment-type-missing",
+      "category": "missing_employment_type",
+      "kind": "m9_employment_gate",
+      "job_employment_type": null,
+      "accepted_employment_types": [
+        "full_time"
+      ],
+      "expected_value": null,
+      "expected_requires_human": true
     }
   ]
 }
