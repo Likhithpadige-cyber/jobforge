@@ -357,6 +357,14 @@ OWNER_AND_REVIEWER = frozenset(
         ("PATCH", "/api/v1/applications/{application_id}/answers/{answer_id}"),
         ("POST", "/api/v1/applications/{application_id}/package/approve"),
         ("POST", "/api/v1/applications/{application_id}/package/request-changes"),
+        # M10 Phase 1. Cover-letter review is shared review access, same as
+        # resume review and answers review above - there is no owner-only
+        # "generate" route to mirror "prepare"/"first-draft": generation is
+        # triggered automatically when review opens, not by a separate human
+        # action this API exposes.
+        ("GET", "/api/v1/applications/{application_id}/cover-letter-review"),
+        ("POST", "/api/v1/applications/{application_id}/cover-letter-review/approve"),
+        ("POST", "/api/v1/applications/{application_id}/cover-letter-review/request-changes"),
     }
 )
 

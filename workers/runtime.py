@@ -34,6 +34,7 @@ from packages.core.services.applications import (
     questions_from_event_payload,
 )
 from packages.core.services.artifacts import render_resume
+from packages.core.services.cover_letters import CoverLetterClient, generate_cover_letter
 from packages.services.rendering import production_renderers
 from packages.services.rendering.store import (
     ArtifactStore,
@@ -47,7 +48,8 @@ from packages.shared.logging import configure_logging, get_logger
 log = get_logger(__name__)
 
 WorkerKind = Literal[
-    "relay", "monitor", "scheduler", "optimizer", "first-draft", "render", "application"
+    "relay", "monitor", "scheduler", "optimizer", "first-draft", "render", "application",
+    "cover-letter",
 ]
 
 
@@ -135,7 +137,8 @@ async def run(
         await verify_role(
             engine,
             "app_agent"
-            if kind in {"relay", "optimizer", "first-draft", "render", "application"}
+            if kind in {"relay", "optimizer", "first-draft", "render", "application",
+                        "cover-letter"}
             else "app_monitor",
         )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -213,6 +216,41 @@ async def run(
                     "cg.application",
                     {"application.questions.requested": prepare},
                 )
+            elif kind == "cover-letter":
+                # M10 Phase 1. LLM-calling and cost-shaped, like "first-draft":
+                # needs its own audit-engine connection and pricing, not the
+                # deterministic "application"/"render" workers' shape. Same
+                # no-auto-retry choice as "first-draft", for the same reason -
+                # a failed LLM attempt is not blindly retried.
+                audit_engine = await init_audit_engine(
+                    settings.model_copy(update={"database_url": dsn})
+                )
+                await verify_role(audit_engine, "app_audit" if settings.audit_database_url
+                                  else "app_agent")
+                prices = None
+                if (settings.llm_tailoring_input_price_per_million is not None
+                        and settings.llm_tailoring_output_price_per_million is not None):
+                    prices = Prices(model=settings.llm_model_tailoring,
+                                    input_per_million=settings.llm_tailoring_input_price_per_million,
+                                    output_per_million=settings.llm_tailoring_output_price_per_million)
+
+                async def draft(db: AsyncSession, event: Event) -> str:
+                    client = CoverLetterClient(settings, prices=prices)
+                    application_id = UUID(str(event.payload["application_id"]))
+                    note = event.payload.get("note") or None
+                    cover_letter = await generate_cover_letter(
+                        db,
+                        application_id=application_id,
+                        event_id=event.id,
+                        client=client,
+                        note=note,
+                        causation_id=event.id,
+                    )
+                    return f"{cover_letter.verification_status}:{cover_letter.id}"
+
+                runtime = DeliveryRuntime(sessions, "cg.cover-letter", {
+                    "cover_letter.generation.requested": draft,
+                }, retry=RetryPolicy(delays=()))
             elif kind == "optimizer":
                 selected = os.environ.get("WORKER_PROFILE_ID")
                 handler = evaluation_handler(
@@ -244,7 +282,7 @@ async def run(
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
-        if kind == "first-draft":
+        if kind in {"first-draft", "cover-letter"}:
             await dispose_audit_engine()
         await redis.aclose()
         await engine.dispose()

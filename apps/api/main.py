@@ -21,6 +21,7 @@ from apps.api.routers import (
     applications,
     artifacts,
     auth,
+    cover_letter_review,
     facts,
     first_draft,
     health,
@@ -165,6 +166,7 @@ def create_app() -> FastAPI:
     app.include_router(first_draft.router, prefix=settings.api_prefix)
     app.include_router(artifacts.router, prefix=settings.api_prefix)
     app.include_router(applications.router, prefix=settings.api_prefix)
+    app.include_router(cover_letter_review.router, prefix=settings.api_prefix)
 
     return app
 

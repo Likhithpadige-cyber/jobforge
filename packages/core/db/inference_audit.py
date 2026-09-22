@@ -514,3 +514,45 @@ class FirstDraftInferenceAudit(DomainInferenceAudit):
             raise InferenceAuditUnavailableError(
                 f"first-draft audit {operation} failed"
             ) from exc
+
+
+class CoverLetterInferenceAudit(DomainInferenceAudit):
+    """Independent cover-letter evidence, mirroring `FirstDraftInferenceAudit`.
+
+    M10 Phase 1's cover-letter drafting is worker/event-triggered, exactly
+    like first-draft generation, not synchronous-inside-one-request like C3
+    rework - so it needs this writer's shape (independent per-operation
+    commits, no domain-transaction savepoint), not `DomainInferenceAudit`'s.
+    Kept as its own class rather than reusing `FirstDraftInferenceAudit`
+    directly: that class's `_findings` hard-codes the reserved key
+    `first_draft_execution`, which would mislabel cover-letter audit rows.
+    """
+
+    def __init__(self, *, event_id: UUID, application_id: UUID, profile_id: UUID) -> None:
+        self._execution = {"event_id": str(event_id), "application_id": str(application_id),
+                           "profile_id": str(profile_id)}
+        self._ledger = _SpendLedger()
+        self._failed = False
+
+    def _findings(self, findings: Mapping[str, Any]) -> str:
+        payload = dict(findings)
+        if "cover_letter_execution" in payload:
+            raise ValueError("cover_letter_execution is reserved")
+        payload["cover_letter_execution"] = self._execution
+        return _json(payload)
+
+    @asynccontextmanager
+    async def _operation(
+        self, operation: str, stage: StageHandle | None = None
+    ) -> AsyncIterator[AsyncSession]:
+        self._check(stage)
+        try:
+            async with audit_session_scope() as session:
+                yield session
+        except BaseException as exc:
+            self._failed = True
+            if not isinstance(exc, Exception):
+                raise
+            raise InferenceAuditUnavailableError(
+                f"cover-letter audit {operation} failed"
+            ) from exc

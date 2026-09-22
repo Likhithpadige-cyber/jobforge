@@ -410,6 +410,39 @@
       ],
       "expected_value": null,
       "expected_requires_human": true
+    },
+    {
+      "id": "m10-cover-letter-grounded-paragraph",
+      "category": "cover_letter_verified_facts",
+      "kind": "m10_cover_letter_draft",
+      "claim": "I bring verified AWS infrastructure experience.",
+      "citation": 1,
+      "expected_error": null
+    },
+    {
+      "id": "m10-cover-letter-uncited-paragraph",
+      "category": "cover_letter_fabricated_claim",
+      "kind": "m10_cover_letter_draft",
+      "claim": "I bring verified AWS infrastructure experience.",
+      "no_citations": true,
+      "expected_error": "ModelOutputError"
+    },
+    {
+      "id": "m10-cover-letter-citation-of-unverified-fact",
+      "category": "cover_letter_fabricated_claim",
+      "kind": "m10_cover_letter_draft",
+      "claim": "I bring verified AWS infrastructure experience.",
+      "citation": 999,
+      "expected_error": "UnapprovedFactError"
+    },
+    {
+      "id": "m10-cover-letter-invented-numeral",
+      "category": "cover_letter_unsupported_numeral",
+      "kind": "m10_cover_letter_draft",
+      "claim": "I delivered 47 major AWS migrations.",
+      "citation": 1,
+      "numerals_used": ["47"],
+      "expected_error": "NumeralGuardError"
     }
   ]
 }

@@ -306,6 +306,14 @@ def import_limit(settings: Settings) -> Limit:
     )
 
 
+def cover_letter_revision_limit(settings: Settings) -> Limit:
+    return Limit(
+        name="cover-letter-revision",
+        max_requests=settings.rate_limit_cover_letter_revision_per_user,
+        window_seconds=settings.rate_limit_cover_letter_revision_window_seconds,
+    )
+
+
 def fact_suggest_limit(settings: Settings) -> Limit:
     return Limit(
         name="fact-suggest",

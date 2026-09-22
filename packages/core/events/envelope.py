@@ -35,6 +35,14 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "resume.master.imported", "resume.first_draft.requested",
         "resume.generation.requested", "resume.generated",
         "resume.verification.failed", "resume.render.requested", "resume.rendered",
+        # M10 Phase 1. The request/result pair for cover-letter (re)generation,
+        # matching the resume.render.requested/application.questions.requested
+        # shape: an owner-review-triggered request event with its own
+        # idempotency/replay through the worker machinery, not a bare
+        # in-process call. Emitted both on first generation (from
+        # resume_review.enter_review) and on every regeneration after a
+        # reviewer requests changes.
+        "cover_letter.generation.requested",
         "cover_letter.generated",
         # applications
         "application.created",

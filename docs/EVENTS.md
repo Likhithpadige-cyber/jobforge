@@ -84,7 +84,8 @@ Legend — **P** = producer, **C** = consumers.
 | `resume.verification.failed` | A1 | A3, API(SSE) | `{resume_id, application_id, failures: [{path, claim_text, verdict, reason, fact_ids}]}` |
 | `resume.render.requested` | A1 | **RND** | `{resume_id, formats: ["pdf","docx"]}` |
 | `resume.rendered` | RND | **A2**, A3 | v2: `{resume_id, application_id, resume_version, approval_id, artifacts: [{artifact_id, kind, template_version, size_bytes, sha256}]}` |
-| `cover_letter.generated` | A2 | A3 | `{cover_letter_id, application_id, claim_count, verified_count}` |
+| `cover_letter.generation.requested` | API (human), A2 | **A2** | `{application_id, note?}` - the M10 Phase 1 trigger; mirrors `resume.render.requested`/`application.questions.requested`, an owner-review-triggered request event rather than a bare in-process call, so it carries its own idempotency/replay through the worker machinery. Emitted once when human review opens (`resume_review.enter_review`, `note` absent - first generation) and again every time a reviewer requests changes to the cover letter under review (`note` present - the reviewer's instructions). The version this generates is computed by the worker under its own application-row lock, not predicted at request time |
+| `cover_letter.generated` | A2 | A3 | `{cover_letter_id, application_id, cover_letter_version, claim_count, verified_count}` |
 
 `resume.verification.failed` is the fabrication tripwire. It carries the full failure detail because a human needs to see exactly which sentence failed and why, without opening a log.
 

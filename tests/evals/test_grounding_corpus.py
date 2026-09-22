@@ -223,6 +223,43 @@ async def test_grounding_case(case, tmp_path):
         assert drafted.value == case["expected_value"]
         assert drafted.requires_human == case["expected_requires_human"]
         assert drafted.fact_ids == []
+    elif kind == "m10_cover_letter_draft":
+        # M10 Phase 1's own draft guard, offline and pure: every paragraph
+        # must cite a currently-verified fact and every numeral it uses must
+        # be present in that fact's structured data - the same fabrication
+        # contract `draft_guard` proves for resume bullets, exercised
+        # against the cover-letter paragraph schema instead.
+        from packages.agents.cover_letter import drafting as cl_drafting
+
+        cl_errors = {cls.__name__: cls for cls in (
+            ModelOutputError, PiiInPromptError, cl_drafting.UnapprovedFactError,
+            cl_drafting.NumeralGuardError,
+        )}
+        # `CoverLetterDraftOutput` requires 3-6 paragraphs (Decision 1's whole-
+        # letter shape) - unlike resume bullets, one paragraph alone never
+        # validates, so two always-grounded filler paragraphs isolate the
+        # one paragraph actually under test, the same way `draft_guard`
+        # isolates one bullet against resumes' unconstrained bullet list.
+        filler = {
+            "text": "I have verified experience relevant to this role.",
+            "fact_ids": [str(UUID(int=1))],
+            "numerals_used": [],
+        }
+        under_test = {
+            "text": case.get("claim", "I bring verified AWS experience."),
+            "fact_ids": [] if case.get("no_citations") else [
+                str(UUID(int=case.get("citation", 1)))
+            ],
+            "numerals_used": case.get("numerals_used", []),
+        }
+        body = canonical({"paragraphs": [under_test, filler, filler]})
+        if case["expected_error"]:
+            with pytest.raises(cl_errors[case["expected_error"]]):
+                cl_drafting.validate_draft(body, context, prompt_version="offline")
+        else:
+            result = cl_drafting.validate_draft(body, context, prompt_version="offline")
+            expected_text = case.get("claim", "I bring verified AWS experience.")
+            assert result.paragraphs[0].text == expected_text
     else:
         pytest.fail(f"Unknown corpus case kind: {kind}")
 
@@ -246,6 +283,10 @@ def test_corpus_inventory_and_positive_controls():
         "explicit_accepted_employment_type",
         "explicit_rejected_employment_type",
         "missing_employment_type",
+        # M10 Phase 1.
+        "cover_letter_verified_facts",
+        "cover_letter_fabricated_claim",
+        "cover_letter_unsupported_numeral",
     }
     assert sum(case.get("verdict") == "supported" for case in corpus) >= 5
     assert sum(case.get("verdict") in ("unsupported", "overreach") for case in corpus) >= 5

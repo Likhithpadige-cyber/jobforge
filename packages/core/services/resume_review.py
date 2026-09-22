@@ -513,8 +513,14 @@ async def enter_review(
     to look at. The `answers` approval this package may also need is a
     separate, independently decided `ApprovalKind.ANSWERS` row
     (`packages.core.services.applications.approve_answers`); this function
-    is unchanged from C2 otherwise and still only ever creates the `resume`
-    approval.
+    still only ever creates the `resume` approval itself.
+
+    M10 Phase 1: opening review also requests the cover letter
+    (`cover_letter.generation.requested`, consumed by
+    `packages.core.services.cover_letters.generate_cover_letter`). A cover
+    letter needs no owner-supplied input the way questions do, so - unlike
+    answers - there is no separate human action that starts it; the moment
+    review opens is the moment the whole packet must be assembled.
 
     Idempotent by state rather than by token. A retry finds the application
     already in `awaiting_approval` with a pending approval bound to this exact
@@ -599,6 +605,22 @@ async def enter_review(
             "resume_id": str(resume.id),
             "resume_version": resume.version,
         },
+    )
+    # M10 Phase 1. Cover-letter generation needs no owner-supplied input the
+    # way question extraction does, so it is requested here rather than from
+    # a separate human action: the moment review opens is the moment the
+    # whole packet - resume, answers, and now a cover letter - must be
+    # complete. Reached only once per application, since a retry short-
+    # circuits at the top of this function, so this can never double-fire.
+    await emit(
+        session,
+        type="cover_letter.generation.requested",
+        aggregate_type="resume",
+        aggregate_id=application.id,
+        correlation_id=application.id,
+        actor_type="human",
+        actor_id=str(actor.id),
+        payload={"application_id": str(application.id)},
     )
     log.info(
         "resume_review.entered",
