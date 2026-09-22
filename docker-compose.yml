@@ -174,7 +174,14 @@ services:
     # behind a login wall (MinIO's 2024 licensing change), and an anonymous
     # `docker compose --profile full up` must keep working. quay.io/minio/minio
     # is MinIO's own published mirror of the same image.
-    image: quay.io/minio/minio:latest
+    #
+    # Pinned to a concrete release rather than `latest`, matching how
+    # postgres and redis above are pinned: `latest` can move under CI with no
+    # diff in this repository to explain a sudden failure, and this service
+    # now has a real integration suite (tests/integration/test_s3_artifact_store.py)
+    # whose behavior depends on the server it runs against agreeing with the
+    # S3 API this adapter expects.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: jobforge-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
