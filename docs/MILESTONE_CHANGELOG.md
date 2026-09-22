@@ -660,3 +660,185 @@ extraction was verified under both pypdf and pdfminer (no control
 characters, no `(cid:)` markers); one real defect was found and fixed - U+2022
 in base-14 Helvetica extracted as `\x7f`/`(cid:127)` under both extractors,
 so bullets render as ASCII hyphens joined to their line instead.
+
+## M9 — COMPLETE, verified 2026-09-22
+
+Application preparation: `approved resume -> extracted questions ->
+classified -> grounded/drafted or left an honest blank -> human review ->
+independent answers approval`. Never submits anything - submission is M10's,
+and M9 does not implement, emit, or route toward it.
+
+### What M9 delivers
+
+**Question extraction, classification and drafting.** `prepare_application`
+(`packages/core/services/applications.py`) is one deterministic pipeline,
+called by the new `workers/application.py` worker: extract, classify, ground,
+draft, persist, transition `resume_ready -> questions_pending`, emit. No
+model call anywhere in it. `classify_question` places every question into one
+of six classes (`factual_safe`, `derived`, `uncertain`, `judgement`,
+`sensitive`, `unanswerable`) from its text and input type alone; `draft_answer`
+then attempts grounding in that order, and returns an honest blank the moment
+grounding fails rather than a lower-confidence guess. Questions arrive as an
+owner-supplied capture in the `prepare` request body, not a live ATS scrape -
+see Limitations.
+
+**Sensitive-question policy.** `packages/core/policies/sensitive_questions.py`
+is the hard-coded, escalate-only pre-classifier from AGENT_DESIGN.md §4.2
+(work authorization, visa/sponsorship, security clearance, criminal history,
+disability, veteran status, race/ethnicity, gender, age, salary *history*).
+It runs first and unconditionally inside `classify_question`; nothing
+downstream of it can move a question back out of `sensitive` once it has
+placed one there - proved by a case where a question matches both a sensitive
+pattern and an ordinary factual one and still lands on `sensitive`
+(`test_sensitive_cannot_be_shadowed_by_a_factual_pattern`, and the offline
+corpus's `deterministic_sensitive_classifier_vs_deescalation` category). A
+sensitive answer is always `source = 'blank'`, `value = NULL`,
+`requires_human = true` - never agent-answered, never logged.
+
+**Grounding and provenance.** Reuses the existing `AnswerSource`/`fact_ids`
+columns rather than adding new ones. `source = 'agent'` cites one or more
+real `profile_facts` rows only - verified, not soft-deleted, belonging to
+this exact profile (`_load_citable_facts`) - now backed by a database
+constraint, `ck_application_answers_agent_requires_facts` (migration 0009,
+mirroring `ck_resume_claims_claim_has_facts`): an uncited `agent` answer is a
+database error, not just a code-review finding. `source = 'derived'` covers
+anything deterministic that is *not* a fact citation - a `profiles` column
+(email, city, willing to relocate), a computed span (years of experience from
+`experiences` date ranges, outer bound only, never double-counting
+overlapping roles), or the employment-type preference below - and records
+what grounded it in `value_structured["derived_from"]` instead of a
+fabricated citation. Every cited fact is re-checked a second time immediately
+before the answers-approval snapshot is built (`revalidate_cited_facts`), the
+same immediately-before-persist discipline M8's `render_resume` uses for
+resume approval.
+
+**Employment-type candidate preference.** `profiles.accepted_employment_types`
+(migration 0009, `TEXT[]`, nullable, no default - `NULL` means no preference
+at all, so the filter is opt-in per candidate rather than hard-coded into
+JobForge). Values share the exact vocabulary
+`packages/services/ingestion/normalize.py`'s `extract_employment_type`
+already produces, so no normalizer changes were needed. An explicit accepted
+type auto-advances (`requires_human = false`); an explicit type outside the
+accepted set is a confident "no" that still requires a human decision
+(`judgement`); a missing or unmatched type is `uncertain` and requires a
+human - never inferred as full-time merely because a posting looks like an
+ordinary salaried role.
+
+**State machine.** `resume_ready -> questions_pending -> awaiting_approval`
+replaces the temporary bridge C2 used while question extraction did not
+exist. The first edge is `prepare_application`'s and always fires, including
+when extraction produced zero questions - the state records that extraction
+happened, not how many results it found. The second edge remains
+`resume_review.enter_review`, changed only in its precondition
+(`questions_pending` instead of `resume_ready`); it still only ever creates
+the `resume` approval, so nothing about the existing M7/M8 approval flow was
+altered.
+
+**Independent answers approval.** `ApprovalKind.ANSWERS` is a separate,
+independently created-and-decided record
+(`approve_answers`/`request_changes_answers`), not a replacement for the
+`resume` approval and not gated by it - `jobforge_require_real_approval`
+accepts any approved kind, so resume approval alone still moves an
+application to `approved` exactly as M7/M8 left it. Unlike resume review, the
+answers approval needs no separate "open" step: it is created and decided in
+one call, because there is no regeneration pipeline waiting on a pending row
+the way resume rework needs. `approve_answers` refuses while any
+`requires_human` answer is still unresolved, and its `subject_snapshot`
+records the full question/answer content (not identifiers only, since -
+unlike a versioned resume row - an `application_answers` row can still be
+edited after the snapshot is taken).
+
+**API.** Five endpoints (`apps/api/routers/applications.py`):
+`POST /applications/{id}/prepare` (owner only, 202, emits
+`application.questions.requested` rather than doing the work inline - mirrors
+`resume.first_draft.requested`/`resume.render.requested`'s shape exactly),
+`GET /applications/{id}/questions`, `PATCH /applications/{id}/answers/{id}`
+(always `source = 'human'`, `answered_by` from the session, never from the
+request body), `POST .../package/approve`, `POST .../package/request-changes`
+(all four owner + reviewer, matching M2's shared resume-review access).
+Authentication-before-lookup and an identical `"application not found"` for
+missing/inaccessible resources, the same non-enumeration discipline
+`artifacts.py` documents.
+
+**Worker and events.** `workers/application.py` (new `"application"` kind in
+`workers/runtime.py`, `app_agent` role, `DeliveryRuntime`/`cg.application`),
+deterministic and offline like `workers/render.py` - no model, no provider
+budget. `application.questions.requested` is a new catalogue entry (the
+request/result pair, mirroring the M7/M8 pattern); `application.questions.extracted`
+and `application.answers.drafted` are emitted exactly as EVENTS.md already
+specified before M9 existed. `application.ready` was **not** implemented -
+see Limitations.
+
+**Authorization.** `prepare` is owner-only; `questions`, `answers`,
+`package/approve` and `package/request-changes` are owner + reviewer, added
+to the route-enumerated authorization matrix (`test_every_route_is_classified`
+proves nothing was missed). `/sources` remains owner-only, unchanged.
+
+**Schema.** Migration `0009_application_preferences` adds exactly two things:
+`profiles.accepted_employment_types` and
+`ck_application_answers_agent_requires_facts`. No grant changes were made or
+needed - `app_agent` already had `SELECT`/`INSERT`/`UPDATE` on
+`application_questions`/`application_answers` from migration `0003`,
+confirmed against the real deployed schema
+(`test_deployed_grants_are_unchanged_by_this_migration`). Upgrade, downgrade
+and existing-data compatibility were tested in an isolated rollback-only
+schema; the primary development database was upgraded once, never
+downgraded.
+
+**Idempotency and recovery.** `prepare_application` is idempotent by
+*status*, not by row count - a real bug found and fixed during
+implementation: gating replay-detection on "do any rows exist" made the
+legitimate zero-question case fail to short-circuit, since a zero-question
+preparation leaves nothing to find. Fixed via an explicit set of statuses
+only reachable once preparation has already committed. Everything runs
+inside one atomic transaction the caller commits once - there is no separate
+"inference" step with its own durability need the way a paid LLM call has
+one, because nothing here calls one.
+
+### Explicit limitations
+
+- M9 does not scrape a live ATS form. Questions are an owner-supplied
+  capture, carried in the `prepare` request body and the
+  `application.questions.requested` event payload - one of AGENT_DESIGN.md
+  §4.1's three named sourcing methods, not the only one.
+- **Re-preparing after a resume rework, when the prior round produced
+  non-zero questions, is refused rather than silently merged.**
+  `application_questions` has no per-round version binding the way
+  `resumes.version` does, so a second `resume_ready` episode with real prior
+  rows raises `ApplicationStateError` instead of mixing two rounds' answers
+  with no way to tell them apart
+  (`test_reworked_resume_with_stale_prior_questions_is_refused_not_mixed`). A
+  prior round with zero questions is unaffected, since there is nothing to
+  conflict with. Versioning prepared questions per resume episode is future
+  work.
+- Free-text essay/`judgement` questions are never auto-drafted, even as a
+  marked-draft suggestion (AGENT_DESIGN.md §4.2 allows this optionally) - kept
+  conservative for this milestone.
+- `workers/application.py` has no docker-compose service, matching
+  `workers/render.py`'s own precedent from M8.
+- M9 does not implement `application.ready`, does not choose a submission
+  method, and does not submit or hand off an application. Submission belongs
+  to M10.
+- M9 does not implement cover-letter generation.
+- M9 does not implement M10 submission/handoff.
+
+### Final verification counts
+
+- make lint: clean.
+- make typecheck: 141 source files, no issues.
+- make verify-schema: 12 passed, 0 failed; 9-revision chain, head
+  0009_application_preferences.
+- make check-shadowing: clean.
+- make test-unit: 1622 passed.
+- make test-integration: 996 passed (dockerized).
+- make test-security: 1093 passed, 0 skipped, under
+  REQUIRE_SECURITY_TESTS=1.
+- make test-evals: 57 passed, 47 corpus cases (11 new M9 cases across all
+  required categories, added via narrow additive dispatch branches that
+  touch no existing case's logic), 0 provider calls.
+- make secrets-scan: passing, read-only, proven not to mutate the working
+  tree with the new files staged and unstaged.
+- Authorization matrix: 267 passed, including all five new M9 routes.
+
+No remote push occurred for this milestone; this repository has no
+configured remote.
