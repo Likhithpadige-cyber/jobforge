@@ -456,67 +456,207 @@ remain covered. M7 is complete. Stop here per the user's instruction: M8 has not
 started. No frozen UI changes or GitHub push were made for M7.
 
 
-## M8 — Phase 1 only. NOT COMPLETE, 2026-09-22
+## M8 — COMPLETE, verified 2026-09-22
+
+Rendering and artifacts: `approved structured resume -> deterministic
+rendering -> versioned artifact -> authenticated retrieval`. Built across
+several passes on this machine (Phases 1-2 below are preserved history from
+before pytest/boto3 were confirmed runnable in this environment); this entry
+is the final, complete record superseding the two earlier "NOT COMPLETE"
+entries it replaces.
+
+### What M8 delivers
+
+**Rendering.** `DocxResumeRenderer` (python-docx) and `PdfResumeRenderer`
+(ReportLab) are byte-deterministic - see "History" below for how that was
+measured and the two determinism defects fixed along the way. Rendering
+reads only `packages/services/rendering/document.py`'s pure, dependency-free
+`ResumeDocument` (no profile, no job, no evaluation, no contact block), so it
+structurally cannot rewrite or infer a candidate's claims; a word-for-word
+comparison against persisted content plus a separate numeral assertion is
+the executable half of that guarantee (`tests/unit/test_render_no_fabrication.py`,
+`test_rendering_never_invents_text`).
+
+**Approval binding.** `render_resume` (`packages/core/services/artifacts.py`)
+authorises against the exact approved resume id *and* version via
+`snapshot_matches` - a regenerated version cannot inherit its predecessor's
+approval. Ordering is `revalidate -> render -> upload -> read back and
+compare checksums -> revalidate again -> insert the row -> emit`: the second
+revalidation runs immediately before the artifact row is written, so a
+reviewer requesting changes while rendering is in flight aborts the write
+before anything durable claims the stale version was rendered.
+
+**Storage.** Artifact bytes live behind the `ArtifactStore` protocol
+(`put`/`get`/`exists`/`verify` only - deliberately no `presigned_url`, no
+`public_url`, nothing that mints a link). `S3ArtifactStore` is a real boto3
+adapter: `put_object` is called with `ContentType` and never with an `ACL`
+argument, so the bucket's privacy is never overridden from application code;
+`verify` re-downloads and re-hashes SHA-256 rather than trusting ETag, which
+is not a content hash at all for a multipart upload. `artifact_store()` has
+exactly two branches (`s3`, `filesystem`) and no fallback between them - an
+`s3` deployment that cannot reach its store fails closed through
+`ArtifactStoreUnavailableError` rather than writing to local disk.
+Storage keys (`resumes/<uuid>/<template>/resume.<ext>`) are opaque UUIDs and
+fixed words only; no candidate name, email or other PII ever reaches one.
+
+**Real MinIO verification.** `tests/integration/test_s3_artifact_store.py`
+runs the real adapter against a real, version-pinned MinIO
+(`quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`, docker-compose `full`
+profile) - `put -> exists/head -> get` with exact-byte and exact-content-type
+round-trip, a missing-object path, and an unreachable-endpoint transport
+failure. This is MinIO verification, not AWS S3 verification; see
+Limitations.
+
+**Idempotency and recovery.** A pure replay of `render_resume` writes no
+second artifact row and emits no second `resume.rendered`
+(`test_replaying_the_render_writes_nothing_new`). A mixed invocation - one
+artifact already existing, one genuinely new - emits exactly one event
+naming every artifact the resume now has, not one per newly created row
+(`test_a_mixed_invocation_emits_one_event_covering_every_artifact`). Upload
+happens before the database row, so a crash between them leaves a harmless
+orphan object rather than a row that lies about what exists; recovery reuses
+the same deterministic storage key and a further replay after recovery is
+still idempotent (`test_the_orphaned_object_is_recoverable_and_replay_stays_idempotent`).
+
+**Event contract.** `resume.rendered` v2 (`packages/core/events/rendered.py`,
+`ResumeRenderedV2`, `extra="forbid"`) is validated at emission and re-parsed
+from the persisted row in `test_rendered_event_exact_public_v2_contract`. The
+delivery runtime's `SUPPORTED_EVENT_VERSIONS` map is per event type:
+`resume.rendered` accepts `{1, 2}` so historical v1 producers keep working
+unmodified; every other event type accepts only `{1}`, enforced at the same
+dispatch point before any handler runs
+(`test_unsupported_version_never_calls_handler`, using an unrelated event
+type to prove the rejection is general, not `resume.rendered`-specific).
+Both v1 and v2 were proven to traverse the real Redis stream and the real
+`DeliveryRuntime`, not just construct correctly
+(`test_rendered_versions_through_stream_dispatch_are_idempotent`).
+
+**Authorization and non-enumeration.** Artifact listing and download sit in
+`OWNER_AND_REVIEWER` in the route-enumerated authorization matrix - a
+reviewer who may read a resume may see and download what was rendered from
+it. An anonymous caller gets 401 before any identifier is looked up; a
+missing artifact and a missing resume answer with an identical 404 body,
+including when the underlying store itself is unreachable for a resource
+that was never accessible in the first place (existence is never leaked
+through which error a caller receives). `/sources` remains owner-only,
+unchanged.
+
+**Schema.** Migration `0008_artifact_binding` adds `resume_version`,
+`approval_id` and `template_version` to `artifacts`, nullable at the table
+level (the table also holds evidence/handoff artifacts with no resume
+lineage) and required by a `CHECK` for the two rendered-resume kinds. Grants
+`app_agent` `INSERT` on `artifacts` - the render worker's only new
+capability - on top of the `SELECT` it already had; `app_agent` remains
+SELECT + INSERT, no UPDATE, no DELETE, confirmed against the real deployed
+table. The down-migration refuses when rendered artifacts exist
+(`Cannot downgrade: rendered resume artifacts...`) rather than silently
+dropping the binding a human's approval depends on.
+
+**Dependency/security posture.** `boto3` added as a runtime dependency for
+`S3ArtifactStore`. A subsequent `pip-audit` pass found 20 known
+vulnerabilities across three pre-existing, non-M8 packages (`python-multipart`,
+`cryptography`, and transitively `starlette` via `fastapi`'s own version
+ceiling); all three were upgraded to the minimum version covering every
+outstanding advisory (verified against real package metadata, not inferred
+from version numbers), bringing `make audit` to 0 known vulnerabilities with
+zero application-code changes. Separately, `make secrets-scan` was found to
+be running `detect-secrets`' baseline-*maintenance* command (always rewrites
+the baseline, always exits 0 - never an actual gate, in CI either) instead of
+its read-only `detect-secrets-hook` counterpart; both the Makefile target and
+CI now run the read-only gate, and the stale baseline (last genuinely
+generated against a ~14-file skeleton repo) was regenerated and manually
+reviewed finding-by-finding, with zero genuine secrets found.
+
+### Explicit limitations
+
+- Real AWS S3 itself was not exercised - only MinIO, which is wire-compatible
+  for the operations this adapter uses but is not the same claim.
+- Real AWS credential-chain / IAM-role resolution is unverified; the adapter
+  supports it (omitted static credentials fall through to boto3's own
+  resolution chain) but nothing in CI or locally exercises an IAM role.
+- Multipart S3 upload is neither implemented nor exercised - every artifact
+  here is small enough for a single `put_object`, and no code path chunks an
+  upload.
+- M8 does not implement M9 application preparation.
+- M8 does not implement M10 submission/handoff.
+
+### Pre-existing hardening item, not an M8 blocker
+
+Local API connections currently authenticate to PostgreSQL as the cluster
+owner `jobforge`, confirmed empirically via `pg_stat_activity` against the
+running `jobforge-api` container, rather than the least-privileged `app_api`
+role the schema's grants (migration `0003_roles_grants`) and SECURITY.md
+§3.2 describe as the second layer of defense. Unlike the render worker,
+which has both a per-process `WORKER_DATABASE_URL` and a `verify_role()`
+startup check that refuses to run under the wrong role, the API has neither;
+`make db-verify-roles` checks only `app_agent`. Table ownership bypasses
+grants entirely, so DB-level least privilege is not currently an effective
+defense-in-depth boundary for API traffic in any environment, dev or
+otherwise. This predates M8 - it is a property of the M1-M3 role model,
+applies schema-wide rather than to `artifacts` specifically, and no API code
+path was found (or added by M8) that updates or deletes an artifact row
+regardless - but it should be revisited during release/security/AWS
+hardening, where `DATABASE_URL` would need to be pointed at `app_api`
+credentials and a startup check added to match the worker's.
+
+### Final verification counts
+
+- make lint: clean.
+- make typecheck: 136 source files, no issues.
+- make verify-schema: 12 passed, 0 failed; 8-revision chain, head
+  0008_artifact_binding.
+- make check-shadowing: clean.
+- make test-unit: 1555 passed.
+- make test-integration: 948 passed (includes the real-MinIO S3 suite,
+  reached over the dockerized network path).
+- make test-security: 1054 passed, 0 skipped, under
+  REQUIRE_SECURITY_TESTS=1.
+- make test-evals: 46 passed, 36 corpus cases, 0 provider calls - the M6
+  anti-fabrication/grounding suite, unaffected by M8.
+- make audit: 0 known vulnerabilities (post-remediation).
+- make secrets-scan: passing, read-only, proven not to mutate the working
+  tree across repeated runs.
+- Real MinIO integration (`tests/integration/test_s3_artifact_store.py`):
+  8 passed, against the pinned `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z`.
+- 25/25 M8 invariants individually mapped to production code and executable
+  tests with zero GAP and zero PARTIAL (put -> exists/head -> get exact-byte
+  round trip; only an approved exact resume/version renders; stale
+  approval/version rejected before persistence with a second revalidation
+  immediately before the write; deterministic DOCX/PDF; no-PII storage keys;
+  checksum verification; authenticated downloads; owner/reviewer
+  authorization; non-enumeration; no filesystem fallback; no public
+  ACL/URL/presigned path; replay and mixed-invocation idempotency;
+  deterministic orphan recovery; v2 payload contract and delivery-runtime
+  traversal; v1 compatibility; unrelated-event version rejection;
+  `/sources` owner-only).
+
+No remote push occurred for any commit in this milestone; this repository
+has no configured remote.
+
+### History (Phase 1 - infrastructure and the determinism harness)
 
 Rendering infrastructure, approval binding, storage abstraction and the
-determinism harness. The DOCX and PDF renderer bodies and the S3/MinIO
-adapter are declared dependency boundaries that have not been written or
-executed. M8 must not be marked complete until they have been.
+determinism harness were built and schema-verified before pytest, SQLAlchemy,
+FastAPI, structlog and boto3 were confirmed runnable in this environment. In
+that state: make verify-schema (12 passed), the shadowing audit and the
+down-migration freshness check were all clean; a 62-test M8 unit suite
+(canonical document, storage keys/filenames, the determinism harness, the
+filesystem store) found and fixed two defects - a path traversal in
+`storage_key` when `template_version` was `..`, and a determinism harness
+that had been asserting over renderers whose bodies raise rather than over
+their actual output.
 
-Local checkpoint 332aca5 / tag m1-m7-verified was created first as the
-M1-M7 recovery point. No remote exists on this repository; nothing was
-pushed.
+### History (Phase 2 - renderers implemented and measured)
 
-### Verified by execution in this environment
-
-- make verify-schema: 12 passed, 0 failed; 8-revision chain, head
-  0008_artifact_binding; down migration reverses up.
-- SQLAlchemy name-shadowing audit: clean.
-- Down-migration freshness check: up to date.
-- M8 unit suite: 62 passed, 0 failed, 0 skipped - canonical document,
-  storage keys and filenames, determinism harness, filesystem store.
-- Two defects found and fixed by those tests: a path traversal in
-  `storage_key` when `template_version` was `..`, and a determinism harness
-  that asserted over renderers whose bodies raise.
-
-### Not verified by execution
-
-pytest, SQLAlchemy, FastAPI, structlog and boto3 are absent from this
-environment. The render service, worker, both endpoints, the integration
-suite and its fixture are written and parse, and have never been run.
-python-docx 1.2.0 and ReportLab 4.4.10 ARE installed here - an earlier report
-that they were unavailable was based on a `pip download` probe, which tests
-reachability of the index rather than the installed set. That was wrong, and
-it means the renderer bodies can be written and genuinely verified here.
-
-See docs/M8_RENDERING.md.
-
-
-## M8 — Phase 2: renderers implemented and measured. STILL NOT COMPLETE, 2026-09-22
-
-DocxResumeRenderer (python-docx 1.2.0) and PdfResumeRenderer (ReportLab
-4.4.10) implemented and executed against the real libraries.
-
-Determinism: byte-identical across four separate interpreter processes, 1.2s
-apart, PYTHONHASHSEED=random, both formats. DOCX needed exactly one fix -
-ZIP entry timestamps are the wall clock - handled by repacking with a fixed
-stamp without parsing or rewriting any entry. core.xml dates and w:rsid
-values were measured and found constant, so no OOXML surgery was performed.
-PDF needed Canvas(invariant=1), which pins /CreationDate, /ModDate and /ID.
-
-ATS extraction verified under pypdf and pdfminer: no control characters, no
-(cid:) markers. One real defect found and fixed - U+2022 in base-14
-Helvetica extracted as \x7f / (cid:127) under both extractors, so bullets
-are ASCII hyphens joined to their line.
-
-Anti-fabrication: structural import audit plus a word-for-word comparison of
-rendered output against persisted content for all three renderers, with a
-separate numeral assertion.
-
-Unit suite: 104 passed, 0 failed, 2 skipped - executed through a temporary
-stdlib harness in /tmp against the real production libraries, NOT through
-pytest. Schema, shadowing and down-migration gates: green.
-
-Still pending: boto3/S3 adapter, and executable verification of the service,
-worker, endpoints, migration and integration suite in the Mac .venv. M8 must
-not be marked complete until those pass. See docs/M8_RENDERING.md.
+`DocxResumeRenderer` and `PdfResumeRenderer` were implemented and executed
+against the real libraries, byte-identical across four separate interpreter
+processes 1.2s apart with `PYTHONHASHSEED=random`, for both formats. DOCX
+needed exactly one fix - ZIP entry timestamps are the wall clock at save
+time - handled by repacking the archive with a fixed timestamp without
+parsing or rewriting any entry; `core.xml` dates and `w:rsid` values were
+measured and found constant, so no OOXML surgery was performed. PDF needed
+`Canvas(invariant=1)`, which pins `/CreationDate`, `/ModDate` and `/ID`. ATS
+extraction was verified under both pypdf and pdfminer (no control
+characters, no `(cid:)` markers); one real defect was found and fixed - U+2022
+in base-14 Helvetica extracted as `\x7f`/`(cid:127)` under both extractors,
+so bullets render as ASCII hyphens joined to their line instead.
