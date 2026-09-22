@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
 
-from packages.core.models import IngestionMethod, JobStatus
+from packages.core.models import JobStatus
 from packages.services.ingestion import IngestionPipeline, RawPosting
 from packages.shared.errors import PolicyBlockedError
 from packages.shared.ids import uuid7

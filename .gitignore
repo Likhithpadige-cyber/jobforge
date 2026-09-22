@@ -67,3 +67,6 @@ Thumbs.db
 
 # --- local project backups ---------------------------------------------------
 /backups/
+
+# Offline evaluation reports (the synthetic corpus is versioned separately)
+.eval-results/

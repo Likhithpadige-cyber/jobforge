@@ -1,15 +1,11 @@
 from packages.core.repositories.base import BaseRepository
+from packages.core.repositories.facts import FactEvidenceRepository, FactRepository
 from packages.core.repositories.jobs import (
     CompanyRepository,
     JobEvaluationRepository,
     JobRepository,
     SitePolicyRepository,
     SourceRepository,
-)
-from packages.core.repositories.facts import FactEvidenceRepository, FactRepository
-from packages.core.repositories.revision_attempts import (
-    AttemptSourceConflictError,
-    RevisionAttemptRepository,
 )
 from packages.core.repositories.profile import (
     CHILD_REPOSITORIES,
@@ -20,9 +16,14 @@ from packages.core.repositories.profile import (
     ProjectRepository,
     SkillRepository,
 )
+from packages.core.repositories.revision_attempts import (
+    AttemptSourceConflictError,
+    RevisionAttemptRepository,
+)
 
 __all__ = [
     "CHILD_REPOSITORIES",
+    "AttemptSourceConflictError",
     "BaseRepository",
     "CertificationRepository",
     "CompanyRepository",
@@ -33,7 +34,6 @@ __all__ = [
     "JobEvaluationRepository",
     "JobRepository",
     "ProfileRepository",
-    "AttemptSourceConflictError",
     "ProjectRepository",
     "RevisionAttemptRepository",
     "SitePolicyRepository",

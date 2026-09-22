@@ -31,9 +31,17 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 
-from apps.api.deps import CsrfProtected, CurrentHumanActor, DbSession, RevisionClient
+from apps.api.deps import (
+    CsrfProtected,
+    CurrentHumanActor,
+    DbSession,
+    RevisionClient,
+    authenticated_api,
+    rate_limited,
+    revision_limit,
+)
 from apps.api.schemas.resume_review import (
     ApproveRequest,
     RequestChangesRequest,
@@ -43,7 +51,11 @@ from apps.api.schemas.resume_review import (
 from packages.core.services import resume_review as service
 from packages.core.services.resume_rework import request_changes_and_regenerate
 
-router = APIRouter(prefix="/applications", tags=["resume-review"])
+router = APIRouter(
+    prefix="/applications",
+    tags=["resume-review"],
+    dependencies=[Depends(authenticated_api)],
+)
 
 REVIEW = "/{application_id}/resume-review"
 
@@ -109,6 +121,7 @@ async def approve_resume(
     f"{REVIEW}/request-changes",
     response_model=ResumeReviewRead,
     summary="Send the resume back with instructions",
+    dependencies=[Depends(rate_limited(revision_limit))],
 )
 async def request_resume_changes(
     application_id: UUID,

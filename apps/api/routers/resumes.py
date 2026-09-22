@@ -15,11 +15,11 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from apps.api.deps import DbSession
+from apps.api.deps import DbSession, authenticated_api
 from apps.api.schemas.resume_review import ResumeReviewRead
 from apps.api.schemas.resumes import (
     ApplicationRead,
@@ -38,8 +38,10 @@ from packages.core.models import (
 from packages.core.services import resume_review
 from packages.shared.errors import NotFoundError
 
-router = APIRouter(prefix="/resumes", tags=["resumes"])
-applications_router = APIRouter(prefix="/applications", tags=["resumes"])
+router = APIRouter(prefix="/resumes", tags=["resumes"], dependencies=[Depends(authenticated_api)])
+applications_router = APIRouter(
+    prefix="/applications", tags=["resumes"], dependencies=[Depends(authenticated_api)]
+)
 
 #: Sections in the order a resume reads, not the order rows come back in.
 #: Anything not listed is appended alphabetically, so an unexpected section

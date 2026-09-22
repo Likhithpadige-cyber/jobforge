@@ -12,11 +12,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from packages.shared.clock import ensure_utc
 from packages.services.ingestion.types import RawPosting
+from packages.shared.clock import ensure_utc
 from packages.shared.errors import ValidationError
 
 REQUIRED_COLUMNS = ("title", "url")
@@ -46,12 +47,13 @@ def _parse_datetime(value: str | None) -> datetime | None:
     if not value or not value.strip():
         return None
     text = value.strip().replace("Z", "+00:00")
-    for parser in (
+    parsers: tuple[Callable[[str], datetime], ...] = (
         lambda v: datetime.fromisoformat(v),
-        lambda v: datetime.strptime(v, "%Y-%m-%d"),  # noqa: DTZ007
-        lambda v: datetime.strptime(v, "%m/%d/%Y"),  # noqa: DTZ007
-        lambda v: datetime.strptime(v, "%d/%m/%Y"),  # noqa: DTZ007
-    ):
+        lambda v: datetime.strptime(v, "%Y-%m-%d"),
+        lambda v: datetime.strptime(v, "%m/%d/%Y"),
+        lambda v: datetime.strptime(v, "%d/%m/%Y"),
+    )
+    for parser in parsers:
         try:
             parsed = parser(text)
         except (ValueError, TypeError):

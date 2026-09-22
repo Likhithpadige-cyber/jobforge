@@ -3,6 +3,14 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
   poweredByHeader: false,
+  async rewrites() {
+    return process.env.NODE_ENV === "development"
+      ? [
+          { source: "/api/v1/:path*", destination: "http://localhost:8000/api/v1/:path*" },
+          { source: "/health", destination: "http://localhost:8000/health" },
+        ]
+      : [];
+  },
   async headers() {
     // Baseline security headers (SECURITY.md §8.1). CSP is tightened once
     // the real page set exists.

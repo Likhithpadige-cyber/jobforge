@@ -106,14 +106,16 @@ export function ResumeStudioView({
     <div className="space-y-6">
       <header
         data-testid="studio-header"
-        className="rounded-card border border-edge bg-surface p-5"
+        className="reveal rounded-[1.5rem] border border-violet/10 bg-gradient-to-br from-white to-[#F5F1FB] p-6 shadow-raised sm:p-8"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-ink">{jobLine(resume)}</h1>
+            <p className="text-xs font-semibold uppercase tracking-[.14em] text-violet-deep">Resume review workspace</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{jobLine(resume)}</h1>
             <p className="mt-1 text-sm text-ink-soft">
               Version {resume.version} · Generated {formatTimestamp(resume.created_at)}
             </p>
+            <p className="mt-2 text-xs text-ink-soft">Up to three rework cycles are allowed. The current cycle count is not available from this API.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <StatusBadge
@@ -134,8 +136,14 @@ export function ResumeStudioView({
         )}
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_18rem]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="space-y-6">
+          <section aria-labelledby="comparison-heading" className="reveal grid gap-4 lg:grid-cols-2">
+            <div className="rounded-card border border-edge bg-muted/55 p-5 shadow-raised"><h2 id="comparison-heading" className="text-sm font-semibold text-ink">Original</h2><div className="mt-4 flex min-h-48 items-center justify-center rounded-card border border-dashed border-edge bg-white/70 p-5 text-center text-sm leading-6 text-ink-soft">Original resume content is not available from this API. No comparison or change highlight is inferred.</div></div>
+            <div className="rounded-card border border-violet/15 bg-surface p-5 shadow-raised"><h2 className="text-sm font-semibold text-ink">Revised · Version {resume.version}</h2><div className="mt-4 min-h-48 rounded-card border border-edge bg-white p-5"><p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">Professional summary</p><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink">{resume.summary_text || "No summary text recorded. The verified claims appear below."}</p></div></div>
+          </section>
+          <section aria-labelledby="verification-heading" className="reveal rounded-card border border-edge bg-surface p-5 shadow-raised"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="verification-heading" className="text-base font-semibold text-ink">AI verification</h2><StatusBadge label={VERIFICATION_LABEL[resume.verification_status]} tone={VERIFICATION_TONE[resume.verification_status]} /></div><dl className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-chip bg-muted/50 p-3"><dt className="text-xs text-ink-soft">Claims checked</dt><dd className="mt-1 text-xl font-semibold text-ink">{resume.counts.total - resume.counts.not_checked}</dd></div><div className="rounded-chip bg-signal-strong/5 p-3"><dt className="text-xs text-ink-soft">Claims verified</dt><dd className="mt-1 text-xl font-semibold text-signal-strong">{resume.counts.supported}</dd></div><div className="rounded-chip bg-signal-risk/[0.04] p-3"><dt className="text-xs text-ink-soft">Unsupported claims</dt><dd className="mt-1 text-xl font-semibold text-signal-risk">{resume.counts.unsupported}</dd></div></dl><p className="mt-3 text-xs text-ink-soft">Guardrail result: {VERIFICATION_LABEL[resume.verification_status]}. Expand a claim below for the recorded reason and cited fact identifiers.</p></section>
+          <h2 className="text-lg font-semibold text-ink">Revised content and claim checks</h2>
           {sections.length === 0 ? (
             <EmptyState
               title="No claims recorded"
@@ -146,7 +154,7 @@ export function ResumeStudioView({
               <section
                 key={section.key}
                 aria-labelledby={`section-${section.key}`}
-                className="rounded-card border border-edge bg-surface p-5"
+                className="reveal rounded-card border border-edge bg-surface p-5 shadow-raised"
               >
                 <SectionHeader
                   id={`section-${section.key}`}
@@ -166,13 +174,14 @@ export function ResumeStudioView({
         </div>
 
         <aside className="space-y-4">
-          <TailoringSnapshot resume={resume} />
           {resume.review && (
             <ResumeReviewPanel
               review={resume.review}
               onReviewed={(next) => onReviewed?.(next)}
             />
           )}
+          <TailoringSnapshot resume={resume} />
+          <div className="rounded-card border border-edge bg-surface p-5 shadow-raised"><h2 className="text-sm font-semibold text-ink">AI activity</h2><p className="mt-2 text-xs leading-5 text-ink-soft">This version was generated {formatTimestamp(resume.created_at)}. A step-by-step activity feed is not exposed by the current API.</p></div>
           <div className="rounded-card border border-edge bg-surface p-5">
             <h2 className="text-sm font-semibold text-ink">Next steps</h2>
             <p className="mt-1 text-xs text-ink-soft">

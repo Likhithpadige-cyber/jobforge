@@ -1,13 +1,6 @@
 import type { Config } from "tailwindcss";
 
-/**
- * JobForge design tokens.
- *
- * Palette is graphite and paper with a single warm brass accent. Semantic
- * colours are deliberately muted and used only to carry meaning that would
- * otherwise be invisible - never for decoration. The interface stays
- * predominantly charcoal, grey and white.
- */
+/** JobForge's light, warm workspace palette. */
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
@@ -17,23 +10,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        charcoal: "#1C1F24",   // sidebar — a shade deeper than the spec so the
-                               // active item reads as raised rather than tinted
-        graphite: "#2B3036",   // active nav item, sidebar raised surfaces
-        canvas: "#F4F5F6",     // workspace background
+        charcoal: "#20243A",
+        graphite: "#303656",
+        canvas: "#FAFAF7",     // warm workspace background
         surface: "#FFFFFF",    // cards
-        muted: "#ECEEF0",      // secondary surfaces, track fills
-        edge: "#E2E5E9",       // borders
-        ink: "#181A1E",        // primary text
-        "ink-soft": "#686D76", // secondary text
+        muted: "#F5F2EB",      // cream surfaces
+        edge: "#E8E8E5",
+        ink: "#24283B",
+        "ink-soft": "#687082",
+        violet: { DEFAULT: "#6457B5", soft: "#F0EDFA", deep: "#4D4291" },
         brass: {
-          DEFAULT: "#C7A96B",  // the single accent
-          soft: "#EFE7D5",
-          deep: "#9C8248",
+          DEFAULT: "#C9AE78",
+          soft: "#F6F0E4",
+          deep: "#8B7040",
         },
         // Meaning-bearing only. Muted on purpose.
         signal: {
-          strong: "#3F7A55",   // strong match / success
+          strong: "#398468",   // soft emerald success
           review: "#A97A2F",   // needs review / borderline
           risk: "#A34A42",     // security / failure
           info: "#4A6785",     // informational
@@ -53,12 +46,12 @@ const config: Config = {
         display: ["1.375rem", { lineHeight: "1.75rem", letterSpacing: "-0.015em" }],
       },
       borderRadius: {
-        card: "0.625rem",  // rounded, not pill-like
-        chip: "0.375rem",
+        card: "1rem",
+        chip: "0.625rem",
       },
       boxShadow: {
         // One shadow, used sparingly. Structure comes from borders.
-        raised: "0 1px 2px rgba(24, 26, 30, 0.04), 0 2px 8px rgba(24, 26, 30, 0.04)",
+        raised: "0 10px 32px rgba(34, 39, 65, 0.045), 0 1px 3px rgba(34, 39, 65, 0.035)",
       },
       spacing: {
         sidebar: "15rem", // 240px

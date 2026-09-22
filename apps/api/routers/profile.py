@@ -9,9 +9,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Depends, Response, status
 
-from apps.api.deps import DbSession
+from apps.api.deps import DbSession, authenticated_api, require_owner
 from apps.api.schemas.profile import (
     CertificationCreate,
     CertificationRead,
@@ -43,7 +43,7 @@ from packages.core.repositories import (
 from packages.core.services import ProfileService
 from packages.shared.errors import NotFoundError
 
-router = APIRouter(prefix="/profile", tags=["profile"])
+router = APIRouter(prefix="/profile", tags=["profile"], dependencies=[Depends(authenticated_api)])
 
 
 @router.get("", response_model=ProfileDetail, summary="Get the profile")
@@ -56,7 +56,12 @@ async def get_profile(session: DbSession) -> Any:
     return detailed
 
 
-@router.put("", response_model=ProfileRead, summary="Update the profile")
+@router.put(
+    "",
+    response_model=ProfileRead,
+    summary="Update the profile",
+    dependencies=[Depends(require_owner)],
+)
 async def update_profile(payload: ProfileUpdate, session: DbSession) -> Any:
     service = ProfileService(session)
     profile = await service.profiles.get_singleton()
@@ -84,8 +89,12 @@ async def list_experiences(session: DbSession) -> Any:
     return await ExperienceRepository(session).list_for_profile(await _profile_id(session))
 
 
-@router.post("/experiences", response_model=ExperienceRead,
-             status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/experiences",
+    response_model=ExperienceRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_owner)],
+)
 async def create_experience(payload: ExperienceCreate, session: DbSession) -> Any:
     entity = await ExperienceRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
@@ -94,7 +103,11 @@ async def create_experience(payload: ExperienceCreate, session: DbSession) -> An
     return entity
 
 
-@router.patch("/experiences/{entity_id}", response_model=ExperienceRead)
+@router.patch(
+    "/experiences/{entity_id}",
+    response_model=ExperienceRead,
+    dependencies=[Depends(require_owner)],
+)
 async def update_experience(
     entity_id: UUID, payload: ExperienceUpdate, session: DbSession
 ) -> Any:
@@ -105,7 +118,11 @@ async def update_experience(
     return updated
 
 
-@router.delete("/experiences/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/experiences/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_owner)],
+)
 async def delete_experience(entity_id: UUID, session: DbSession) -> Response:
     repo = ExperienceRepository(session)
     await repo.soft_delete(await repo.get_or_404(entity_id))
@@ -119,8 +136,12 @@ async def list_educations(session: DbSession) -> Any:
     return await EducationRepository(session).list_for_profile(await _profile_id(session))
 
 
-@router.post("/educations", response_model=EducationRead,
-             status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/educations",
+    response_model=EducationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_owner)],
+)
 async def create_education(payload: EducationCreate, session: DbSession) -> Any:
     entity = await EducationRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
@@ -129,7 +150,11 @@ async def create_education(payload: EducationCreate, session: DbSession) -> Any:
     return entity
 
 
-@router.patch("/educations/{entity_id}", response_model=EducationRead)
+@router.patch(
+    "/educations/{entity_id}",
+    response_model=EducationRead,
+    dependencies=[Depends(require_owner)],
+)
 async def update_education(
     entity_id: UUID, payload: EducationUpdate, session: DbSession
 ) -> Any:
@@ -140,7 +165,11 @@ async def update_education(
     return updated
 
 
-@router.delete("/educations/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/educations/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_owner)],
+)
 async def delete_education(entity_id: UUID, session: DbSession) -> Response:
     repo = EducationRepository(session)
     await repo.soft_delete(await repo.get_or_404(entity_id))
@@ -156,8 +185,12 @@ async def list_certifications(session: DbSession) -> Any:
     )
 
 
-@router.post("/certifications", response_model=CertificationRead,
-             status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/certifications",
+    response_model=CertificationRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_owner)],
+)
 async def create_certification(payload: CertificationCreate, session: DbSession) -> Any:
     entity = await CertificationRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
@@ -166,7 +199,11 @@ async def create_certification(payload: CertificationCreate, session: DbSession)
     return entity
 
 
-@router.patch("/certifications/{entity_id}", response_model=CertificationRead)
+@router.patch(
+    "/certifications/{entity_id}",
+    response_model=CertificationRead,
+    dependencies=[Depends(require_owner)],
+)
 async def update_certification(
     entity_id: UUID, payload: CertificationUpdate, session: DbSession
 ) -> Any:
@@ -177,7 +214,11 @@ async def update_certification(
     return updated
 
 
-@router.delete("/certifications/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/certifications/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_owner)],
+)
 async def delete_certification(entity_id: UUID, session: DbSession) -> Response:
     repo = CertificationRepository(session)
     await repo.soft_delete(await repo.get_or_404(entity_id))
@@ -191,7 +232,12 @@ async def list_skills(session: DbSession) -> Any:
     return await SkillRepository(session).list_for_profile(await _profile_id(session))
 
 
-@router.post("/skills", response_model=SkillRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/skills",
+    response_model=SkillRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_owner)],
+)
 async def create_skill(payload: SkillCreate, session: DbSession) -> Any:
     entity = await SkillRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
@@ -200,7 +246,11 @@ async def create_skill(payload: SkillCreate, session: DbSession) -> Any:
     return entity
 
 
-@router.patch("/skills/{entity_id}", response_model=SkillRead)
+@router.patch(
+    "/skills/{entity_id}",
+    response_model=SkillRead,
+    dependencies=[Depends(require_owner)],
+)
 async def update_skill(entity_id: UUID, payload: SkillUpdate, session: DbSession) -> Any:
     repo = SkillRepository(session)
     entity = await repo.get_or_404(entity_id)
@@ -209,7 +259,11 @@ async def update_skill(entity_id: UUID, payload: SkillUpdate, session: DbSession
     return updated
 
 
-@router.delete("/skills/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/skills/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_owner)],
+)
 async def delete_skill(entity_id: UUID, session: DbSession) -> Response:
     repo = SkillRepository(session)
     await repo.soft_delete(await repo.get_or_404(entity_id))
@@ -223,8 +277,12 @@ async def list_projects(session: DbSession) -> Any:
     return await ProjectRepository(session).list_for_profile(await _profile_id(session))
 
 
-@router.post("/projects", response_model=ProjectRead,
-             status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/projects",
+    response_model=ProjectRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_owner)],
+)
 async def create_project(payload: ProjectCreate, session: DbSession) -> Any:
     entity = await ProjectRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
@@ -233,7 +291,11 @@ async def create_project(payload: ProjectCreate, session: DbSession) -> Any:
     return entity
 
 
-@router.patch("/projects/{entity_id}", response_model=ProjectRead)
+@router.patch(
+    "/projects/{entity_id}",
+    response_model=ProjectRead,
+    dependencies=[Depends(require_owner)],
+)
 async def update_project(
     entity_id: UUID, payload: ProjectUpdate, session: DbSession
 ) -> Any:
@@ -244,7 +306,11 @@ async def update_project(
     return updated
 
 
-@router.delete("/projects/{entity_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/projects/{entity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_owner)],
+)
 async def delete_project(entity_id: UUID, session: DbSession) -> Response:
     repo = ProjectRepository(session)
     await repo.soft_delete(await repo.get_or_404(entity_id))

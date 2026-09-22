@@ -6,7 +6,6 @@ from decimal import Decimal
 
 import pytest
 
-from packages.core.models import Recommendation
 from packages.agents.resume_optimizer.prefilter import (
     CandidateConstraints,
     MatchStatus,
@@ -15,6 +14,7 @@ from packages.agents.resume_optimizer.prefilter import (
     compute_score,
     prefilter,
 )
+from packages.core.models import Recommendation
 
 pytestmark = pytest.mark.unit
 
@@ -28,17 +28,17 @@ BASE = CandidateConstraints(
 
 
 def run(**overrides):  # type: ignore[no-untyped-def]
-    kwargs = dict(
-        normalized_title="cloud engineer",
-        description="Work with AWS.",
-        seniority="mid",
-        is_remote=True,
-        is_hybrid=False,
-        location_state=None,
-        salary_max=None,
-        company_blocklisted=False,
-        constraints=BASE,
-    )
+    kwargs = {
+        "normalized_title": "cloud engineer",
+        "description": "Work with AWS.",
+        "seniority": "mid",
+        "is_remote": True,
+        "is_hybrid": False,
+        "location_state": None,
+        "salary_max": None,
+        "company_blocklisted": False,
+        "constraints": BASE,
+    }
     kwargs.update(overrides)
     return prefilter(**kwargs)  # type: ignore[arg-type]
 

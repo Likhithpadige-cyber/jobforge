@@ -185,6 +185,26 @@ async def test_three_human_cycles_survive_failures_and_third_revision_is_approva
     third = await http.post(endpoint, json=third_body)
     assert third.status_code == 200, third.text
     assert third.json()["resume_version"] == 4
+    async with maker() as db:
+        before_clock = (
+            await _cycle_count(db, app_id),
+            [(a.id, a.status, a.attempt_count) for a in await _attempts(db, app_id)],
+            [(r.id, r.version) for r in await c3._resumes(db, app_id)],
+            await c2._history_count(db, app_id),
+        )
+    redis = http._transport.app.dependency_overrides[get_redis]()
+    revision_key, = (key for key in redis.counters if key.startswith("rl:revision:"))
+    assert redis.counters[revision_key] == 6
+    # Isolate completed-revision replay/idempotency from M3's independent hourly
+    # abuse-control policy by advancing exactly to the next rate-limit window.
+    redis.advance(redis.expires_at[revision_key] - redis.now)
+    async with maker() as db:
+        assert (
+            await _cycle_count(db, app_id),
+            [(a.id, a.status, a.attempt_count) for a in await _attempts(db, app_id)],
+            [(r.id, r.version) for r in await c3._resumes(db, app_id)],
+            await c2._history_count(db, app_id),
+        ) == before_clock
     assert (await http.post(endpoint, json=third_body)).status_code == 200
 
     async with maker() as db:

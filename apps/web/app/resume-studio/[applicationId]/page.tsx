@@ -59,15 +59,11 @@ export default function Page({
 
   return (
     <AppShell
-      title="Resume Studio"
-      description="Tailored resumes, with every line traced to a verified fact."
+      title="Resume Revision"
+      description="Review the latest persisted version and its verified claims."
     >
-      <Link
-        href="/resume-studio"
-        className="mb-4 inline-block text-xs font-medium text-ink-soft underline-offset-2 hover:text-ink hover:underline"
-      >
-        ← All applications
-      </Link>
+      <div id="content" className="mx-auto max-w-[84rem]">
+      <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-2 text-sm text-ink-soft"><Link href="/applications" className="hover:text-violet-deep">Applications</Link><span aria-hidden="true">›</span><Link href={`/applications/${applicationId}`} className="hover:text-violet-deep">{resume?.job_title && resume?.job_company ? `${resume.job_title} at ${resume.job_company}` : "Application"}</Link><span aria-hidden="true">›</span><span className="text-ink">Resume revision</span></nav>
 
       {loading && (
         <div className="space-y-4" data-testid="loading">
@@ -112,6 +108,7 @@ export default function Page({
           }}
         />
       )}
+      </div>
     </AppShell>
   );
 }

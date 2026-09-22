@@ -93,7 +93,7 @@ async def test_login_with_both_factors_succeeds(session, enrolled) -> None:
     redis, response = FakeRedis(), Response()
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        response,
+        request_with(), response,
         session,
         redis,
         cfg,
@@ -108,7 +108,7 @@ async def test_login_sets_httponly_strict_session_cookie(session, enrolled) -> N
     response = Response()
     await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        response,
+        request_with(), response,
         session,
         FakeRedis(),
         cfg,
@@ -135,7 +135,7 @@ async def test_secure_flag_follows_the_environment(session, enrolled) -> None:
             LoginRequest(
                 email=user.email, password=PASSWORD, totp_code=code_for(secret)
             ),
-            response,
+            request_with(), response,
             session,
             FakeRedis(),
             cfg,
@@ -163,7 +163,7 @@ async def test_a_wrong_factor_is_always_rejected(session, enrolled, field: str) 
     }
     payload[field] = "000000" if field == "totp_code" else "wrong-password"
     with pytest.raises(NotAuthenticatedError):
-        await login(LoginRequest(**payload), Response(), session, FakeRedis(), cfg)
+        await login(LoginRequest(**payload), request_with(), Response(), session, FakeRedis(), cfg)
 
 
 async def test_unknown_email_is_rejected_identically(session, enrolled) -> None:
@@ -175,7 +175,7 @@ async def test_unknown_email_is_rejected_identically(session, enrolled) -> None:
                 password=PASSWORD,
                 totp_code=code_for(secret),
             ),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             cfg,
@@ -193,7 +193,7 @@ async def test_user_without_credentials_cannot_sign_in(session, demo_user) -> No
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="123456"),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             cfg,
@@ -204,7 +204,7 @@ async def test_login_never_returns_secrets(session, enrolled) -> None:
     user, secret, cfg = enrolled
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        Response(),
+        request_with(), Response(),
         session,
         FakeRedis(),
         cfg,
@@ -227,7 +227,7 @@ async def test_local_login_succeeds_without_a_code(session, enrolled) -> None:
 
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD),
-        Response(),
+        request_with(), Response(),
         session,
         redis,
         local,
@@ -244,7 +244,7 @@ async def test_local_login_still_rejects_a_wrong_password(session, enrolled) -> 
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password="wrong-password"),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             local,
@@ -259,7 +259,7 @@ async def test_local_still_verifies_a_code_that_is_supplied(session, enrolled) -
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="000000"),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             local,
@@ -275,7 +275,7 @@ async def test_local_session_and_csrf_are_unchanged(session, enrolled) -> None:
 
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD),
-        response,
+        request_with(), response,
         session,
         redis,
         local,
@@ -308,7 +308,7 @@ async def test_production_requires_a_code(session, enrolled) -> None:
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             prod,
@@ -321,7 +321,7 @@ async def test_production_accepts_a_valid_code(session, enrolled) -> None:
     prod.totp_encryption_key = cfg.totp_encryption_key
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        Response(),
+        request_with(), Response(),
         session,
         FakeRedis(),
         prod,
@@ -336,7 +336,7 @@ async def test_production_rejects_an_invalid_code(session, enrolled) -> None:
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="000000"),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             prod,
@@ -354,7 +354,7 @@ async def test_production_rejects_an_unenrolled_user(session, demo_user) -> None
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="000000"),
-            Response(),
+            request_with(), Response(),
             session,
             FakeRedis(),
             prod,

@@ -153,6 +153,10 @@ diagnose-roles:  ## Explain why the security tests are skipping
 test:  ## Run all backend tests
 	$(COMPOSE) run --rm api pytest
 
+.PHONY: test-evals
+test-evals:  ## Offline grounding corpus and per-category report (no provider calls)
+	python scripts/run_offline_evals.py --report .eval-results/offline.json
+
 test-unit:  ## Unit tests only (no services required)
 	pytest -m unit
 

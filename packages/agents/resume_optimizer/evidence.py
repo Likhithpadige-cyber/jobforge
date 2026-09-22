@@ -186,10 +186,7 @@ def _forms(term: str) -> tuple[str, ...]:
 
 def term_in_text(term: str, haystack: str) -> bool:
     """Whole-term containment. `re.escape` keeps requirement text inert."""
-    for form in _forms(term):
-        if re.search(rf"(?<!\w){re.escape(form)}(?!\w)", haystack):
-            return True
-    return False
+    return any(re.search(f"(?<!\\w){re.escape(form)}(?!\\w)", haystack) for form in _forms(term))
 
 
 # -------------------------------------------------------------- fact shape

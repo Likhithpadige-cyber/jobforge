@@ -136,25 +136,25 @@ def check_configs() -> None:
     try:
         tomllib.loads((ROOT / "pyproject.toml").read_text())
         record(PASS, "pyproject.toml parses", "")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         record(FAIL, "pyproject.toml parses", str(exc))
 
     for rel in ("apps/web/package.json", "apps/web/tsconfig.json", ".secrets.baseline"):
         try:
             json.loads((ROOT / rel).read_text())
             record(PASS, f"{rel} parses", "")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             record(FAIL, f"{rel} parses", str(exc))
 
     try:
-        import yaml  # noqa: PLC0415
+        import yaml
 
         for rel in ("docker-compose.yml", ".pre-commit-config.yaml", ".github/workflows/ci.yml"):
             yaml.safe_load((ROOT / rel).read_text())
             record(PASS, f"{rel} parses", "")
     except ImportError:
         record(WARN, "yaml files parse", "pyyaml not installed; skipped")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         record(FAIL, "yaml files parse", str(exc))
 
 
@@ -193,7 +193,6 @@ def check_import_direction() -> None:
         record(FAIL, "import direction", "; ".join(violations))
     else:
         record(PASS, "import direction", "no upward imports")
-
 
 
 # ------------------------------------------------------ internal imports
@@ -247,9 +246,7 @@ def check_internal_imports() -> None:
                     continue
                 if (base / f"{alias.name}.py").is_file():
                     continue
-                problems.append(
-                    f"{path.relative_to(ROOT)}: `{alias.name}` not in {node.module}"
-                )
+                problems.append(f"{path.relative_to(ROOT)}: `{alias.name}` not in {node.module}")
     if problems:
         record(FAIL, "internal imports resolve", "; ".join(problems[:5]))
     else:
@@ -329,7 +326,10 @@ def check_safe_defaults() -> None:
     """Defaults must not permit live submission or live LLM calls."""
     config = (ROOT / "packages/shared/config.py").read_text()
     checks = [
-        ("submission_mode: SubmissionMode = SubmissionMode.DRY_RUN", "submission defaults to dry_run"),
+        (
+            "submission_mode: SubmissionMode = SubmissionMode.DRY_RUN",
+            "submission defaults to dry_run",
+        ),
         ("llm_mode: LLMMode = LLMMode.REPLAY", "llm defaults to replay"),
         ('anthropic_api_key: str = ""', "no default API key"),
     ]
@@ -372,7 +372,7 @@ def check_liveness_has_no_dependencies() -> None:
 
 def check_compose_service_wiring() -> None:
     try:
-        import yaml  # noqa: PLC0415
+        import yaml
     except ImportError:
         record(WARN, "compose wiring", "pyyaml not installed; skipped")
         return
@@ -432,12 +432,17 @@ def check_phase2_delegated() -> None:
     ):
         result = subprocess.run(  # noqa: S603
             [sys.executable, str(ROOT / "scripts" / script)],
-            capture_output=True, text=True, cwd=ROOT, check=False,
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=False,
         )
         if result.returncode == 0:
             record(PASS, label, f"scripts/{script}")
         else:
-            record(FAIL, label, result.stdout.strip().splitlines()[-1] if result.stdout else "failed")
+            record(
+                FAIL, label, result.stdout.strip().splitlines()[-1] if result.stdout else "failed"
+            )
 
 
 def main() -> int:

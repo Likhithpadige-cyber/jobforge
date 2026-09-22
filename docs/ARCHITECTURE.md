@@ -172,7 +172,7 @@ Agents do **not** call each other. They communicate through **events on Redis St
 
 - **At-least-once.** Every consumer must be idempotent. Idempotency key = `(event_id, consumer_group)`, recorded in `processed_events`.
 - **Ordering** is guaranteed per stream, not across streams. Nothing in the design depends on cross-stream ordering; every handler re-reads current state from Postgres before acting.
-- **Retries:** exponential backoff (1s, 4s, 16s, 60s, 300s), max 5 attempts, then the message moves to `evt.dlq` and emits `agent.run.failed`. Applications with a DLQ'd event go to `status = error` and surface on the Approvals/Alerts page. Nothing is silently dropped.
+- **Retries:** exponential backoff (1s, 4s, 16s, 60s), max 5 total attempts, then the message moves to `evt.dlq` and emits `agent.run.failed`. Applications with a DLQ'd event go to `status = error` and surface on the Approvals/Alerts page. Nothing is silently dropped.
 - **Poison-pill protection:** a message whose handler throws the same exception class 3× is DLQ'd immediately rather than retried to exhaustion.
 
 ### 3.4 Transaction pattern (outbox)
@@ -381,7 +381,7 @@ Full catalogue with payload schemas and versioning rules in [EVENTS.md](./EVENTS
 |---|---|---|
 | `discovered` | Raw posting captured | Normalizer succeeds |
 | `normalized` | Structured, deduped, pre-filtered | Passes cheap filter → evaluation requested |
-| `evaluated` | Agent 1 produced a fit score | Threshold or human decision |
+| `evaluated` | Agent 1 recorded an assessment, scored or unresolved | Threshold decision only for assessed; unresolved requires human review |
 | `shortlisted` | Above threshold, awaiting capacity | Queue admission |
 | `queued` | In the work queue | Worker claims it |
 | `claimed` | Application being created | `application.created` |

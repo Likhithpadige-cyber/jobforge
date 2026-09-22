@@ -10,11 +10,13 @@ Job status walks `discovered -> normalized` here, or terminates at
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.agents.resume_optimizer.requirements import extract_requirements
+from packages.core.events import emit
 from packages.core.models import IngestionMethod, Job, JobStatus, Source
 from packages.core.repositories import (
     CompanyRepository,
@@ -22,18 +24,18 @@ from packages.core.repositories import (
     SitePolicyRepository,
     SourceRepository,
 )
-from packages.services.ingestion.dedupe import find_duplicate
+from packages.services.ingestion.dedupe import JobLike, find_duplicate
 from packages.services.ingestion.normalize import NormalizedJob, is_stale, normalize_job
-from packages.services.ingestion.types import (
-    IngestOutcome,
-    IngestReport,
-    RawPosting,
-)
 from packages.services.ingestion.policy import (
     PolicySnapshot,
     blocked_policy,
     evaluate_ingestion,
     extract_domain,
+)
+from packages.services.ingestion.types import (
+    IngestOutcome,
+    IngestReport,
+    RawPosting,
 )
 from packages.shared.errors import PolicyBlockedError, ValidationError
 from packages.shared.ids import uuid7
@@ -157,7 +159,13 @@ class IngestionPipeline:
             description_hash=normalized.description_hash,
             source_id=source.id,
         )
-        match = find_duplicate(job, [c for c in candidates if c.id != job.id])
+        # SQLAlchemy exposes scalar values on instances; structural matching
+        # instead sees the model's Mapped descriptors. Job's seven fields match
+        # JobLike, so annotate this ORM boundary without copying/changing rows.
+        match = find_duplicate(
+            cast(JobLike, job),
+            [cast(JobLike, c) for c in candidates if c.id != job.id],
+        )
         if match is not None:
             await self.jobs.mark_duplicate(job, match.canonical_id, match.note)
             return IngestOutcome(
@@ -169,6 +177,11 @@ class IngestionPipeline:
 
         job.status = JobStatus.NORMALIZED
         await self.session.flush()
+        await emit(
+            self.session, type="job.normalized", aggregate_type="job", aggregate_id=job.id,
+            correlation_id=job.id, actor_type="system", actor_id="ingestion",
+            payload={"job_id": str(job.id)},
+        )
         return IngestOutcome(
             raw.url, "created", job_id=job.id, warnings=normalized.warnings
         )

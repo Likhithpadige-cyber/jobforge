@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from packages.core.models import FactStatus, FactType
 from packages.core.repositories import (
@@ -63,7 +64,7 @@ async def test_in_progress_certification_is_rejected_with_issue_date(
     session, demo_profile
 ) -> None:
     repo = CertificationRepository(session)
-    with pytest.raises(Exception):
+    with pytest.raises(IntegrityError, match="ck_certifications_in_progress_has_no_issue_date"):
         await repo.create_for_profile(
             demo_profile,
             name="Studying For This",

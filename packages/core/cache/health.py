@@ -20,7 +20,7 @@ async def check_redis(timeout_seconds: float = 3.0) -> dict[str, object]:
         if not pong:
             return {"status": "unavailable", "latency_ms": latency_ms, "error": "NoPong"}
         return {"status": "ok", "latency_ms": latency_ms}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
         log.warning("health.redis.failed", error=type(exc).__name__)
         return {

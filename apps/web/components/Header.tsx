@@ -1,70 +1,42 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { Icon } from "./Icon";
+import { PRIMARY_NAV, SECONDARY_NAV } from "@/lib/navigation";
 
-/**
- * Workspace header.
- *
- * Deliberately thin: title, one line of orientation, search, and two
- * controls. Anything else competes with the content below it.
- */
-export function Header({
-  title,
-  description,
-  onOpenNav,
-}: {
-  title: string;
-  description?: string;
-  onOpenNav?: () => void;
-}) {
+const SEARCH_PAGES = [...PRIMARY_NAV, ...SECONDARY_NAV];
+
+export function Header({ title, description, onOpenNav }: { title: string; description?: string; onOpenNav?: () => void }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+  const results = query.trim() ? SEARCH_PAGES.filter(item => item.label.toLowerCase().includes(query.trim().toLowerCase())) : [];
+  const segment = pathname.split("/").filter(Boolean);
+
   return (
-    <header className="sticky top-0 z-20 border-b border-edge bg-canvas/85 backdrop-blur">
-      <div className="flex flex-wrap items-center gap-4 px-5 py-4 lg:px-8">
-        <button
-          type="button"
-          onClick={onOpenNav}
-          className="rounded-chip border border-edge bg-surface p-2 text-ink-soft hover:text-ink lg:hidden"
-          aria-label="Open navigation"
-        >
-          <Icon name="feed" className="h-4 w-4" />
-        </button>
-
+    <header className="sticky top-0 z-30 border-b border-edge bg-canvas/95 backdrop-blur-md">
+      <div className="flex min-h-[76px] items-center gap-3 px-5 lg:px-9">
+        <button type="button" onClick={onOpenNav} className="rounded-chip border border-edge bg-surface p-2 text-ink lg:hidden" aria-label="Open navigation"><Icon name="feed" className="h-5 w-5" /></button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-display font-semibold text-ink">{title}</h1>
-          {description && (
-            <p className="mt-0.5 truncate text-sm text-ink-soft">{description}</p>
-          )}
+          {segment.length > 0 && <nav aria-label="Breadcrumb" className="mb-0.5 flex items-center gap-1.5 text-xs text-ink-soft"><Link href="/" className="hover:text-violet">Dashboard</Link><span aria-hidden="true">/</span><span className="truncate">{title}</span></nav>}
+          <h1 className="truncate text-lg font-semibold tracking-tight text-ink lg:text-xl">{title}</h1>
+          {description && <p className="hidden truncate text-xs text-ink-soft xl:block">{description}</p>}
         </div>
-
-        <div className="order-last w-full sm:order-none sm:w-auto">
-          <label htmlFor="job-search" className="sr-only">
-            Search jobs by role, company or location
-          </label>
-          <div className="relative">
-            <Icon
-              name="search"
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft"
-            />
-            <input
-              id="job-search"
-              type="search"
-              placeholder="Search roles, companies, locations"
-              className="h-9 w-full rounded-chip border border-edge bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-ink-soft/70 sm:w-72"
-            />
-          </div>
+        <div className="relative hidden w-64 md:block lg:w-72">
+          <form onSubmit={event => { event.preventDefault(); if (results[0]) { router.push(results[0].href); setFocused(false); setQuery(""); } }}>
+            <label htmlFor="global-search" className="sr-only">Search pages</label>
+            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
+            <input id="global-search" type="search" autoComplete="off" placeholder="Search your workspace" value={query} onChange={event => setQuery(event.target.value)} onFocus={() => setFocused(true)} onBlur={() => window.setTimeout(() => setFocused(false), 150)} className="h-10 w-full rounded-chip border border-edge bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-ink-soft/75 focus:border-violet" />
+          </form>
+          {focused && query.trim() && <div className="absolute left-0 right-0 top-[calc(100%+8px)] overflow-hidden rounded-card border border-edge bg-surface p-1 shadow-raised" role="listbox" aria-label="Search results">
+            {results.length ? results.map(item => <Link key={item.href} role="option" aria-selected="false" href={item.href} onClick={() => { setFocused(false); setQuery(""); }} className="flex items-center gap-2 rounded-chip px-3 py-2 text-sm text-ink hover:bg-violet-soft"><Icon name={item.icon} />{item.label}</Link>) : <p className="px-3 py-2 text-sm text-ink-soft">No pages found</p>}
+          </div>}
         </div>
-
-        <button
-          type="button"
-          className="relative rounded-chip border border-edge bg-surface p-2 text-ink-soft hover:text-ink"
-          aria-label="Notifications, 4 items need your attention"
-        >
-          <Icon name="bell" className="h-4 w-4" />
-          <span
-            className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-brass"
-            aria-hidden="true"
-          />
-        </button>
+        <Link href="/approvals" className="relative rounded-chip border border-edge bg-surface p-2.5 text-ink-soft transition-colors hover:text-violet" aria-label="Notifications: 4 items need your attention"><Icon name="bell" className="h-5 w-5" /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-violet" aria-hidden="true" /></Link>
+        <Link href="/profile" className="flex h-10 w-10 items-center justify-center rounded-full border border-violet/15 bg-violet-soft text-xs font-semibold text-violet-deep" aria-label="Profile">LS</Link>
       </div>
     </header>
   );

@@ -8,7 +8,6 @@ all database behaviour that cannot be faked.
 from __future__ import annotations
 
 from decimal import Decimal
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -24,7 +23,7 @@ from packages.agents.resume_optimizer.prefilter import (
     RequirementMatch,
     compute_score,
 )
-from packages.core.models import JobStatus, Recommendation
+from packages.core.models import JobStatus
 from packages.shared.errors import NotFoundError
 from packages.shared.ids import uuid7
 
@@ -250,10 +249,10 @@ async def test_correlation_id_ties_the_events_together(session, normalized_job) 
 async def test_repeated_delivery_creates_one_evaluation(session, normalized_job) -> None:
     """At-least-once delivery must not produce two evaluations."""
     event_id = uuid7()
-    kwargs = dict(
-        job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
-    )
+    kwargs = {
+        "job_id": normalized_job, "profile_version": 1,
+        "breakdown": breakdown_for(80), "match_matrix": MATRIX,
+    }
     first = await persist_evaluation_once(
         session, triggering_event_id=event_id, **kwargs  # type: ignore[arg-type]
     )

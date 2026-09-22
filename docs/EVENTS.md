@@ -130,6 +130,7 @@ Legend — **P** = producer, **C** = consumers.
 
 | Event | P | C | Payload |
 |---|---|---|---|
+| `worker.delivery.started` | REL/runtime | diagnostics | `{event_id, consumer_group, attempt}`; committed before handler work so crashes consume the retry budget |
 | `agent.run.started` | A1, A2, A3 | A3 | `{run_id, agent, pipeline, aggregate_type, aggregate_id, trigger_event_id}` |
 | `agent.run.finished` | A1, A2, A3 | A3 | `{run_id, agent, status, duration_ms, input_tokens, output_tokens, cost_usd, steps_completed}` |
 | `agent.run.failed` | A1, A2, A3, REL | A3, API(SSE) | `{run_id?, agent, error_type, error_message, event_id?, will_retry, attempt}` |
@@ -262,7 +263,9 @@ Step 3 is what makes at-least-once safe in practice: replaying an old `resume.ge
 | 3 | 4 s |
 | 4 | 16 s |
 | 5 | 60 s |
-| 6 | 300 s → then DLQ |
+
+
+M4 uses five total attempts, matching ARCHITECTURE.md §3.3; the former sixth-attempt row was inconsistent with that bound.
 
 `XAUTOCLAIM` reclaims messages pending longer than 5 minutes (crashed consumer). Messages that fail with the same exception class 3× are DLQ'd immediately rather than burning the full schedule. A DLQ'd message emits `agent.run.failed` and moves the affected application to `error`, which surfaces it in the UI — nothing fails silently.
 
@@ -342,3 +345,12 @@ Listing these is deliberate. The event catalogue is a description of what the sy
 ---
 
 *End of EVENTS.md — v1.0*
+
+### M7 first-draft events
+
+- `resume.master.imported`: human-only; resume aggregate; profile/resume/version and
+  content digest only, no private resume prose. Append-only master import audit.
+- `resume.first_draft.requested`: human-only; application aggregate; explicit
+  profile/job/master/evaluation IDs and input digest. Owner role is rechecked by
+  `cg.first-draft` before inference. One durable attempt; no automatic paid retry.
+  Completion uses existing resume/application events; no M7 render request.

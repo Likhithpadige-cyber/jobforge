@@ -10,8 +10,6 @@ from sqlalchemy import text
 from packages.agents.resume_optimizer.evidence import build_match_matrix_for_profile
 from packages.agents.resume_optimizer.persistence import persist_evaluation
 from packages.agents.resume_optimizer.prefilter import (
-    MatchStatus,
-    RequirementMatch,
     compute_score,
 )
 from packages.agents.resume_optimizer.requirements import (

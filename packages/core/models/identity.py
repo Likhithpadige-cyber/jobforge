@@ -47,9 +47,7 @@ class User(TimestampMixin, UUIDPrimaryKeyMixin, Base):
 
     profile: Mapped[Profile | None] = relationship(back_populates="user", uselist=False)
 
-    __table_args__ = (
-        CheckConstraint("role IN ('owner', 'reviewer')", name="role_allowed"),
-    )
+    __table_args__ = (CheckConstraint("role IN ('owner', 'reviewer')", name="role_allowed"),)
 
 
 class Profile(TimestampMixin, UUIDPrimaryKeyMixin, Base):
@@ -62,7 +60,10 @@ class Profile(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     __tablename__ = "profiles"
 
     user_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
     )
     full_name: Mapped[str] = mapped_column(Text, nullable=False)
     headline: Mapped[str | None] = mapped_column(Text)
@@ -164,8 +165,9 @@ class Education(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     profile: Mapped[Profile] = relationship(back_populates="educations")
 
     __table_args__ = (
-        CheckConstraint("end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
-                        name="dates_ordered"),
+        CheckConstraint(
+            "end_date IS NULL OR start_date IS NULL OR end_date >= start_date", name="dates_ordered"
+        ),
         CheckConstraint("gpa IS NULL OR (gpa >= 0 AND gpa <= 5)", name="gpa_range"),
         Index("ix_educations_profile_id", "profile_id"),
     )
@@ -196,9 +198,7 @@ class Certification(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     profile: Mapped[Profile] = relationship(back_populates="certifications")
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('active', 'expired', 'in_progress')", name="status_allowed"
-        ),
+        CheckConstraint("status IN ('active', 'expired', 'in_progress')", name="status_allowed"),
         CheckConstraint(
             "status <> 'in_progress' OR issued_date IS NULL",
             name="in_progress_has_no_issue_date",
@@ -260,8 +260,9 @@ class Project(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     profile: Mapped[Profile] = relationship(back_populates="projects")
 
     __table_args__ = (
-        CheckConstraint("end_date IS NULL OR start_date IS NULL OR end_date >= start_date",
-                        name="dates_ordered"),
+        CheckConstraint(
+            "end_date IS NULL OR start_date IS NULL OR end_date >= start_date", name="dates_ordered"
+        ),
         Index("ix_projects_profile_id", "profile_id"),
     )
 

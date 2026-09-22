@@ -32,6 +32,7 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "job.evaluation.requested", "job.evaluated", "job.shortlisted",
         "job.discarded", "job.expired",
         # resumes
+        "resume.master.imported", "resume.first_draft.requested",
         "resume.generation.requested", "resume.generated",
         "resume.verification.failed", "resume.render.requested", "resume.rendered",
         "cover_letter.generated",
@@ -48,6 +49,7 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "submission.failed", "submission.handoff.required",
         # system
         "agent.run.started", "agent.run.finished", "agent.run.failed",
+        "worker.delivery.started",
         "guardrail.violation.detected", "policy.blocked", "quota.exhausted",
         "metrics.snapshot.created", "alert.raised", "alert.resolved",
         "notification.dispatched", "schedule.tick",
@@ -74,7 +76,8 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
 #: Events a human alone may produce (EVENTS.md §3.4). An agent emitting one of
 #: these would mean an approval had been forged.
 HUMAN_ONLY_EVENT_TYPES: frozenset[str] = frozenset(
-    {"approval.granted", "approval.rejected", "approval.changes_requested"}
+    {"approval.granted", "approval.rejected", "approval.changes_requested",
+     "resume.master.imported", "resume.first_draft.requested"}
 )
 
 

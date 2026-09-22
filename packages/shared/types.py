@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypeAlias
+from typing import Literal
 from uuid import UUID
 
-EntityId: TypeAlias = UUID
-ActorType: TypeAlias = Literal["agent", "human", "system"]
-AggregateType: TypeAlias = Literal[
-    "job", "application", "resume", "approval", "submission", "system"
-]
-HealthState: TypeAlias = Literal["ok", "degraded", "unavailable"]
+type EntityId = UUID
+type ActorType = Literal["agent", "human", "system"]
+type AggregateType = Literal["job", "application", "resume", "approval", "submission", "system"]
+type HealthState = Literal["ok", "degraded", "unavailable"]

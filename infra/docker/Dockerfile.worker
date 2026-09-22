@@ -21,8 +21,8 @@ COPY requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 RUN useradd --create-home --uid 1000 app && chown -R app:app /app
 USER app
-# Phase 1 has no worker entrypoints yet; overridden per service in compose.
-CMD ["python", "-c", "print('worker image ready; no worker entrypoints until Phase 3')"]
+# The opt-in workers profile mounts code and supplies the process-specific DSN.
+CMD ["python", "-m", "workers.outbox_relay"]
 
 FROM base AS production
 COPY --chown=1000:1000 apps ./apps

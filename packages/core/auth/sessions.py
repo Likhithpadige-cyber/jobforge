@@ -27,8 +27,10 @@ from __future__ import annotations
 import hmac
 import json
 import secrets
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 from uuid import UUID
 
 from packages.shared.clock import utc_now
@@ -39,6 +41,16 @@ KEY_PREFIX = "session:"
 
 #: 256 bits of entropy in the cookie and in the CSRF token.
 _TOKEN_BYTES = 32
+
+
+class SessionStore(Protocol):
+    """The asynchronous Redis string operations used by authentication."""
+
+    def set(self, key: str, value: str, /, *, ex: int) -> Awaitable[object]: ...
+
+    def get(self, key: str, /) -> Awaitable[str | bytes | bytearray | None]: ...
+
+    def delete(self, key: str, /) -> Awaitable[int]: ...
 
 
 @dataclass(frozen=True)
@@ -98,7 +110,7 @@ def _ttl_seconds(session: Session, idle_minutes: int, now: datetime) -> int:
 
 
 async def create_session(
-    redis,
+    redis: SessionStore,
     *,
     user_id: UUID,
     idle_minutes: int,
@@ -123,7 +135,7 @@ async def create_session(
 
 
 async def load_session(
-    redis,
+    redis: SessionStore,
     session_id: str | None,
     *,
     idle_minutes: int,
@@ -172,7 +184,7 @@ async def load_session(
     return refreshed
 
 
-async def revoke_session(redis, session_id: str | None) -> bool:
+async def revoke_session(redis: SessionStore, session_id: str | None) -> bool:
     """Delete a session. True when one was actually removed."""
     if not session_id:
         return False

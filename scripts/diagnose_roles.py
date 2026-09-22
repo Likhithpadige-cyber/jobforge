@@ -94,7 +94,7 @@ async def _check_role_identity(conn) -> tuple[bool, bool]:  # type: ignore[no-un
                 {"name": TARGET_ROLE},
             )
         ).first()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         line(BAD, "1-2. role existence / LOGIN", f"{type(exc).__name__}: {exc}")
         problems.append(f"could not read pg_roles: {exc}")
         return False, False
@@ -133,7 +133,7 @@ async def _check_password(conn) -> None:  # type: ignore[no-untyped-def]
                 {"n": TARGET_ROLE},
             )
         ).scalar_one_or_none()
-    except Exception:  # noqa: BLE001
+    except Exception:
         line(INFO, "3. password set", "pg_authid unreadable (needs superuser)")
         notes.append("password presence could not be read directly")
         return
@@ -171,7 +171,7 @@ async def _check_connect_and_schema(conn) -> None:  # type: ignore[no-untyped-de
                 {"role": TARGET_ROLE},
             )
         ).scalar_one()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         line(INFO, "3a. CONNECT on database", f"{type(exc).__name__}: {exc}")
         return
     line(OK if can_connect else BAD, "3a. CONNECT on database", str(can_connect))
@@ -188,7 +188,7 @@ async def _check_connect_and_schema(conn) -> None:  # type: ignore[no-untyped-de
                 {"role": TARGET_ROLE},
             )
         ).scalar_one()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         line(INFO, "3b. USAGE on schema public", f"{type(exc).__name__}: {exc}")
         return
     line(OK if schema_usage else BAD, "3b. USAGE on schema public", str(schema_usage))
@@ -207,7 +207,7 @@ async def _check_connect_and_schema(conn) -> None:  # type: ignore[no-untyped-de
                 {"role": TARGET_ROLE},
             )
         ).scalar_one()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return
     line(OK if not can_create else BAD, "3c. CREATE on schema public",
          f"{can_create}  (expected False)")
@@ -229,7 +229,7 @@ async def _check_privileges(conn) -> None:  # type: ignore[no-untyped-def]
                     {"role": TARGET_ROLE, "tbl": TARGET_TABLE, "priv": privilege},
                 )
             ).scalar_one()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             line(BAD, label, f"{type(exc).__name__}: {exc}")
             continue
 
@@ -255,7 +255,7 @@ async def _check_usage_function(conn) -> None:  # type: ignore[no-untyped-def]
                 {"role": TARGET_ROLE},
             )
         ).scalar_one()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         line(INFO, "9. EXECUTE on usage function", f"{type(exc).__name__}: {exc}")
         return
 
@@ -296,7 +296,7 @@ async def main() -> int:
                 await _check_usage_function(conn)
             else:
                 line(INFO, "3-9. remaining checks", "skipped: role does not exist")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         line(BAD, "owner connection", f"{type(exc).__name__}: {exc}")
         problems.append(f"cannot connect as the owner role either: {exc}")
     finally:
@@ -320,7 +320,7 @@ async def main() -> int:
                     f"connected as {who}, not {TARGET_ROLE} - the isolation tests "
                     "would be exercising the wrong role"
                 )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         line(BAD, "   connection FAILED", type(exc).__name__)
         print()
         print("   Exact exception:")

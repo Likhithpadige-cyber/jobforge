@@ -11,9 +11,15 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
-from apps.api.deps import DbSession
+from apps.api.deps import (
+    DbSession,
+    authenticated_api,
+    fact_suggest_limit,
+    rate_limited,
+    require_owner,
+)
 from apps.api.schemas.facts import (
     FactCreate,
     FactEvidenceCreate,
@@ -33,7 +39,11 @@ from packages.core.repositories import (
 from packages.core.services import ProfileService
 from packages.shared.errors import ConflictError, ValidationError
 
-router = APIRouter(prefix="/profile/facts", tags=["profile-facts"])
+router = APIRouter(
+    prefix="/profile/facts",
+    tags=["profile-facts"],
+    dependencies=[Depends(authenticated_api)],
+)
 
 
 async def _profile_id(session: DbSession) -> UUID:
@@ -77,6 +87,7 @@ async def list_citable(session: DbSession) -> Any:
     response_model=FactRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a draft fact",
+    dependencies=[Depends(require_owner)],
 )
 async def create_fact(payload: FactCreate, session: DbSession) -> Any:
     repo = FactRepository(session)
@@ -102,7 +113,12 @@ async def get_fact(fact_id: UUID, session: DbSession) -> Any:
     return await FactRepository(session).get_or_404(fact_id)
 
 
-@router.patch("/{fact_id}", response_model=FactRead, summary="Edit a draft fact")
+@router.patch(
+    "/{fact_id}",
+    response_model=FactRead,
+    summary="Edit a draft fact",
+    dependencies=[Depends(require_owner)],
+)
 async def update_fact(fact_id: UUID, payload: FactUpdate, session: DbSession) -> Any:
     repo = FactRepository(session)
     fact = await repo.get_or_404(fact_id)
@@ -119,7 +135,10 @@ async def update_fact(fact_id: UUID, payload: FactUpdate, session: DbSession) ->
 
 
 @router.post(
-    "/{fact_id}/verify", response_model=FactRead, summary="Verify a fact (human action)"
+    "/{fact_id}/verify",
+    response_model=FactRead,
+    summary="Verify a fact (human action)",
+    dependencies=[Depends(require_owner)],
 )
 async def verify_fact(
     fact_id: UUID, payload: FactVerifyRequest, session: DbSession
@@ -132,7 +151,10 @@ async def verify_fact(
 
 
 @router.post(
-    "/{fact_id}/unverify", response_model=FactRead, summary="Return a fact to draft"
+    "/{fact_id}/unverify",
+    response_model=FactRead,
+    summary="Return a fact to draft",
+    dependencies=[Depends(require_owner)],
 )
 async def unverify_fact(fact_id: UUID, session: DbSession) -> Any:
     fact = await FactRepository(session).unverify(fact_id)
@@ -144,6 +166,7 @@ async def unverify_fact(fact_id: UUID, session: DbSession) -> Any:
     "/{fact_id}/retire",
     response_model=FactRead,
     summary="Retire a fact that is no longer true",
+    dependencies=[Depends(require_owner)],
 )
 async def retire_fact(fact_id: UUID, session: DbSession) -> Any:
     fact = await FactRepository(session).retire(fact_id)
@@ -151,7 +174,11 @@ async def retire_fact(fact_id: UUID, session: DbSession) -> Any:
     return fact
 
 
-@router.delete("/{fact_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{fact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_owner)],
+)
 async def delete_fact(fact_id: UUID, session: DbSession) -> Response:
     await FactRepository(session).soft_delete(fact_id)
     await session.commit()
@@ -163,6 +190,7 @@ async def delete_fact(fact_id: UUID, session: DbSession) -> Response:
     response_model=list[FactRead],
     status_code=status.HTTP_201_CREATED,
     summary="Derive draft facts from an existing profile entry",
+    dependencies=[Depends(require_owner), Depends(rate_limited(fact_suggest_limit))],
 )
 async def suggest_facts(payload: FactSuggestRequest, session: DbSession) -> Any:
     """Deterministic text splitting of what the human already wrote.
@@ -193,6 +221,7 @@ async def list_evidence(fact_id: UUID, session: DbSession) -> Any:
     "/{fact_id}/evidence",
     response_model=FactEvidenceRead,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_owner)],
 )
 async def add_evidence(
     fact_id: UUID, payload: FactEvidenceCreate, session: DbSession

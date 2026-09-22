@@ -9,8 +9,8 @@ SELECT-then-INSERT: both pass.
 from __future__ import annotations
 
 import asyncio
-from uuid import uuid4
 from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import text
@@ -138,10 +138,10 @@ async def test_sequential_redelivery_is_a_no_op(session, demo_job) -> None:
     )
     await session.flush()
     event_id = uuid7()
-    kwargs = dict(
-        job_id=demo_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
-    )
+    kwargs = {
+        "job_id": demo_job, "profile_version": 1,
+        "breakdown": breakdown_for(80), "match_matrix": MATRIX,
+    }
     first = await persist_evaluation_once(
         session, triggering_event_id=event_id, **kwargs  # type: ignore[arg-type]
     )

@@ -12,10 +12,10 @@ bugs happen - which in this system means a silently stuck job.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import Table, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -127,8 +127,9 @@ async def claim_event(
 
     Does not commit. The caller owns the transaction boundary.
     """
+    # Declarative metadata types __table__ as FromClause; this model maps a Table.
     stmt = (
-        pg_insert(ProcessedEvent.__table__)
+        pg_insert(cast(Table, ProcessedEvent.__table__))
         .values(event_id=event_id, consumer_group=consumer_group)
         .on_conflict_do_nothing(index_elements=["event_id", "consumer_group"])
     )

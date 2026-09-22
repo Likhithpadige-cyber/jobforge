@@ -13,7 +13,7 @@ import json
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -125,7 +125,9 @@ class AnthropicTransport:
                     },
                 )
                 result.raise_for_status()
-                return result.json()
+                # HTTP JSON decoding erases the provider's object envelope type.
+                # StructuredClient retains usage/content validation downstream.
+                return cast(dict[str, Any], result.json())
         except (httpx.HTTPError, ValueError):
             raise ModelCallError("LLM provider request failed") from None
 

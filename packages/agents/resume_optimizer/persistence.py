@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal, cast
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,8 +76,8 @@ class PersistResult:
     job_id: UUID
     from_status: JobStatus
     to_status: JobStatus
-    score: Decimal
-    recommendation: Recommendation
+    score: Decimal | None
+    recommendation: Recommendation | None
     events_emitted: list[str]
     created: bool = True
 
@@ -105,8 +106,10 @@ async def persist_evaluation(
     *,
     job_id: UUID,
     profile_version: int,
-    breakdown: ScoreBreakdown,
+    breakdown: ScoreBreakdown | None,
     match_matrix: dict[str, object],
+    assessment_status: Literal["assessed", "insufficient_evidence"] = "assessed",
+    insufficient_reasons: list[str] | None = None,
     thresholds: Thresholds | None = None,
     correlation_id: UUID | None = None,
     agent_run_id: UUID | None = None,
@@ -127,6 +130,14 @@ async def persist_evaluation(
     nothing here uses a model, and recording one would misdescribe how the
     evaluation was produced.
     """
+    if assessment_status == "assessed":
+        if breakdown is None:
+            raise ValidationError("assessed evaluations require a score and recommendation")
+    elif assessment_status == "insufficient_evidence":
+        if breakdown is not None or not insufficient_reasons:
+            raise ValidationError("unresolved evaluations require reasons and no score")
+    else:
+        raise ValidationError("unsupported assessment status")
     thresholds = thresholds or Thresholds()
     jobs = JobRepository(session)
 
@@ -143,7 +154,9 @@ async def persist_evaluation(
     # A4: explain the score that A3 already computed. Derived, never inferred -
     # every sentence is assembled from counts and text in the two inputs, so
     # the prose can be rebuilt from the stored row at any time.
-    if rationale is None:
+    if rationale is None and breakdown is None:
+        rationale = "Automated disposition withheld: " + "; ".join(insufficient_reasons or [])
+    if rationale is None and breakdown is not None:
         rationale = build_rationale(
             match_matrix,
             score=breakdown.score,
@@ -155,19 +168,24 @@ async def persist_evaluation(
         id=uuid7(),
         job_id=job.id,
         profile_version=profile_version,
-        score=breakdown.score,
-        recommendation=breakdown.recommendation,
+        assessment_status=assessment_status,
+        score=breakdown.score if breakdown else None,
+        recommendation=breakdown.recommendation if breakdown else None,
         match_matrix=match_matrix,
         matched_requirements={
             "count": sum(
-                1 for row in match_matrix.get("requirements", [])  # type: ignore[union-attr]
+                # MatchMatrix.as_dict serializes requirements as an array;
+                # the generic JSON mapping erases that element type.
+                1 for row in cast(list[object], match_matrix.get("requirements", []))
                 if isinstance(row, dict) and row.get("status") in ("met", "partially_met")
             )
         },
-        missing_requirements={"count": len(breakdown.gaps)},
-        gaps=list(breakdown.gaps),
+        missing_requirements={"count": len(breakdown.gaps) if breakdown else 0},
+        gaps=list(breakdown.gaps) if breakdown else [],
         rationale=rationale,
-        score_breakdown=breakdown.as_dict(),
+        score_breakdown=(breakdown.as_dict() if breakdown else {
+            "insufficient_reasons": list(insufficient_reasons or []),
+        }),
         agent_run_id=agent_run_id,
         model=model,
         prompt_version=prompt_version,
@@ -203,11 +221,12 @@ async def persist_evaluation(
         payload={
             "job_id": str(job.id),
             "evaluation_id": str(evaluation.id),
-            "score": float(breakdown.score),
-            "recommendation": str(breakdown.recommendation),
+            "assessment_status": assessment_status,
+            "score": float(breakdown.score) if breakdown else None,
+            "recommendation": str(breakdown.recommendation) if breakdown else None,
             "matched_count": evaluation.matched_requirements["count"],
             "missing_count": evaluation.missing_requirements["count"],
-            "gaps": list(breakdown.gaps),
+            "gaps": list(breakdown.gaps) if breakdown else [],
             "agent_run_id": str(agent_run_id) if agent_run_id else None,
         },
     )
@@ -216,7 +235,10 @@ async def persist_evaluation(
     # Only now does the threshold decide whether the job moves further. A
     # borderline score leaves it at `evaluated`, awaiting a human, and emits
     # nothing more.
-    target, discard_reason = decide_status(breakdown.score, thresholds)
+    target, discard_reason = JobStatus.EVALUATED, None
+    # Status is authoritative: an unresolved assessment never reaches thresholds.
+    if assessment_status == "assessed" and breakdown is not None:
+        target, discard_reason = decide_status(breakdown.score, thresholds)
     if target is not JobStatus.EVALUATED:
         transition(job, target, reason=discard_reason)
         await session.flush()
@@ -224,7 +246,7 @@ async def persist_evaluation(
     # The transition event, when the threshold actually moved the job.
     # EVENTS.md §3.1 lists both as produced by A1; without them the queue and
     # the monitor have no signal that anything changed.
-    if target is JobStatus.SHORTLISTED:
+    if target is JobStatus.SHORTLISTED and breakdown is not None:
         await emit(
             session,
             type="job.shortlisted",
@@ -243,7 +265,7 @@ async def persist_evaluation(
             },
         )
         emitted.append("job.shortlisted")
-    elif target is JobStatus.DISCARDED:
+    elif target is JobStatus.DISCARDED and breakdown is not None:
         await emit(
             session,
             type="job.discarded",
@@ -267,7 +289,7 @@ async def persist_evaluation(
         "evaluation.persisted",
         job_id=str(job.id),
         evaluation_id=str(evaluation.id),
-        score=float(breakdown.score),
+        score=float(breakdown.score) if breakdown else None,
         from_status=str(from_status),
         to_status=str(target),
         events=emitted,
@@ -278,8 +300,8 @@ async def persist_evaluation(
         job_id=job.id,
         from_status=from_status,
         to_status=job.status,
-        score=breakdown.score,
-        recommendation=breakdown.recommendation,
+        score=breakdown.score if breakdown else None,
+        recommendation=breakdown.recommendation if breakdown else None,
         events_emitted=emitted,
     )
 

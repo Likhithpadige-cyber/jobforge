@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, Generic, TypeVar
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.db.base import Base
@@ -36,7 +36,7 @@ class BaseRepository(Generic[ModelT]):
     def _soft_deletes(self) -> bool:
         return hasattr(self.model, "deleted_at")
 
-    def _base_select(self, include_deleted: bool = False):  # type: ignore[no-untyped-def]
+    def _base_select(self, include_deleted: bool = False) -> Select[tuple[ModelT]]:
         stmt = select(self.model)
         if self._soft_deletes and not include_deleted:
             stmt = stmt.where(self.model.deleted_at.is_(None))  # type: ignore[attr-defined]

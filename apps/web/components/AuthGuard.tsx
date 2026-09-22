@@ -38,9 +38,13 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [user, setUser] = useState<ApiUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setError(null);
     api
       .me()
       .then((result) => {
@@ -52,6 +56,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         if (cause instanceof ApiError && cause.status === 401) {
           const next = encodeURIComponent(pathname || "/");
           router.replace(`/login?next=${next}`);
+        } else {
+          setError("Could not check your session. Please try again.");
         }
       })
       .finally(() => {
@@ -60,7 +66,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [pathname, router]);
+  }, [pathname, router, attempt]);
 
   const signOut = useCallback(async () => {
     try {
@@ -82,6 +88,16 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
+    if (error) {
+      return (
+        <div role="alert" className="p-8 text-sm text-ink-soft">
+          <p>{error}</p>
+          <button type="button" className="mt-3 text-violet-deep underline" onClick={() => setAttempt((value) => value + 1)}>
+            Retry
+          </button>
+        </div>
+      );
+    }
     // The redirect is already in flight; render nothing rather than a flash
     // of protected chrome.
     return null;

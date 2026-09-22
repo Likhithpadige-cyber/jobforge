@@ -24,8 +24,8 @@ from fastapi import APIRouter, Response, status
 from apps.api.schemas.health import DependencyHealth, LivenessResponse, ReadinessResponse
 from packages.core.cache import check_redis
 from packages.core.db import check_database, get_migration_revision
-from packages.shared.config import get_settings
 from packages.shared.clock import utc_now
+from packages.shared.config import get_settings
 
 SERVICE_VERSION = "0.1.0"
 _STARTED_AT = time.monotonic()
@@ -55,8 +55,8 @@ async def _build_readiness() -> ReadinessResponse:
     )
 
     checks = {
-        "postgres": DependencyHealth(**db_result),  # type: ignore[arg-type]
-        "redis": DependencyHealth(**redis_result),  # type: ignore[arg-type]
+        "postgres": DependencyHealth(**db_result),
+        "redis": DependencyHealth(**redis_result),
     }
 
     # PostgreSQL is the source of truth: without it we cannot serve.
@@ -69,7 +69,7 @@ async def _build_readiness() -> ReadinessResponse:
         overall = "ok"
 
     return ReadinessResponse(
-        status=overall,  # type: ignore[arg-type]
+        status=overall,
         service=settings.app_name,
         version=SERVICE_VERSION,
         environment=str(settings.environment),

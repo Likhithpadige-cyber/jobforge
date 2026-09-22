@@ -68,7 +68,7 @@ REQUIRED_CUES = re.compile(
 BULLET = re.compile(r"^\s*(?:[-*•·▪◦‣]|\d+[.)]|\(\d+\))\s+(.*\S)\s*$")
 
 YEARS = re.compile(
-    r"(\d+)\s*(?:\+|plus)?\s*(?:-|–|to)?\s*(\d+)?\s*\+?\s*(?:years?|yrs?)\b", re.I
+    r"(\d+)\s*(?:\+|plus)?\s*(?:-|\u2013|to)?\s*(\d+)?\s*\+?\s*(?:years?|yrs?)\b", re.I
 )
 
 CERTIFICATION_CUES = re.compile(

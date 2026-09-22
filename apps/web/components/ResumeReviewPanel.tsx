@@ -80,7 +80,7 @@ export function ResumeReviewPanel({
     <section
       aria-labelledby="review-heading"
       data-testid="review-panel"
-      className="rounded-card border border-edge bg-surface p-5"
+      className="rounded-card border border-violet/15 bg-surface p-5 shadow-raised"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="review-heading" className="text-sm font-semibold text-ink">
@@ -276,7 +276,7 @@ export function ResumeReviewPanel({
         !review.can_request_changes &&
         review.blocked_reason && (
           <p className="mt-4 text-xs text-ink-soft" data-testid="blocked-reason">
-            {review.blocked_reason}
+            {review.blocked_reason.includes("stale") ? "A newer resume is available. Refresh before making a decision; this review is stale." : "No review action is available right now. The current application state or verification needs to change first."}
           </p>
         )}
 
@@ -299,7 +299,12 @@ export function ResumeReviewPanel({
  * to the error's own message.
  */
 function errorMessage(cause: unknown): string {
-  if (cause instanceof ApiError && isProblem(cause.detail)) return cause.detail.detail;
+  if (cause instanceof ApiError && isProblem(cause.detail)) {
+    if (cause.detail.detail.includes("three request-changes cycles") || cause.detail.detail.includes("rework_limit_reached")) {
+      return "This application has reached its three revision requests. The current resume remains available to review; no further change request can be sent.";
+    }
+    return cause.detail.detail;
+  }
   if (cause instanceof Error) return cause.message;
   return "The review action failed";
 }

@@ -117,18 +117,16 @@ class EvaluationRead(ORMModel):
     Every field is read straight from the `job_evaluations` row A5 wrote.
     Nothing is computed on read and nothing is inferred.
 
-    Note what is deliberately absent: there is no evidence field, because
-    requirement-to-fact mapping (A2) is not implemented. `match_matrix` is
-    returned as persisted - today A5 stores whatever its caller supplied, so
-    it is typically empty. An empty matrix means "not computed", never
-    "computed and found nothing".
+    assessment_status is authoritative. Unresolved results carry neither a
+    numeric score nor a recommendation; their evidence and reasons remain visible.
     """
 
     id: UUID
     job_id: UUID
     profile_version: int
-    score: float
-    recommendation: Recommendation
+    assessment_status: Literal["assessed", "insufficient_evidence"]
+    score: float | None
+    recommendation: Recommendation | None
     matched_requirements: dict[str, Any]
     missing_requirements: dict[str, Any]
     match_matrix: dict[str, Any]

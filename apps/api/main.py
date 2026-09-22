@@ -20,6 +20,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from apps.api.routers import (
     auth,
     facts,
+    first_draft,
     health,
     jobs,
     profile,
@@ -159,6 +160,7 @@ def create_app() -> FastAPI:
     app.include_router(resumes.router, prefix=settings.api_prefix)
     app.include_router(resumes.applications_router, prefix=settings.api_prefix)
     app.include_router(resume_review.router, prefix=settings.api_prefix)
+    app.include_router(first_draft.router, prefix=settings.api_prefix)
 
     return app
 
@@ -175,6 +177,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,
             content=exc.to_problem(instance=str(request.url.path)),
             media_type=PROBLEM_JSON,
+            # Empty for every error but 429, which carries Retry-After.
+            headers=exc.headers or None,
         )
 
     @app.exception_handler(RequestValidationError)

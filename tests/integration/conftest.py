@@ -137,7 +137,7 @@ async def agent_engine(postgres_available: bool):  # type: ignore[no-untyped-def
     try:
         async with eng.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         await eng.dispose()
         _skip_or_fail(
             f"cannot connect as app_agent ({type(exc).__name__}: {exc}). "
@@ -166,7 +166,7 @@ async def audit_engine(postgres_available: bool):  # type: ignore[no-untyped-def
     try:
         async with eng.connect() as conn:
             await conn.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         await eng.dispose()
         _skip_or_fail(
             f"cannot connect as app_audit ({type(exc).__name__}: {exc}). "
@@ -477,6 +477,107 @@ async def committed_fact(engine):  # type: ignore[no-untyped-def]
             await teardown.commit()
 
 @pytest_asyncio.fixture
-async def db_app_client(app_client):
-    """ASGI client with application lifespan and database initialization."""
-    yield app_client
+async def api_sessions(app_client, engine):  # type: ignore[no-untyped-def]
+    """Factory for signed-in API clients, one per role.
+
+        owner = await api_sessions("owner")
+        reviewer = await api_sessions("reviewer")
+
+    Everything about the session is real: `create_session` writes it,
+    `load_session` reads it back, the cookie names and CSRF token come from
+    settings. Only the *store* is the `FakeRedis` the auth tests already use,
+    and one instance is shared so several roles can be signed in at once.
+
+    Each call creates its own user, committed on its own connection and
+    deleted in teardown. Borrowing the `session` fixture would not work: it
+    rolls back by design, and a user that exists only inside an uncommitted
+    transaction is invisible to the connection serving the request, which
+    would 401 for a reason unrelated to the test.
+
+    The CSRF header is preset, because callers of this fixture are exercising
+    endpoints rather than the CSRF check. A test that wants to prove CSRF
+    pops the header; a test that wants to prove the authentication gate uses
+    an unauthenticated client instead.
+    """
+    import httpx
+
+    from apps.api.deps import CSRF_HEADER
+    from packages.core.auth import create_session
+    from packages.core.cache import redis as redis_module
+    from packages.shared.config import get_settings
+    from tests.unit.test_rate_limit import FakeLimiterRedis
+
+    settings = get_settings()
+    # One fake store for every role signed in during this test. Swapping the
+    # module global rather than overriding the FastAPI dependency keeps this
+    # working for extra clients built over the same app.
+    #
+    # `FakeLimiterRedis` is `FakeRedis` plus the counter operations M3 needs;
+    # the session behaviour is unchanged. Tests reach it through
+    # `redis_module._client` when they need to drive its clock.
+    previous = redis_module._client
+    redis = FakeLimiterRedis()
+    redis_module._client = redis  # type: ignore[assignment]
+
+    # The transport already holds the app that `app_client` drives; extra
+    # clients must target that same instance, not a fresh one.
+    app = app_client._transport.app  # type: ignore[attr-defined]
+    maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+    created_users: list[object] = []
+    created_clients: list[object] = []
+
+    async def make(role: str = "owner"):  # type: ignore[no-untyped-def]
+        user_id = uuid7()
+        async with maker() as setup:
+            await setup.execute(
+                text(
+                    "INSERT INTO users (id, email, role, created_at, updated_at) "
+                    "VALUES (:id, :email, :role, now(), now())"
+                ),
+                {
+                    "id": user_id,
+                    "email": f"{role}-{uuid4().hex[:12]}@example.invalid",
+                    "role": role,
+                },
+            )
+            await setup.commit()
+        created_users.append(user_id)
+
+        live = await create_session(
+            redis,
+            user_id=user_id,
+            idle_minutes=settings.session_idle_timeout_minutes,
+            absolute_hours=settings.session_absolute_timeout_hours,
+        )
+        client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        )
+        client.cookies.set(settings.session_cookie_name, live.id)
+        client.cookies.set(settings.csrf_cookie_name, live.csrf_token)
+        client.headers[CSRF_HEADER] = live.csrf_token
+        created_clients.append(client)
+        return client
+
+    try:
+        yield make
+    finally:
+        redis_module._client = previous
+        for client in created_clients:
+            await client.aclose()  # type: ignore[attr-defined]
+        async with maker() as teardown:
+            for user_id in created_users:
+                await teardown.execute(
+                    text("DELETE FROM users WHERE id = :id"), {"id": user_id}
+                )
+            await teardown.commit()
+
+
+@pytest_asyncio.fixture
+async def db_app_client(api_sessions):  # type: ignore[no-untyped-def]
+    """An owner-authenticated client. The default for endpoint tests.
+
+    Kept as its own fixture so existing HTTP integration tests read the same
+    as they did before roles existed; `owner` is the role those tests have
+    always implicitly assumed.
+    """
+    yield await api_sessions("owner")

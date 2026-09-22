@@ -7,6 +7,8 @@ claim it protects becomes false.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, ProgrammingError
@@ -192,10 +194,9 @@ async def test_agent_cannot_grant_itself_permissions(agent_engine) -> None:
     privilege is still absent afterwards.
     """
     async with agent_engine.connect() as conn:
-        try:
+        # Some configurations error; the assertion below verifies the outcome.
+        with contextlib.suppress(ProgrammingError, DBAPIError):
             await conn.execute(text("GRANT INSERT ON profile_facts TO app_agent"))
-        except (ProgrammingError, DBAPIError):
-            pass  # some configurations do error; either outcome is acceptable
 
     # Fresh connection: if the GRANT errored above, that transaction is aborted.
     async with agent_engine.connect() as conn:
@@ -213,10 +214,8 @@ async def test_agent_cannot_grant_itself_permissions(agent_engine) -> None:
 async def test_agent_cannot_grant_privileges_to_another_role(agent_engine) -> None:
     """The same hole, one step removed: granting to a different role."""
     async with agent_engine.connect() as conn:
-        try:
+        with contextlib.suppress(ProgrammingError, DBAPIError):
             await conn.execute(text("GRANT INSERT ON profile_facts TO app_monitor"))
-        except (ProgrammingError, DBAPIError):
-            pass
 
     async with agent_engine.connect() as conn:
         granted = (
@@ -244,15 +243,14 @@ async def test_agent_cannot_drop_a_constraint(agent_engine) -> None:
     CHECK is still attached to the table afterwards.
     """
     async with agent_engine.connect() as conn:
-        try:
+        # The assertion below proves that the constraint survived.
+        with contextlib.suppress(ProgrammingError, DBAPIError):
             await conn.execute(
                 text(
                     "ALTER TABLE applications DROP CONSTRAINT "
                     "ck_applications_approved_requires_human"
                 )
             )
-        except (ProgrammingError, DBAPIError):
-            pass  # expected; the assertion below is what proves the outcome
 
     async with agent_engine.connect() as conn:
         still_there = (

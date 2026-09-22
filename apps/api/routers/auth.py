@@ -35,6 +35,10 @@ from apps.api.deps import (
     DbSession,
     NotAuthenticatedError,
     RedisClient,
+    identifier_fingerprint,
+    login_identifier_limit,
+    login_ip_limit,
+    source_fingerprint,
 )
 from apps.api.schemas.auth import (
     AuthConfigRead,
@@ -50,6 +54,7 @@ from packages.core.auth import (
     verify_code,
     verify_password,
 )
+from packages.core.cache import enforce
 from packages.core.crypto import DecryptionError, decrypt_totp_secret
 from packages.core.models import User
 from packages.shared.clock import utc_now
@@ -110,11 +115,40 @@ def _clear_session_cookies(response: Response, settings: Settings) -> None:
 )
 async def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db: DbSession,
     redis: RedisClient,
     settings: AppSettings,
 ) -> Any:
+    # Rate limiting comes first, before the row is read and before any hash is
+    # verified (SECURITY.md §3, M3). Two independent budgets, both charged on
+    # every attempt:
+    #
+    #   by source address  - stops one host from working through a list of
+    #                        addresses, which a per-email budget alone allows
+    #   by submitted email - stops a spray that rotates source addresses but
+    #                        keeps hammering one identity
+    #
+    # The second is keyed on what the *caller typed*, hashed, before anyone
+    # asks the database whether it exists. An address with no account is
+    # charged identically to one with an account and is refused identically,
+    # so exhausting the budget reveals nothing about who is registered. That
+    # ordering is the whole reason this block sits above the SELECT rather
+    # than beside the password check.
+    #
+    # Neither key is a lock. Both expire on their own; nothing here writes to
+    # the user row, and there is no state a human has to clear.
+    if settings.rate_limit_enabled:
+        await enforce(
+            redis, login_ip_limit(settings), source_fingerprint(request, settings)
+        )
+        await enforce(
+            redis,
+            login_identifier_limit(settings),
+            identifier_fingerprint(payload.email, settings),
+        )
+
     user = (
         await db.execute(select(User).where(User.email == payload.email))
     ).scalar_one_or_none()

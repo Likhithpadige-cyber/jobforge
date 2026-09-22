@@ -14,11 +14,27 @@
  * The session cookie is HttpOnly, so this page never sees or stores it. On
  * success the browser holds the cookie and the app bootstraps from
  * `GET /auth/me`.
+ *
+ * The page is dressed - artwork, glass, a gradient button - but nothing in
+ * the scene is interactive and nothing in the form is decorative. Every
+ * control below posts to an endpoint that exists. There is no OAuth row, no
+ * "remember me" and no "contact admin", because there is no OAuth, no
+ * client-side session lifetime and no admin route to point at.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
+import { BrandLockup } from "@/components/login/BrandLockup";
+import { LoginCard } from "@/components/login/LoginCard";
+import { LoginScene } from "@/components/login/LoginScene";
+import { PasswordField } from "@/components/login/PasswordField";
+import {
+  CodeGlyph,
+  FIELD_INPUT_CLASS,
+  LoginField,
+  MailGlyph,
+} from "@/components/login/LoginField";
 
 function LoginForm() {
   const router = useRouter();
@@ -86,82 +102,101 @@ function LoginForm() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <div className="rounded-card border border-edge bg-surface p-6">
-        <h1 className="text-lg font-semibold text-ink">Sign in</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          {totpRequired
-            ? "JobForge requires your password and an authenticator code."
-            : "Local development: your password is enough."}
-        </p>
+    <main className="relative flex min-h-screen flex-col overflow-hidden">
+      <LoginScene />
 
-        <form onSubmit={onSubmit} className="mt-5 space-y-4" noValidate>
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-ink">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink"
-            />
+      <div className="relative flex min-h-screen flex-col px-4 py-6 sm:px-8 sm:py-8">
+        <div className="hidden sm:block">
+          <BrandLockup size="corner" />
+        </div>
+
+        <div className="flex flex-1 items-center justify-center py-8">
+          {/* Below md the card simply centres on the scene. From md up it is
+              positioned against the artwork: 44vh puts its top just under the
+              brick cap, and 34vw keeps it a little narrower than the pillar
+              face behind it, so it always sits on brick rather than sky. The
+              min() is a short-viewport guard - on a window too short for the
+              card at 44vh, the card rises instead of being clipped. */}
+          <div className="w-full max-w-[26rem] md:absolute md:left-1/2 md:top-[min(44vh,calc(100vh-30rem))] md:w-[clamp(20rem,34vw,38rem)] md:max-w-none md:-translate-x-1/2">
+            <LoginCard>
+              <h1 className="sr-only">Sign in to JobForge</h1>
+
+              <div className="flex justify-center">
+                <BrandLockup size="card" />
+              </div>
+
+              <p className="mt-3 text-center text-[0.8125rem] leading-5 text-ink-soft">
+                {totpRequired
+                  ? "JobForge requires your password and an authenticator code."
+                  : "Local development: your password is enough."}
+              </p>
+
+              <form onSubmit={onSubmit} className="mt-5 space-y-3" noValidate>
+                <LoginField htmlFor="email" label="Email" glyph={<MailGlyph />}>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className={FIELD_INPUT_CLASS}
+                  />
+                </LoginField>
+
+                <PasswordField value={password} onChange={setPassword} />
+
+                {totpRequired && (
+                  <LoginField htmlFor="totp" label="Authenticator code" glyph={<CodeGlyph />}>
+                    <input
+                      id="totp"
+                      name="totp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={10}
+                      value={totp}
+                      onChange={(e) => setTotp(e.target.value)}
+                      className={`${FIELD_INPUT_CLASS} tabular-nums tracking-[0.2em]`}
+                    />
+                  </LoginField>
+                )}
+
+                {error && (
+                  <p
+                    role="alert"
+                    className="rounded-card border border-signal-risk/25 bg-signal-risk/[0.08] px-3 py-2 text-sm text-signal-risk"
+                  >
+                    {error}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="group flex w-full items-center justify-center gap-2 rounded-[0.875rem] bg-gradient-to-r from-[#4A72E8] to-[#7B5AD1] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_-12px_rgba(74,114,232,0.9)] transition hover:from-[#3F66DE] hover:to-[#6E4DC7] disabled:cursor-not-allowed disabled:opacity-55 disabled:shadow-none"
+                >
+                  {submitting ? "Signing in…" : "Sign in"}
+                  {!submitting && (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.75}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
+                      <path d="M5 12h13m-5-5 5 5-5 5" />
+                    </svg>
+                  )}
+                </button>
+              </form>
+            </LoginCard>
           </div>
-
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-ink">
-              Password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink"
-            />
-          </div>
-
-          {totpRequired && (
-          <div>
-            <label htmlFor="totp" className="block text-sm font-medium text-ink">
-              Authenticator code
-            </label>
-            <input
-              id="totp"
-              name="totp"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={10}
-              value={totp}
-              onChange={(e) => setTotp(e.target.value)}
-              className="mt-1 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm tabular-nums text-ink"
-            />
-          </div>
-          )}
-
-          {error && (
-            <p
-              role="alert"
-              className="rounded-card border border-signal-risk/25 bg-signal-risk/[0.06] px-3 py-2 text-sm text-signal-risk"
-            >
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="w-full rounded-chip border border-brass bg-brass-soft px-3 py-2 text-sm font-medium text-brass-deep disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {submitting ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+        </div>
       </div>
     </main>
   );

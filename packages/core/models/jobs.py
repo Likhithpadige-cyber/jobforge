@@ -17,7 +17,6 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy import text as sa_text
@@ -248,8 +247,11 @@ class JobEvaluation(UUIDPrimaryKeyMixin, Base):
         PGUUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    score: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
-    recommendation: Mapped[Recommendation] = mapped_column(recommendation_enum, nullable=False)
+    assessment_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="assessed"
+    )
+    score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    recommendation: Mapped[Recommendation | None] = mapped_column(recommendation_enum)
     match_matrix: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     matched_requirements: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default="{}"
@@ -273,5 +275,12 @@ class JobEvaluation(UUIDPrimaryKeyMixin, Base):
 
     __table_args__ = (
         CheckConstraint("score >= 0 AND score <= 100", name="score_range"),
+        CheckConstraint(
+            "(assessment_status = 'assessed' AND score IS NOT NULL "
+            "AND recommendation IS NOT NULL) OR "
+            "(assessment_status = 'insufficient_evidence' AND score IS NULL "
+            "AND recommendation IS NULL)",
+            name="assessment_contract",
+        ),
         Index("ix_job_evaluations_job_id", "job_id", sa_text("created_at DESC")),
     )

@@ -5,6 +5,7 @@
 @layer base {
   :root {
     color-scheme: light;
+    scroll-behavior: smooth;
   }
 
   body {
@@ -28,7 +29,23 @@
     @apply ring-offset-charcoal;
   }
 
+  ::selection { background: #ddd6f5; color: #24283b; }
+
+  @keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes panel-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes reveal-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+  .animate-page-in { animation: page-in 320ms ease-out both; }
+  .animate-panel-in { animation: panel-in 280ms ease-out both; }
+  .reveal { animation: reveal-in 580ms cubic-bezier(.2,.7,.2,1) both; }
+  .stagger > :nth-child(2) { animation-delay: 60ms; }
+  .stagger > :nth-child(3) { animation-delay: 120ms; }
+  .stagger > :nth-child(4) { animation-delay: 180ms; }
+  .lift { transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease; }
+  .lift:hover { transform: translateY(-5px) scale(1.01); box-shadow: 0 20px 42px rgba(34,39,65,.09); }
+
   @media (prefers-reduced-motion: reduce) {
+    :root { scroll-behavior: auto; }
     *,
     *::before,
     *::after {

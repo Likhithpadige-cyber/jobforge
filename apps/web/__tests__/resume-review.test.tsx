@@ -277,6 +277,19 @@ describe("loading and errors", () => {
     // A refusal must never look like a decision that landed.
     expect(onReviewed).not.toHaveBeenCalled();
   });
+
+  it("explains the three-cycle limit without showing raw API text", async () => {
+    vi.spyOn(api, "requestResumeChanges").mockRejectedValue(
+      new ApiError("Request failed: 409", 409, {
+        detail: "This application has already used its three request-changes cycles",
+      }),
+    );
+    render(<ResumeReviewPanel review={awaiting} onReviewed={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Request Changes/ }));
+    fireEvent.change(screen.getByLabelText("What should change?"), { target: { value: "Clarify the summary" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send Request" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("reached its three revision requests");
+  });
 });
 
 // --- helpers ----------------------------------------------------------------

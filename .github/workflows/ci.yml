@@ -82,6 +82,13 @@ jobs:
         env:
           APP_AGENT_PASSWORD: app_agent
           APP_API_PASSWORD: app_api
+      - name: Offline grounding evaluation (no provider calls)
+        run: python scripts/run_offline_evals.py --report .eval-results/offline.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-grounding-evaluation
+          path: .eval-results/offline.json
       - name: Security invariants must not be skipped
         # A skipped security test proves nothing. Fail if any were skipped.
         run: pytest -m safety -p no:randomly --tb=short -rs | tee /tmp/safety.txt

@@ -21,11 +21,6 @@ from packages.services.ingestion.normalize import (
     parse_salary,
 )
 from packages.services.ingestion.pipeline import IngestionPipeline
-from packages.services.ingestion.types import (
-    IngestOutcome,
-    IngestReport,
-    RawPosting,
-)
 from packages.services.ingestion.policy import (
     BlockReason,
     PolicyDecision,
@@ -35,6 +30,11 @@ from packages.services.ingestion.policy import (
     evaluate_ingestion,
     evaluate_submission,
     extract_domain,
+)
+from packages.services.ingestion.types import (
+    IngestOutcome,
+    IngestReport,
+    RawPosting,
 )
 
 __all__ = [

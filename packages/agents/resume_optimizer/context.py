@@ -6,6 +6,7 @@ not interpreted as proof of ownership. Every citation must belong to the
 selected profile's currently verified, undeleted facts. This is not a prompt:
 job text and base content remain data and still require prompt guardrails later.
 """
+
 from copy import deepcopy
 from dataclasses import dataclass
 from decimal import Decimal
@@ -72,6 +73,7 @@ class TailoringContext:
 
 def validate_match_matrix(matrix: Any, citable_ids: set[UUID]) -> None:
     """Validate without repairing, rescoring, or discarding persisted rows."""
+
     def invalid() -> None:
         # Never echo potentially private persisted text into errors.
         raise MalformedMatchMatrixError("A2 match matrix is malformed or cites unavailable facts")
@@ -90,7 +92,9 @@ def validate_match_matrix(matrix: Any, citable_ids: set[UUID]) -> None:
             invalid()
         if row.get("status") not in list(MatchStatus):
             invalid()
-        if row.get("necessity") not in list(Necessity) or row.get("kind") not in list(RequirementKind):
+        if row.get("necessity") not in list(Necessity) or row.get("kind") not in list(
+            RequirementKind
+        ):
             invalid()
         ids = row.get("fact_ids")
         if not isinstance(ids, list) or any(not isinstance(value, str) for value in ids):
@@ -104,30 +108,43 @@ def validate_match_matrix(matrix: Any, citable_ids: set[UUID]) -> None:
         if row["status"] in (MatchStatus.MET, MatchStatus.PARTIALLY_MET) and not ids:
             invalid()
         for key in ("matched_terms", "unmatched_terms"):
-            if key in row and (not isinstance(row[key], list)
-                               or any(not isinstance(term, str) for term in row[key])):
+            if key in row and (
+                not isinstance(row[key], list)
+                or any(not isinstance(term, str) for term in row[key])
+            ):
                 invalid()
         for key in ("years_required", "years_evidenced"):
             value = row.get(key)
             if value is not None and (
-                type(value) not in (int, float) or not isfinite(value) or value < 0
+                type(value) not in (int, float)
+                or not isfinite(value)
+                or value < 0
                 or (key == "years_required" and type(value) is not int)
             ):
                 invalid()
         if "assessable" in row and type(row["assessable"]) is not bool:
             invalid()
-        if row.get("no_evidence_reason") is not None and not isinstance(row["no_evidence_reason"], str):
+        if row.get("no_evidence_reason") is not None and not isinstance(
+            row["no_evidence_reason"], str
+        ):
             invalid()
         if "evidence" in row:
             if not isinstance(row["evidence"], list):
                 invalid()
             for item in row["evidence"]:
-                if not isinstance(item, dict) or item.get("fact_id") not in ids or not isinstance(item.get("text"), str):
+                if (
+                    not isinstance(item, dict)
+                    or item.get("fact_id") not in ids
+                    or not isinstance(item.get("text"), str)
+                ):
                     invalid()
 
 
 async def load_tailoring_context(
-    session: AsyncSession, *, profile_id: UUID, job_id: UUID,
+    session: AsyncSession,
+    *,
+    profile_id: UUID,
+    job_id: UUID,
 ) -> TailoringContext:
     """Load B0 using latest evaluation and highest-version base resume.
 
@@ -148,24 +165,42 @@ async def load_tailoring_context(
         facts = await FactRepository(session).list_citable(profile_id)
         facts.sort(key=lambda fact: str(fact.id))
         validate_match_matrix(evaluation.match_matrix, {fact.id for fact in facts})
-        if (evaluation.score is None or not evaluation.score.is_finite()
-                or not 0 <= evaluation.score <= 100
-                or not isinstance(evaluation.rationale, str) or not evaluation.rationale.strip()):
+        if (
+            evaluation.assessment_status != "assessed"
+            or evaluation.recommendation is None
+            or evaluation.score is None
+            or not evaluation.score.is_finite()
+            or not 0 <= evaluation.score <= 100
+            or not isinstance(evaluation.rationale, str)
+            or not evaluation.rationale.strip()
+        ):
             raise IncompleteEvaluationError("Persisted A3 score and A4 rationale are required")
         if not isinstance(base.content, dict):
             raise ValidationError("Base resume structure must be an object")
         return TailoringContext(
-            profile_id=profile_id, base_resume_id=base.id, base_resume_version=base.version,
+            profile_id=profile_id,
+            base_resume_id=base.id,
+            base_resume_version=base.version,
             base_resume_structure=deepcopy(base.content),
             facts=tuple(
-                TailoringFact(id=fact.id, text=fact.text, structured=deepcopy(fact.structured),
-                              fact_type=FactType(fact.fact_type), status=FactStatus(fact.status))
+                TailoringFact(
+                    id=fact.id,
+                    text=fact.text,
+                    structured=deepcopy(fact.structured),
+                    fact_type=FactType(fact.fact_type),
+                    status=FactStatus(fact.status),
+                )
                 for fact in facts
             ),
-            job={column.key: deepcopy(getattr(job, column.key)) for column in job.__table__.columns},
-            evaluation_id=evaluation.id, profile_version=evaluation.profile_version,
-            match_matrix=deepcopy(evaluation.match_matrix), score=evaluation.score,
+            job={
+                column.key: deepcopy(getattr(job, column.key)) for column in job.__table__.columns
+            },
+            evaluation_id=evaluation.id,
+            profile_version=evaluation.profile_version,
+            match_matrix=deepcopy(evaluation.match_matrix),
+            score=evaluation.score,
             recommendation=evaluation.recommendation,
             score_breakdown=deepcopy(evaluation.score_breakdown),
-            rationale=evaluation.rationale, gaps=tuple(evaluation.gaps),
+            rationale=evaluation.rationale,
+            gaps=tuple(evaluation.gaps),
         )

@@ -5,6 +5,7 @@ import { AuthGuard } from "./AuthGuard";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { SignOutButton } from "./SignOutButton";
+import { MobileNav } from "./MobileNav";
 
 /**
  * Desktop-first two-column shell. Below `lg` the sidebar becomes a drawer
@@ -41,7 +42,7 @@ export function AppShell({
             aria-label="Close navigation"
             onClick={() => setNavOpen(false)}
           />
-          <div className="relative h-full w-60">
+          <div className="relative h-full w-[17rem] animate-panel-in">
             <Sidebar onNavigate={() => setNavOpen(false)} />
           </div>
         </div>
@@ -53,11 +54,12 @@ export function AppShell({
           description={description}
           onOpenNav={() => setNavOpen(true)}
         />
-        <main className="px-5 py-6 lg:px-8 lg:py-8">{children}</main>
-        <div className="px-5 pb-6 lg:px-8">
+        <main className="animate-page-in px-5 py-7 pb-28 lg:px-9 lg:py-9">{children}</main>
+        <div className="px-5 pb-28 lg:px-9 lg:pb-6">
           <SignOutButton />
         </div>
       </div>
+      <MobileNav onOpenMore={() => setNavOpen(true)} />
     </div>
     </AuthGuard>
   );

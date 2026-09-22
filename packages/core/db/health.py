@@ -25,7 +25,7 @@ async def check_database(timeout_seconds: float = 3.0) -> dict[str, object]:
             await conn.execute(text("SELECT 1"))
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
         return {"status": "ok", "latency_ms": latency_ms}
-    except Exception as exc:  # noqa: BLE001 - health probes report, never raise
+    except Exception as exc:
         latency_ms = round((time.perf_counter() - started) * 1000, 2)
         log.warning("health.database.failed", error=type(exc).__name__)
         return {
@@ -43,5 +43,5 @@ async def get_migration_revision() -> str | None:
             result = await conn.execute(text("SELECT version_num FROM alembic_version"))
             row = result.first()
             return row[0] if row else None
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None

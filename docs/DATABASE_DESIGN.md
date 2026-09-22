@@ -333,8 +333,9 @@ Immutable capture of what was actually seen, for audit and re-parsing: `id`, `jo
 | `id` | UUID PK | |
 | `job_id` | UUID FK → jobs ON DELETE CASCADE | |
 | `profile_version` | INTEGER NOT NULL | Which profile state was evaluated |
-| `score` | NUMERIC(5,2) NOT NULL | 0–100 |
-| `recommendation` | recommendation NOT NULL | |
+| `assessment_status` | TEXT NOT NULL DEFAULT 'assessed' | `assessed` or `insufficient_evidence` |
+| `score` | NUMERIC(5,2) | Required 0–100 for assessed; NULL for insufficient evidence |
+| `recommendation` | recommendation | |
 | `match_matrix` | JSONB NOT NULL | requirement → `{status, fact_ids[], note}` |
 | `matched_requirements`, `missing_requirements` | JSONB | Denormalized for fast UI |
 | `gaps` | TEXT[] | Named honestly |
@@ -343,6 +344,10 @@ Immutable capture of what was actually seen, for audit and re-parsing: `id`, `jo
 | `agent_run_id` | UUID FK → agent_runs | |
 | `model`, `prompt_version` | TEXT | |
 | `created_at` | TIMESTAMPTZ | |
+
+`ck_job_evaluations_assessment_contract` requires score and recommendation
+both present for `assessed`, and both NULL for `insufficient_evidence`.
+Unresolved evidence/reasons remain in the matrix, breakdown and rationale.
 
 No `updated_at` — evaluations are append-only. Re-evaluation creates a new row; the UI shows the latest and offers history.
 

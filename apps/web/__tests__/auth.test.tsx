@@ -4,11 +4,14 @@ import { CSRF_COOKIE, CSRF_HEADER, api, readCsrfToken } from "@/lib/api";
 
 const replace = vi.fn();
 
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace, push: vi.fn() }),
-  usePathname: () => "/resume-studio",
-  useSearchParams: () => new URLSearchParams(""),
-}));
+vi.mock("next/navigation", () => {
+  const router = { replace, push: vi.fn() };
+  return {
+    useRouter: () => router,
+    usePathname: () => "/resume-studio",
+    useSearchParams: () => new URLSearchParams(""),
+  };
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -250,5 +253,60 @@ describe("auth guard", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
     await renderGuard();
     expect(screen.getByTestId("auth-loading")).toBeInTheDocument();
+  });
+
+  it("shows a retry action when the session request cannot reach the API", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("network error"))
+      .mockResolvedValueOnce(jsonResponse({ id: "u1", email: "demo@example.invalid", role: "owner" }));
+    vi.stubGlobal("fetch", fetchMock);
+    await renderGuard();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not check your session");
+    expect(screen.queryByText("protected content")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("protected content")).toBeInTheDocument();
+  });
+});
+
+describe("password visibility toggle", () => {
+  async function renderLogin() {
+    vi.stubGlobal("fetch", routedFetch({ config: { totp_required: false } }));
+    const { default: Page } = await import("@/app/login/page");
+    render(<Page />);
+    await screen.findByRole("button", { name: /sign in/i });
+    return screen.getByLabelText("Password") as HTMLInputElement;
+  }
+
+  it("masks the password until the toggle is pressed", async () => {
+    const field = await renderLogin();
+    expect(field.type).toBe("password");
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(field.type).toBe("text");
+  });
+
+  it("masks it again on a second press", async () => {
+    const field = await renderLogin();
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(field.type).toBe("password");
+  });
+
+  it("reports its state to assistive technology", async () => {
+    await renderLogin();
+    const toggle = screen.getByRole("button", { name: "Show password" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Hide password" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("does not submit the form", async () => {
+    // A bare <button> inside a <form> defaults to type="submit". If the
+    // toggle ever loses type="button" it would post half-filled credentials.
+    await renderLogin();
+    fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+    expect(replace).not.toHaveBeenCalled();
   });
 });

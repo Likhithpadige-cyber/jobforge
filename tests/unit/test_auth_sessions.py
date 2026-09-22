@@ -30,23 +30,108 @@ ABSOLUTE = 168  # 7 days
 
 
 class FakeRedis:
-    """Enough Redis to be honest: string values with a TTL we can inspect."""
+    """Shared string store with a controlled clock and atomic Redis transactions."""
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
+        self.counters: dict[str, int] = {}
         self.ttls: dict[str, int] = {}
+        self.expires_at: dict[str, float] = {}
+        self.now = 1_000.0
+        self.fail = False
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+        for key in list(self.expires_at):
+            self._expire(key)
+
+    def _expire(self, key: str) -> None:
+        if self.expires_at.get(key, float("inf")) <= self.now:
+            self.store.pop(key, None)
+            self.counters.pop(key, None)
+            self.ttls.pop(key, None)
+            self.expires_at.pop(key, None)
 
     async def set(self, key: str, value: str, ex: int | None = None) -> None:
         self.store[key] = value
+        self.counters.pop(key, None)
+        self.ttls.pop(key, None)
+        self.expires_at.pop(key, None)
         if ex is not None:
             self.ttls[key] = ex
+            self.expires_at[key] = self.now + ex
 
     async def get(self, key: str) -> str | None:
-        return self.store.get(key)
+        self._expire(key)
+        return str(self.counters[key]) if key in self.counters else self.store.get(key)
 
     async def delete(self, key: str) -> int:
+        self._expire(key)
         self.ttls.pop(key, None)
-        return 1 if self.store.pop(key, None) is not None else 0
+        self.expires_at.pop(key, None)
+        existed = key in self.store or key in self.counters
+        self.store.pop(key, None)
+        self.counters.pop(key, None)
+        return int(existed)
+
+    def _incr(self, key: str) -> int:
+        self._expire(key)
+        value = int(self.counters.get(key, self.store.get(key, "0"))) + 1
+        self.store.pop(key, None)
+        self.counters[key] = value
+        return value
+
+    def _pexpire(self, key: str, ms: int, nx: bool) -> int:
+        self._expire(key)
+        if (key not in self.store and key not in self.counters) or (nx and key in self.expires_at):
+            return 0
+        self.expires_at[key] = self.now + ms / 1000
+        self._expire(key)
+        return 1
+
+    def _pttl(self, key: str) -> int:
+        self._expire(key)
+        if key not in self.store and key not in self.counters:
+            return -2
+        if key not in self.expires_at:
+            return -1
+        return int(round((self.expires_at[key] - self.now) * 1000))
+
+    def pipeline(self, transaction: bool = True):  # type: ignore[no-untyped-def]
+        return _FakePipeline(self)
+
+
+class _FakePipeline:
+    def __init__(self, redis: FakeRedis) -> None:
+        self.redis = redis
+        self.ops: list[tuple] = []
+
+    async def __aenter__(self):  # type: ignore[no-untyped-def]
+        return self
+
+    async def __aexit__(self, *exc):  # type: ignore[no-untyped-def]
+        self.ops.clear()
+        return False
+
+    def incr(self, key: str):  # type: ignore[no-untyped-def]
+        self.ops.append(("incr", key))
+        return self
+
+    def pexpire(self, key: str, ms: int, nx: bool = False):  # type: ignore[no-untyped-def]
+        self.ops.append(("pexpire", key, ms, nx))
+        return self
+
+    def pttl(self, key: str):  # type: ignore[no-untyped-def]
+        self.ops.append(("pttl", key))
+        return self
+
+    async def execute(self) -> list:
+        if self.redis.fail:
+            raise ConnectionError("redis is down")
+        # No await between commands: MULTI/EXEC cannot interleave with another
+        # client's commands. Clear the queue just as redis-py does after EXEC.
+        ops, self.ops = self.ops, []
+        return [getattr(self.redis, "_" + op[0])(*op[1:]) for op in ops]
 
 
 @pytest.fixture

@@ -148,7 +148,11 @@ export function readCsrfToken(): string | null {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${env.apiBaseUrl}${path}`;
+  // In local development, use the Next.js same-origin API proxy. This keeps
+  // browser requests on the current host and port, including when dev runs on
+  // a port other than the API's configured CORS origin.
+  const baseUrl = process.env.NODE_ENV === "development" ? "" : env.apiBaseUrl;
+  const url = `${baseUrl}${path}`;
   const method = (init?.method ?? "GET").toUpperCase();
   const headers: Record<string, string> = {
     Accept: "application/json",

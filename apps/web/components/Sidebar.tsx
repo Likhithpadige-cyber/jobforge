@@ -2,152 +2,42 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { Icon, Wordmark, type IconName } from "./Icon";
-import { api, type Readiness } from "@/lib/api";
+import { Icon, Wordmark } from "./Icon";
+import { PRIMARY_NAV, SECONDARY_NAV, isNavActive, type NavItem } from "@/lib/navigation";
 
-type NavItem = { href: string; label: string; icon: IconName; badge?: number };
-
-const WORKFLOW: NavItem[] = [
-  { href: "/", label: "Overview", icon: "overview" },
-  { href: "/job-feed", label: "Job Feed", icon: "feed" },
-  { href: "/approvals", label: "Approvals", icon: "approvals", badge: 4 },
-  { href: "/resume-studio", label: "Resume Studio", icon: "resume" },
-  { href: "/applications", label: "Applications", icon: "applications" },
-  { href: "/agent-activity", label: "Agent Activity", icon: "activity" },
-];
-
-const WORKSPACE: NavItem[] = [
-  { href: "/profile", label: "Profile & Facts", icon: "profile" },
-  { href: "/settings", label: "Settings", icon: "settings" },
-];
-
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
   return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      className={[
-        "group relative flex items-center gap-3 rounded-chip py-2 pl-4 pr-3 text-sm transition-colors",
-        active
-          ? "bg-graphite font-medium text-white shadow-[inset_0_0_0_0.5px_rgba(255,255,255,0.06)]"
-          : "text-white/55 hover:bg-white/[0.06] hover:text-white",
-      ].join(" ")}
-    >
-      {/* A thin brass rule marks the current page rather than a saturated
-          block of colour. */}
-      <span
-        className={`absolute left-0 top-1 bottom-1 w-[3px] rounded-r-full bg-brass transition-opacity ${
-          active ? "opacity-100" : "opacity-0"
-        }`}
-        aria-hidden="true"
-      />
-      <Icon name={item.icon} className="h-4 w-4 shrink-0" />
-      <span className="truncate">{item.label}</span>
-      {item.badge ? (
-        <span className="tabular ml-auto rounded-chip bg-brass/15 px-1.5 py-0.5 text-xs font-medium text-brass">
-          {item.badge}
-        </span>
-      ) : null}
+    <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined}
+      className={`group relative flex items-center gap-3 rounded-chip px-3.5 py-3 text-sm font-medium transition-[color,background-color,transform] duration-200 hover:translate-x-0.5 ${active ? "bg-violet-soft text-violet-deep" : "text-ink-soft hover:bg-muted hover:text-ink"}`}>
+      <span aria-hidden="true" className={`absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-violet transition-transform duration-300 ${active ? "scale-y-100" : "scale-y-0"}`} />
+      <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
+      <span>{item.label}</span>
     </Link>
-  );
-}
-
-function SystemStatus() {
-  const [health, setHealth] = useState<Readiness | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const result = await api.readiness();
-        if (!cancelled) {
-          setHealth(result);
-          setFailed(false);
-        }
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    };
-    void load();
-    const timer = setInterval(() => void load(), 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, []);
-
-  const state = failed ? "unavailable" : (health?.status ?? "checking");
-  const dot =
-    state === "ok"
-      ? "bg-signal-strong"
-      : state === "degraded"
-        ? "bg-signal-review"
-        : state === "unavailable"
-          ? "bg-signal-risk"
-          : "bg-white/30";
-
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs text-white/45">
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} aria-hidden="true" />
-      <span>API {state}</span>
-      {health?.migration_revision && (
-        <span className="ml-auto font-mono text-[0.65rem] text-white/30">
-          {health.migration_revision}
-        </span>
-      )}
-    </div>
   );
 }
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
-
   return (
-    <div className="on-dark flex h-full flex-col bg-charcoal">
-      <div className="px-4 pb-6 pt-5">
-        <Link href="/" onClick={onNavigate} className="inline-block rounded-chip">
-          <Wordmark />
-        </Link>
+    <div className="flex h-full flex-col border-r border-edge bg-surface">
+      <div className="px-6 pb-8 pt-7">
+        <Link href="/" onClick={onNavigate} className="inline-flex rounded-chip"><Wordmark /></Link>
+        <p className="mt-2 pl-[34px] text-[11px] font-medium tracking-[0.13em] text-ink-soft">CAREER WORKSPACE</p>
       </div>
-
-      <nav className="flex-1 space-y-7 px-3" aria-label="Main">
-        <div className="space-y-1" onClick={onNavigate}>
-          {WORKFLOW.map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(item.href)} />
-          ))}
-        </div>
-
-        <div>
-          <p className="px-3 pb-1.5 text-xs text-white/35">Workspace</p>
-          <div className="space-y-1" onClick={onNavigate}>
-            {WORKSPACE.map((item) => (
-              <NavLink key={item.href} item={item} active={isActive(item.href)} />
-            ))}
-          </div>
+      <nav className="flex-1 space-y-7 overflow-y-auto px-3" aria-label="Main">
+        <div className="space-y-1">{PRIMARY_NAV.map(item => <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />)}</div>
+        <div className="border-t border-edge pt-5">
+          <p className="px-3.5 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">Workspace</p>
+          <div className="space-y-1">{SECONDARY_NAV.map(item => <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />)}</div>
         </div>
       </nav>
-
-      <div className="mt-6 border-t border-white/[0.08] p-3">
-        <SystemStatus />
-        <div className="mt-1 flex items-center gap-3 rounded-chip px-3 py-2.5">
-          <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brass/15 text-xs font-medium text-brass"
-            aria-hidden="true"
-          >
-            LS
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm text-white/90">Likhith Sai</p>
-            <p className="truncate text-xs text-white/40">Cloud Engineer</p>
-          </div>
-        </div>
+      <div className="m-3 rounded-card border border-violet/10 bg-violet-soft/60 p-4">
+        <p className="text-xs font-semibold text-violet-deep">Your next step</p>
+        <p className="mt-1 text-sm text-ink">Review what is waiting for your approval.</p>
+        <Link href="/approvals" onClick={onNavigate} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-violet-deep hover:underline">View approvals <Icon name="arrow" className="h-3 w-3" /></Link>
       </div>
     </div>
   );
 }
 
-export { WORKFLOW as NAV_WORKFLOW, WORKSPACE as NAV_WORKSPACE };
+export { PRIMARY_NAV as NAV_WORKFLOW, SECONDARY_NAV as NAV_WORKSPACE };

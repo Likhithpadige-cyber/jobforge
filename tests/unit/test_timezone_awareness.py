@@ -96,8 +96,9 @@ class TestModelColumnTypes:
         """PostgreSQL `now()` returns timestamptz, so it is correct for these
         columns. A default of `LOCALTIMESTAMP` or `now()::timestamp` would not
         be, and would reintroduce the mismatch through the back door."""
-        import packages.core.models  # noqa: F401
         from sqlalchemy import DateTime
+
+        import packages.core.models  # noqa: F401
         from packages.core.db.base import Base
 
         bad: list[str] = []

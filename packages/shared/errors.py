@@ -16,9 +16,15 @@ class AppError(Exception):
     title: str = "Internal Server Error"
     error_type: str = "about:blank"
 
+    #: Response headers this error needs, if any. Empty for almost every
+    #: error; `Retry-After` on 429 is the case that needs it, and a subclass
+    #: sets it in its own __init__.
+    headers: dict[str, str]
+
     def __init__(self, detail: str | None = None, **extra: Any) -> None:
         self.detail = detail or self.title
         self.extra = extra
+        self.headers = {}
         super().__init__(self.detail)
 
     def to_problem(self, instance: str | None = None) -> dict[str, Any]:

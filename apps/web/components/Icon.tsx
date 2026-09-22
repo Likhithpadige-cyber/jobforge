@@ -19,6 +19,9 @@ export type IconName =
   | "resume"
   | "applications"
   | "activity"
+  | "interviews"
+  | "analytics"
+  | "more"
   | "profile"
   | "settings"
   | "search"
@@ -34,6 +37,9 @@ const PATHS: Record<IconName, string> = {
   resume: "M7 3h7l4 4v14H7V3Zm7 0v4h4M10 12h5M10 16h5",
   applications: "M4 7h16v13H4V7Zm4-4v4m8-4v4M4 11h16",
   activity: "M3 12h4l2.5 6 4-14 2.5 8h5",
+  interviews: "M4 5h16v14H4V5Zm4 4h8m-8 4h5m-5 4h8",
+  analytics: "M4 19V5m0 14h16M8 15l4-4 3 2 5-6",
+  more: "M5 12h.01M12 12h.01M19 12h.01",
   profile: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0",
   settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8.4-3a8.4 8.4 0 0 0-.1-1.3l2-1.5-2-3.4-2.3 1a8.3 8.3 0 0 0-2.2-1.3L15.4 2h-4l-.4 2.5a8.3 8.3 0 0 0-2.2 1.3l-2.3-1-2 3.4 2 1.5a8.4 8.4 0 0 0 0 2.6l-2 1.5 2 3.4 2.3-1a8.3 8.3 0 0 0 2.2 1.3l.4 2.5h4l.4-2.5a8.3 8.3 0 0 0 2.2-1.3l2.3 1 2-3.4-2-1.5c.06-.43.1-.86.1-1.3Z",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Zm5.5-1.5L21 21",
@@ -69,11 +75,11 @@ export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`flex items-center gap-2.5 ${className}`}>
       <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true" focusable="false">
-        <path d="M3 8h13l-2.2 4.2H8.8L11 8" fill="#C7A96B" />
-        <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" fill="#9C8248" />
-        <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" fill="#E2E5E9" opacity="0.35" />
+        <path d="M3 8h13l-2.2 4.2H8.8L11 8" fill="#6457B5" />
+        <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" fill="#4D4291" />
+        <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" fill="#C9AE78" />
       </svg>
-      <span className="text-[0.95rem] font-semibold tracking-tight text-white">
+      <span className="text-[1rem] font-semibold tracking-tight text-ink">
         JobForge
       </span>
     </span>

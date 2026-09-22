@@ -64,11 +64,13 @@ UP_SQL = SqlFiles(
     "0002_core_schema.up.sql",
     "0005_revision_attempts.up.sql",
     "0006_resume_rework_limit.up.sql",
+    "0007_evaluation_assessment.up.sql",
 )
 DOWN_SQL = SqlFiles(
     "0002_core_schema.down.sql",
     "0005_revision_attempts.down.sql",
     "0006_resume_rework_limit.down.sql",
+    "0007_evaluation_assessment.down.sql",
 )
 GRANTS_SQL = SqlFiles(
     "0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql"
@@ -198,6 +200,11 @@ def sql_tables() -> dict[str, set[str]]:
             if re.fullmatch(r"\w+", first):
                 columns.add(first)
         tables[name] = columns
+    # Schema evolution may add columns after the original CREATE TABLE.
+    for table, column in re.findall(
+        r"ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w+)", sql, re.I
+    ):
+        tables.setdefault(table, set()).add(column)
     return tables
 
 

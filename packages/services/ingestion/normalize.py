@@ -18,6 +18,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal
+
 from packages.shared.clock import utc_now
 
 # ---------------------------------------------------------------- constants
@@ -35,7 +36,7 @@ SENIORITY_PATTERNS: tuple[tuple[str, str], ...] = (
 TITLE_NOISE = (
     r"\((remote|hybrid|onsite|on-site|contract|w2|c2c|full[\s-]?time|part[\s-]?time)\)",
     r"\b(urgent|immediate\s+joiner|hot\s+job|apply\s+now|hiring\s+now)\b",
-    r"[-–—|]\s*(remote|hybrid|onsite|us|usa|united\s+states)\s*$",
+    r"[-\u2013—|]\s*(remote|hybrid|onsite|us|usa|united\s+states)\s*$",
     r"\bw2\s+only\b",
     r"\b\d{4,}\b",  # requisition numbers
     r"#\s*\w+",
@@ -76,7 +77,7 @@ STATE_CODES = set(US_STATES.values())
 
 SALARY_PATTERN = re.compile(
     r"(?P<currency>[$£€])?\s*(?P<low>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*"
-    r"(?P<lowunit>k|m)?\s*(?:-|–|—|to)\s*"
+    r"(?P<lowunit>k|m)?\s*(?:-|\u2013|—|to)\s*"
     r"(?P<currency2>[$£€])?\s*(?P<high>\d{1,3}(?:,\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)\s*"
     r"(?P<highunit>k|m)?",
     re.IGNORECASE,
@@ -152,9 +153,9 @@ def normalize_title(title: str) -> str:
     # "URGENT: Cloud Engineer - Apply Now" would otherwise normalize to
     # "cloud engineer -", which breaks exact-title dedupe.
     value = _collapse(value)
-    value = value.strip(" -–—|:,/")
-    value = re.sub(r"\s+[-–—|:,]+\s*$", "", value)
-    value = re.sub(r"^\s*[-–—|:,]+\s+", "", value)
+    value = value.strip(" -\u2013—|:,/")
+    value = re.sub(r"\s+[-\u2013—|:,]+\s*$", "", value)
+    value = re.sub(r"^\s*[-\u2013—|:,]+\s+", "", value)
     return _collapse(value)
 
 
@@ -209,7 +210,7 @@ def parse_location(raw: str | None) -> ParsedLocation:
         "",
         lowered,
     )
-    cleaned = _collapse(cleaned.strip(" ,-–|/"))
+    cleaned = _collapse(cleaned.strip(" ,-\u2013|/"))
     if not cleaned:
         return ParsedLocation(is_remote=is_remote, is_hybrid=is_hybrid)
 

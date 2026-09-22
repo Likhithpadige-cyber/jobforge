@@ -178,6 +178,7 @@ async def persist_resume(
     model: str | None = None,
     prompt_version: str | None = None,
     cost_usd: Decimal | None = None,
+    request_rendering: bool = True,
     actor_id: str = "resume_optimizer",
     causation_id: UUID | None = None,
     trace_id: str | None = None,
@@ -311,13 +312,14 @@ async def persist_resume(
         # AGENT_DESIGN.md §3.4 B6: "emit `resume.generated` and request
         # rendering". Only on the success path - a failed resume is not
         # rendered, it is reviewed.
-        await emit(
-            session,
-            type="resume.render.requested",
-            payload={"resume_id": str(resume.id), "formats": list(RENDER_FORMATS)},
-            **common,
-        )
-        emitted.append("resume.render.requested")
+        if request_rendering:
+            await emit(
+                session,
+                type="resume.render.requested",
+                payload={"resume_id": str(resume.id), "formats": list(RENDER_FORMATS)},
+                **common,
+            )
+            emitted.append("resume.render.requested")
     else:
         # The fabrication tripwire (EVENTS.md §3.2). No render request, and no
         # redraft: a human decides what happens next.

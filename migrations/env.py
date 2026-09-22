@@ -19,7 +19,7 @@ from packages.shared.config import get_settings
 
 # Import model modules here so that Base.metadata is fully populated before
 # autogenerate runs. Phase 2 adds the domain models.
-# import packages.core.models  # noqa: F401
+# import packages.core.models
 
 config = context.config
 
@@ -34,9 +34,7 @@ target_metadata = Base.metadata
 
 def _include_object(obj, name, type_, reflected, compare_to) -> bool:  # type: ignore[no-untyped-def]
     """Keep Alembic's hands off objects it does not own."""
-    if type_ == "table" and name in {"spatial_ref_sys"}:
-        return False
-    return True
+    return not (type_ == "table" and name in {"spatial_ref_sys"})
 
 
 def run_migrations_offline() -> None:

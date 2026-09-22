@@ -21,13 +21,13 @@ pytestmark = [pytest.mark.unit, pytest.mark.safety]
 
 
 def envelope(**overrides):  # type: ignore[no-untyped-def]
-    kwargs = dict(
-        type="job.evaluated",
-        aggregate_type="job",
-        payload={"job_id": "x"},
-        correlation_id=uuid4(),
-        actor_type="agent",
-    )
+    kwargs = {
+        "type": "job.evaluated",
+        "aggregate_type": "job",
+        "payload": {"job_id": "x"},
+        "correlation_id": uuid4(),
+        "actor_type": "agent",
+    }
     kwargs.update(overrides)
     return EventEnvelope(**kwargs)  # type: ignore[arg-type]
 

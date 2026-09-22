@@ -288,9 +288,9 @@ def compute_score(
     if raw_preferred is not None:
         components.append((raw_preferred, WEIGHTS["preferred"]))
 
-    total_weight = sum(weight for _, weight in components)
+    total_weight = sum((weight for _, weight in components), Decimal("0"))
     weighted = (
-        sum(value * weight for value, weight in components) / total_weight
+        sum((value * weight for value, weight in components), Decimal("0")) / total_weight
     ) * Decimal("100")
 
     required_ratio = raw_required if raw_required is not None else Decimal("0")

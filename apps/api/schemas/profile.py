@@ -11,7 +11,7 @@ from datetime import date, datetime
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 NonBlank = Annotated[str, Field(min_length=1, max_length=500)]
 
@@ -48,9 +48,12 @@ class ProfileBase(StrictModel):
 
     @model_validator(mode="after")
     def _salary_ordered(self) -> ProfileBase:
-        if self.min_salary is not None and self.max_salary is not None:
-            if self.max_salary < self.min_salary:
-                raise ValueError("max_salary must be greater than or equal to min_salary")
+        if (
+            self.min_salary is not None
+            and self.max_salary is not None
+            and self.max_salary < self.min_salary
+        ):
+            raise ValueError("max_salary must be greater than or equal to min_salary")
         return self
 
 

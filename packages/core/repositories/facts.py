@@ -7,6 +7,7 @@ this layer makes the enforced behaviour easy to use correctly.
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import UUID
 
 from sqlalchemy import func, select, text
@@ -14,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.models import FactEvidence, FactStatus, FactType, ProfileFact
 from packages.core.repositories.base import BaseRepository
-from packages.shared.errors import ConflictError, NotFoundError, ValidationError
 from packages.shared.clock import utc_now
+from packages.shared.errors import ConflictError, NotFoundError, ValidationError
 
 
 class FactRepository(BaseRepository[ProfileFact]):
@@ -70,7 +71,7 @@ class FactRepository(BaseRepository[ProfileFact]):
         text_value: str,
         source_table: str,
         source_id: UUID,
-        structured: dict | None = None,
+        structured: dict[str, object] | None = None,
         confidence: str | None = None,
     ) -> ProfileFact:
         """Create a fact in DRAFT.
@@ -151,7 +152,9 @@ class FactRepository(BaseRepository[ProfileFact]):
         stmt = select(
             text("jobforge_increment_fact_usage(:fact_id)").bindparams(fact_id=fact_id)
         )
-        return (await self.session.execute(stmt)).scalar_one()
+        # The raw SQL expression loses the INTEGER return type declared by
+        # migration 0002; callers supply the existing fact being cited.
+        return cast(int, (await self.session.execute(stmt)).scalar_one())
 
     async def verify_all_citable(self, fact_ids: list[UUID]) -> list[UUID]:
         """Return the subset of ``fact_ids`` that are NOT citable.

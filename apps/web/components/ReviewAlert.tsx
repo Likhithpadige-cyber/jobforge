@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Icon } from "./Icon";
 import type { DemoAttention } from "@/lib/demo-data";
 
@@ -55,13 +56,13 @@ export function ReviewAlert({ item }: { item: DemoAttention }) {
             {item.title}
           </p>
           <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">{item.body}</p>
-          <button
-            type="button"
+          <Link
+            href={item.kind === "review" ? "/approvals" : item.kind === "risk" ? "/job-feed" : "/profile"}
             className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brass-deep hover:underline"
           >
             {item.cta}
             <Icon name="arrow" className="h-3.5 w-3.5" />
-          </button>
+          </Link>
         </div>
       </div>
     </div>

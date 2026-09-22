@@ -159,6 +159,48 @@ class Settings(BaseSettings):
     csrf_cookie_name: str = "jobforge_csrf"
     access_token_ttl_minutes: int = 60
 
+    # -------------------------------------------------------- rate limits
+    # Operational limits, kept here rather than in the routers so the whole
+    # abuse budget of the system can be read in one place and tuned per
+    # deployment. None of them is a guardrail: lowering one costs
+    # availability, raising one costs money or exposure, and neither changes
+    # what any role is allowed to do.
+    #
+    # `rate_limit_enabled` exists for tests and for a deployment that puts a
+    # limiter at the edge instead. It is NOT a way to switch off the rework
+    # limit or any approval rule - those live in the database and the service
+    # layer and are not configurable.
+    rate_limit_enabled: bool = True
+
+    #: Login, per source address. Sized so a shared office NAT running a
+    #: handful of people does not trip it, while a credential-stuffing run
+    #: from one host does.
+    rate_limit_login_per_ip: int = 20
+    rate_limit_login_ip_window_seconds: int = 900
+
+    #: Login, per submitted email. Independent of whether that email exists -
+    #: see apps/api/routers/auth.py - so it cannot answer "is this an
+    #: account?". Catches a spray that rotates source addresses but keeps
+    #: hammering one identity. Deliberately not a lockout: the key expires.
+    rate_limit_login_per_identifier: int = 8
+    rate_limit_login_identifier_window_seconds: int = 900
+
+    #: Resume revision. The only authenticated endpoint that spends provider
+    #: budget synchronously. The three-cycle rework rule already bounds one
+    #: application; this bounds one *user* across all of them.
+    rate_limit_revision_per_user: int = 6
+    rate_limit_revision_window_seconds: int = 3600
+
+    #: Job import. One request can carry thousands of postings and runs
+    #: normalisation and dedupe over the existing corpus for each one.
+    rate_limit_import_per_user: int = 10
+    rate_limit_import_window_seconds: int = 3600
+
+    #: Fact suggestion. Deterministic and modest per call, but it writes rows
+    #: per call and there is no natural ceiling on how often it is invoked.
+    rate_limit_fact_suggest_per_user: int = 30
+    rate_limit_fact_suggest_window_seconds: int = 3600
+
     # ------------------------------------------------------------- crypto
     #: base64 of 32 random bytes; encrypts users.totp_secret_enc only.
     #: Deliberately separate from session_secret - see SECURITY.md 3.4.

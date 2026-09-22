@@ -18,8 +18,8 @@ from packages.core.models import (
     Skill,
 )
 from packages.core.repositories.base import BaseRepository
-from packages.shared.errors import NotFoundError
 from packages.shared.clock import utc_now
+from packages.shared.errors import NotFoundError
 
 ChildT = TypeVar("ChildT", bound=Base)
 

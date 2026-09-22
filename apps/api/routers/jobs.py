@@ -10,9 +10,15 @@ from __future__ import annotations
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
-from apps.api.deps import DbSession
+from apps.api.deps import (
+    DbSession,
+    authenticated_api,
+    import_limit,
+    rate_limited,
+    require_owner,
+)
 from apps.api.schemas.jobs import (
     EvaluationRead,
     ImportRequest,
@@ -33,8 +39,10 @@ from packages.services.ingestion import IngestionPipeline
 from packages.services.ingestion.connectors import parse_csv, parse_json
 from packages.shared.errors import NotFoundError, ValidationError
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
-sources_router = APIRouter(prefix="/sources", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(authenticated_api)])
+sources_router = APIRouter(
+    prefix="/sources", tags=["jobs"], dependencies=[Depends(authenticated_api)]
+)
 
 
 @router.post(
@@ -42,6 +50,7 @@ sources_router = APIRouter(prefix="/sources", tags=["jobs"])
     response_model=ImportResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Import postings from pasted CSV or JSON",
+    dependencies=[Depends(require_owner), Depends(rate_limited(import_limit))],
 )
 async def import_jobs(payload: ImportRequest, session: DbSession) -> Any:
     postings = (
@@ -61,7 +70,7 @@ async def import_jobs(payload: ImportRequest, session: DbSession) -> Any:
         duplicates=report.duplicates,
         updated=report.updated,
         rejected=report.rejected,
-        outcomes=report.outcomes,  # type: ignore[arg-type]
+        outcomes=report.outcomes,
     )
 
 
@@ -116,7 +125,11 @@ async def get_job_evaluation(job_id: UUID, session: DbSession) -> Any:
 
 
 # ------------------------------------------------------------------ sources
-@sources_router.get("", response_model=list[SourceRead])
+@sources_router.get(
+    "",
+    response_model=list[SourceRead],
+    dependencies=[Depends(require_owner)],
+)
 async def list_sources(session: DbSession) -> Any:
     return await SourceRepository(session).list(limit=200)
 
@@ -126,6 +139,7 @@ async def list_sources(session: DbSession) -> Any:
     response_model=SourceRead,
     status_code=status.HTTP_201_CREATED,
     summary="Register a source (disabled by default)",
+    dependencies=[Depends(require_owner)],
 )
 async def create_source(payload: SourceCreate, session: DbSession) -> Any:
     repo = SourceRepository(session)

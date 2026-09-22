@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import sys
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -77,7 +77,7 @@ def _scrub_value(value: Any) -> Any:
             k: (REDACTION if k.lower() in REDACTED_KEYS else _scrub_value(v))
             for k, v in value.items()
         }
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_scrub_value(item) for item in value]
     return value
 
@@ -129,4 +129,6 @@ def configure_logging(level: str = "INFO", fmt: str = "console") -> None:
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
-    return structlog.get_logger(name)
+    # structlog's dynamically configured factory erases the logger type.
+    # Quote the type so no runtime module lookup is added to the factory call.
+    return cast("structlog.stdlib.BoundLogger", structlog.get_logger(name))

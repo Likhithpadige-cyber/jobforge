@@ -48,7 +48,7 @@ def test_database_url_is_assembled_from_parts() -> None:
         postgres_host="db",
         postgres_port=5432,
         postgres_user="jobforge",
-        postgres_password="localdev",  # noqa: S106
+        postgres_password="localdev",
         postgres_db="jobforge",
     )
     url = str(settings.database_url)
@@ -85,16 +85,16 @@ def test_production_requires_secrets() -> None:
 def test_production_accepts_complete_secrets() -> None:
     settings = Settings(
         environment=Environment.PRODUCTION,
-        postgres_password="x",  # noqa: S106
-        session_secret="y",  # noqa: S106
-        anthropic_api_key="z",  # noqa: S106
+        postgres_password="x",
+        session_secret="y",
+        anthropic_api_key="z",
     )
     assert settings.environment is Environment.PRODUCTION
     assert settings.is_local is False
 
 
 def test_safe_dump_masks_every_secret() -> None:
-    settings = Settings(postgres_password="hunter2", anthropic_api_key="sk-real-key")  # noqa: S106
+    settings = Settings(postgres_password="hunter2", anthropic_api_key="sk-real-key")
     dumped = settings.safe_dump()
     serialised = str(dumped)
     assert "hunter2" not in serialised
