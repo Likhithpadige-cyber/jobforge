@@ -63,6 +63,28 @@ exclude = ["migrations/versions", "apps/web", "\\.venv"]
 module = ["testcontainers.*", "pgvector.*"]
 ignore_missing_imports = true
 
+# python-docx and ReportLab ship no py.typed marker and have no stubs on
+# typeshed, so mypy cannot resolve them however they are installed. The
+# exception is contained to the third-party modules themselves: JobForge's
+# own renderer modules stay fully checked, and both are imported inside
+# functions guarded by `available()`, so the untyped surface is the import
+# line and the library call, not the renderer's own contract.
+#
+# Both the bare name and the wildcard are listed. mypy reported the bare
+# `docx` and `reportlab` modules as well as `reportlab.pdfgen` and
+# `reportlab.pdfbase.pdfmetrics`, and spelling both forms removes any
+# dependence on how the wildcard treats the package root itself.
+[[tool.mypy.overrides]]
+module = ["docx", "docx.*", "reportlab", "reportlab.*"]
+ignore_missing_imports = true
+
+# boto3/botocore ship no py.typed marker either. Same containment as above:
+# only the import line and the client calls inside S3ArtifactStore are
+# untyped, not the rest of the module.
+[[tool.mypy.overrides]]
+module = ["boto3", "boto3.*", "botocore", "botocore.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 minversion = "8.0"
 pythonpath = ["."]
@@ -82,6 +104,7 @@ markers = [
     "eval: LLM evaluation, costs money, not run in normal CI",
     "safety: safety regression suite, blocking",
     "slow: takes noticeably longer; deselect with -m 'not slow'",
+    "minio: requires a real MinIO reachable at S3_ENDPOINT_URL (docker compose --profile full)",
 ]
 env = [
     "ENVIRONMENT=test",

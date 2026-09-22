@@ -29,10 +29,41 @@ from packages.core.db.audit_session import dispose_audit_engine, init_audit_engi
 from packages.core.events.monitoring import schedule_snapshot, snapshot_jobs
 from packages.core.events.runtime import DeliveryRuntime, OutboxRelay, RetryPolicy, StreamConsumer
 from packages.core.models import Event
-from packages.shared.config import get_settings
+from packages.core.services.artifacts import render_resume
+from packages.services.rendering import production_renderers
+from packages.services.rendering.store import (
+    ArtifactStore,
+    ArtifactStoreUnavailableError,
+    FilesystemArtifactStore,
+    S3ArtifactStore,
+)
+from packages.shared.config import Settings, get_settings
 from packages.shared.logging import configure_logging, get_logger
 
 log = get_logger(__name__)
+
+
+def build_artifact_store(settings: Settings) -> ArtifactStore:
+    """The worker's object store, chosen the same way the API chooses its own.
+
+    Duplicated deliberately rather than imported from apps.api.deps: a worker
+    must not depend on the API package, and the alternative - a shared module
+    that both import - would be a third place to keep in step for two short
+    branches. If a third caller appears, extract it then.
+    """
+    if settings.artifact_storage_backend == "filesystem":
+        return FilesystemArtifactStore(settings.artifact_storage_root)
+    if settings.artifact_storage_backend == "s3":
+        return S3ArtifactStore(
+            bucket=settings.s3_bucket,
+            endpoint_url=settings.s3_endpoint_url,
+            region_name=settings.s3_region,
+            access_key_id=settings.s3_access_key_id,
+            secret_access_key=settings.s3_secret_access_key,
+        )
+    raise ArtifactStoreUnavailableError(
+        f"unknown artifact storage backend {settings.artifact_storage_backend!r}"
+    )
 
 
 async def verify_role(engine: AsyncEngine, expected: str) -> None:
@@ -77,7 +108,9 @@ async def serve(step: Callable[[], Awaitable[object]], stop: asyncio.Event,
                 await asyncio.wait_for(stop.wait(), timeout=interval)
 
 
-async def run(kind: Literal["relay", "monitor", "scheduler", "optimizer", "first-draft"]) -> None:
+async def run(
+    kind: Literal["relay", "monitor", "scheduler", "optimizer", "first-draft", "render"],
+) -> None:
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_format)
     dsn = os.environ.get("WORKER_DATABASE_URL")
@@ -92,7 +125,10 @@ async def run(kind: Literal["relay", "monitor", "scheduler", "optimizer", "first
         loop.add_signal_handler(sig, stop.set)
     try:
         await verify_role(
-            engine, "app_agent" if kind in {"relay", "optimizer", "first-draft"} else "app_monitor",
+            engine,
+            "app_agent"
+            if kind in {"relay", "optimizer", "first-draft", "render"}
+            else "app_monitor",
         )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         if kind == "relay":
@@ -124,12 +160,40 @@ async def run(kind: Literal["relay", "monitor", "scheduler", "optimizer", "first
                 runtime = DeliveryRuntime(sessions, "cg.first-draft", {
                     "resume.first_draft.requested": first_draft,
                 }, retry=RetryPolicy(delays=()))
+            elif kind == "render":
+                # M8. Deterministic and offline: no model, no provider budget,
+                # no network beyond the object store. The renderers are the
+                # production pair; a non-production renderer is refused by
+                # `render_resume`, so this worker cannot be talked into
+                # serving a placeholder document.
+                store = build_artifact_store(settings)
+                renderers = production_renderers()
+
+                async def render(db: AsyncSession, event: Event) -> str:
+                    resume_id = UUID(str(event.payload["resume_id"]))
+                    await render_resume(
+                        db,
+                        store=store,
+                        renderers=renderers,
+                        resume_id=resume_id,
+                        causation_id=event.id,
+                    )
+                    return "completed"
+
+                runtime = DeliveryRuntime(
+                    sessions,
+                    "cg.render",
+                    {"resume.render.requested": render},
+                )
             elif kind == "optimizer":
                 selected = os.environ.get("WORKER_PROFILE_ID")
                 handler = evaluation_handler(
-                    UUID(selected) if selected else None, Thresholds.from_settings(settings),
+                    UUID(selected) if selected else None,
+                    Thresholds.from_settings(settings),
                 )
-                runtime = DeliveryRuntime(sessions, "cg.optimizer", {"job.normalized": handler})
+                runtime = DeliveryRuntime(
+                    sessions, "cg.optimizer", {"job.normalized": handler}
+                )
             else:
                 runtime = DeliveryRuntime(sessions, "cg.monitor", {"schedule.tick": snapshot_jobs})
             consumer = StreamConsumer(redis, runtime, f"{socket.gethostname()}-{uuid4().hex[:8]}")
@@ -159,7 +223,9 @@ async def run(kind: Literal["relay", "monitor", "scheduler", "optimizer", "first
         log.info("worker.stopped", kind=kind)
 
 
-def main(kind: Literal["relay", "monitor", "scheduler", "optimizer", "first-draft"]) -> None:
+def main(
+    kind: Literal["relay", "monitor", "scheduler", "optimizer", "first-draft", "render"],
+) -> None:
     try:
         asyncio.run(run(kind))
     except Exception as exc:

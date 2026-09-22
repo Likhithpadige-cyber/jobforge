@@ -529,7 +529,21 @@ Append-only: `id`, `application_id`, `from_status`, `to_status`, `actor_type` (`
 
 ### 6.8 `artifacts`
 
-`id`, `kind` (`resume_pdf`/`resume_docx`/`cover_letter_pdf`/`handoff_packet`/`evidence`), `application_id` NULL, `resume_id` NULL, `storage_key`, `bucket`, `content_type`, `size_bytes`, `sha256`, `created_at`, `expires_at`. Files live in MinIO/S3; only metadata is in Postgres.
+`id`, `kind` (`resume_pdf`/`resume_docx`/`cover_letter_pdf`/`handoff_packet`/`evidence`), `application_id` NULL, `resume_id` NULL, `storage_key`, `bucket`, `content_type`, `size_bytes`, `sha256`, `resume_version` NULL, `approval_id` NULL FK -> approvals, `template_version` NULL, `created_at`, `expires_at`. Files live in MinIO/S3; only metadata is in Postgres.
+
+Render binding (migration 0008). The three added columns are nullable at the
+table level because evidence uploads and handoff packets have no resume,
+approval or template. `ck_artifacts_render_binding` narrows them - together
+with `content_type`, `size_bytes` and `sha256` - to NOT NULL for
+`resume_pdf` and `resume_docx`, so a rendered resume can always say which
+version it rendered, which human decision authorised it, and which template
+produced the bytes.
+
+`uq_artifacts_resume_render` (unique on `resume_id, kind, template_version`
+where both are non-null) is the idempotency key. A replayed
+`resume.render.requested` cannot create a second row for the same rendering,
+and a template change produces a new artifact rather than silently replacing
+the one a human already downloaded.
 
 ### 6.9 `resume_revision_attempts`
 

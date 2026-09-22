@@ -65,12 +65,14 @@ UP_SQL = SqlFiles(
     "0005_revision_attempts.up.sql",
     "0006_resume_rework_limit.up.sql",
     "0007_evaluation_assessment.up.sql",
+    "0008_artifact_binding.up.sql",
 )
 DOWN_SQL = SqlFiles(
     "0002_core_schema.down.sql",
     "0005_revision_attempts.down.sql",
     "0006_resume_rework_limit.down.sql",
     "0007_evaluation_assessment.down.sql",
+    "0008_artifact_binding.down.sql",
 )
 GRANTS_SQL = SqlFiles(
     "0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql"

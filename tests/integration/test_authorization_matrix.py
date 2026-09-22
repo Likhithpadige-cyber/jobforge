@@ -334,6 +334,12 @@ OWNER_AND_REVIEWER = frozenset(
         ("GET", "/api/v1/jobs/{job_id}"),
         ("GET", "/api/v1/jobs/{job_id}/evaluation"),
         ("GET", "/api/v1/resumes/{resume_id}"),
+        # M8. A reviewer who may read a resume may see what was rendered from
+        # it and download it: withholding the artifact would not protect
+        # anything the resume itself does not already expose, and the reviewer
+        # is the person expected to check the document before it is sent.
+        ("GET", "/api/v1/resumes/{resume_id}/artifacts"),
+        ("GET", "/api/v1/artifacts/{artifact_id}/content"),
         ("GET", "/api/v1/applications/{application_id}/first-draft"),
         ("GET", "/api/v1/applications"),
         ("GET", "/api/v1/applications/{application_id}/resumes/latest"),

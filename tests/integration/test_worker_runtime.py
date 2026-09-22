@@ -429,3 +429,79 @@ async def test_relay_polling_batches_real_rows_without_touching_live_outbox(engi
         finally:
             # Drops the temporary schema and rows by rolling back its creation.
             await transaction.rollback()
+
+
+@pytest.mark.parametrize("version", [1, 2, 3])
+async def test_rendered_versions_through_stream_dispatch_are_idempotent(delivery, bus, version):
+    """Real PostgreSQL/Redis delivery; the handler only probes dispatch, not A2/A3."""
+    from packages.core.events.rendered import ResumeRenderedV2
+
+    sessions, _, application_id, group = delivery
+    resume_id, artifact_id, approval_id = uuid4(), uuid4(), uuid4()
+    payload = {
+        "resume_id": str(resume_id), "resume_version": 1,
+        "approval_id": str(approval_id), "template_version": "synthetic-v1",
+        "artifacts": [{"artifact_id": str(artifact_id), "kind": "resume_pdf", "sha256": "a" * 64}],
+    }
+    if version != 1:
+        payload = ResumeRenderedV2.model_validate({
+            "resume_id": str(resume_id), "application_id": str(application_id),
+            "resume_version": 1, "approval_id": str(approval_id),
+            "artifacts": [{"artifact_id": str(artifact_id), "kind": "resume_pdf",
+                           "template_version": "synthetic-v1", "size_bytes": 100,
+                           "sha256": "a" * 64}],
+        }).model_dump(mode="json")
+    async with sessions.begin() as db:
+        event = await record_event(db, EventEnvelope(
+            type="resume.rendered", version=version, aggregate_type="resume",
+            aggregate_id=resume_id, correlation_id=application_id, actor_type="agent",
+            payload=payload,
+        ))
+    calls = []
+
+    async def probe(db, delivered):
+        calls.append((delivered.version, delivered.payload))
+        return "version-probe"
+
+    redis, prefix = bus
+    worker = DeliveryRuntime(sessions, group, {"resume.rendered": probe})
+    consumer = StreamConsumer(redis, worker, "version-probe", prefix=prefix)
+    await consumer.initialize(recover=False)
+    async with sessions.begin() as db:
+        persisted = await db.get(Event, event.id)
+        await publish_event(redis, persisted, prefix)
+        await publish_event(redis, persisted, prefix)
+    await consumer.step()
+    assert calls == ([(version, payload)] if version in (1, 2) else [])
+    assert await worker.process(event.id) == "duplicate"
+    async with sessions() as db:
+        claim = await db.get(ProcessedEvent, (event.id, group))
+        assert claim.result == ("version-probe" if version in (1, 2) else "dead_letter")
+        persisted = await db.get(Event, event.id)
+        assert persisted.version == version and persisted.payload == payload
+        failures = list((await db.scalars(select(Event).where(
+            Event.causation_id == event.id, Event.type == "agent.run.failed",
+        ))).all())
+        assert len(failures) == (0 if version in (1, 2) else 1)
+        if failures:
+            assert failures[0].payload["error_type"] == "InvalidEventError"
+            assert failures[0].payload["will_retry"] is False
+    pending = await redis.xpending(stream_for("resume.rendered", prefix), group)
+    assert pending["pending"] == 0
+
+
+async def test_unsubscribed_rendered_v2_stays_available_for_future_subscriber(delivery):
+    sessions, _, application_id, group = delivery
+    async with sessions.begin() as db:
+        event = await record_event(db, EventEnvelope(
+            type="resume.rendered", version=2, aggregate_type="resume",
+            aggregate_id=uuid4(), correlation_id=application_id,
+            actor_type="agent", payload={},
+        ))
+    assert await runtime(delivery).process(event.id) == "unsubscribed"
+    async with sessions() as db:
+        assert await db.get(ProcessedEvent, (event.id, group)) is None
+        assert await db.scalar(select(func.count()).select_from(Event).where(
+            Event.causation_id == event.id,
+            Event.type.in_(["worker.delivery.started", "agent.run.failed"]),
+        )) == 0

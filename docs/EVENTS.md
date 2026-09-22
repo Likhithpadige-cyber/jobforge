@@ -83,7 +83,7 @@ Legend — **P** = producer, **C** = consumers.
 | `resume.generated` | A1 | **RND**, A3, API(SSE) | `{resume_id, application_id, version, claim_count, verified_count, agent_run_id, cost_usd}` |
 | `resume.verification.failed` | A1 | A3, API(SSE) | `{resume_id, application_id, failures: [{path, claim_text, verdict, reason, fact_ids}]}` |
 | `resume.render.requested` | A1 | **RND** | `{resume_id, formats: ["pdf","docx"]}` |
-| `resume.rendered` | RND | **A2**, A3 | `{resume_id, application_id, artifacts: [{artifact_id, kind, size_bytes}]}` |
+| `resume.rendered` | RND | **A2**, A3 | v2: `{resume_id, application_id, resume_version, approval_id, artifacts: [{artifact_id, kind, template_version, size_bytes, sha256}]}` |
 | `cover_letter.generated` | A2 | A3 | `{cover_letter_id, application_id, claim_count, verified_count}` |
 
 `resume.verification.failed` is the fabrication tripwire. It carries the full failure detail because a human needs to see exactly which sentence failed and why, without opening a log.
@@ -354,3 +354,38 @@ Listing these is deliberate. The event catalogue is a description of what the sy
   profile/job/master/evaluation IDs and input digest. Owner role is rechecked by
   `cg.first-draft` before inference. One durable attempt; no automatic paid retry.
   Completion uses existing resume/application events; no M7 render request.
+
+
+### M8 `resume.rendered` canonical payload (version 2)
+
+The producer is `packages/core/services/artifacts.py::render_resume`; runtime
+validation is `packages/core/events/rendered.py::ResumeRenderedV2` (its
+`model_json_schema()` exposes the JSON Schema). All listed fields are required;
+extra fields are forbidden. IDs are UUID strings, resume_version is a positive
+integer, size_bytes is a nonnegative integer, sha256 is 64 lowercase hex digits,
+and kind is resume_pdf or resume_docx. Artifacts is a nonempty array representing
+the complete set returned by this invocation, including its existing artifacts.
+Each entry carries its own template_version; different templates can coexist.
+
+Size records the byte count; SHA-256 records byte identity. Neither is an address
+or access credential. No storage keys, buckets, URLs, credentials or candidate
+prose enter this payload. application_id is explicit even though correlation_id
+also names the application; aggregate_id names the resume.
+
+A pure replay emits nothing. Any invocation that creates one or more artifacts
+emits exactly one event containing the full produced set. Recovery has the same
+rule. Event persistence is transactional with artifact metadata; Redis carries
+only an event ID and the worker loads the authoritative PostgreSQL event.
+
+Compatibility audit: there is one producer and no implemented payload consumer.
+A2/cg.application and A3 are documented future subscribers. API artifact reads
+query artifact rows rather than this event. Historical pre-release v1 events may
+remain in the immutable event log: they lack application_id and size_bytes and
+carry a single top-level template_version. They are not rewritten or relabelled.
+Only v2 is emitted now; no dual-emission transition is needed without active
+consumers. Any future consumer must explicitly handle/reject historical v1 and
+validate the appropriate payload schema. Delivery compatibility is declared in
+`SUPPORTED_EVENT_VERSIONS`: resume.rendered permits v1 and v2; all other current
+event types permit v1 only. The gate runs only for subscribed events, before the
+handler. Unsupported subscribed versions are terminally rejected; unsubscribed
+events remain unclaimed for future consumers. No A2/A3 subscriber is added.

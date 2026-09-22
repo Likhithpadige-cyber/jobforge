@@ -9,6 +9,22 @@ anyio==4.7.0
 testcontainers[postgres,redis]==4.9.0
 hypothesis==6.122.3
 
+# --- renderer verification (M8, test-only) -----------------------------
+# Two independent PDF extractors. They disagreed about the bullet glyph once
+# already, and that disagreement was the finding; one extractor would have
+# shipped a resume whose first character an ATS reads as a control code.
+#
+# Two constraints set the pypdf floor, not one. 4.3.1 is the first release
+# whose crypt provider imports ARC4 from `cryptography.hazmat.decrepit`
+# (py-pdf/pypdf#2765); below it the import raises a
+# CryptographyDeprecationWarning against cryptography 44, which this
+# project's `filterwarnings = ["error", ...]` correctly turns into a
+# collection error. The warning policy is right; the pin was wrong.
+# Separately, resource-exhaustion and infinite-loop advisories were fixed
+# through 6.15.0 and 6.16.0, so the pin sits at the later of the two floors.
+pypdf==6.16.0
+pdfminer.six==20251230
+
 # --- linting / typing --------------------------------------------------
 ruff==0.8.4
 mypy==1.14.0

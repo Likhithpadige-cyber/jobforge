@@ -11,6 +11,7 @@ import pytest
 from packages.core.events.envelope import (
     HUMAN_ONLY_EVENT_TYPES,
     KNOWN_EVENT_TYPES,
+    SUPPORTED_EVENT_VERSIONS,
     EventEnvelope,
     ForbiddenActorError,
     UnknownEventTypeError,
@@ -75,3 +76,11 @@ def test_as_row_covers_every_events_column() -> None:
     }
     assert set(row) == expected
     assert "published" not in row, "publication state is the relay's business"
+
+
+def test_delivery_versions_preserve_v1_and_only_allow_rendered_v2():
+    assert set(SUPPORTED_EVENT_VERSIONS) == KNOWN_EVENT_TYPES
+    assert all(1 in versions for versions in SUPPORTED_EVENT_VERSIONS.values())
+    assert SUPPORTED_EVENT_VERSIONS["resume.rendered"] == frozenset({1, 2})
+    assert all(versions == frozenset({1}) for name, versions in SUPPORTED_EVENT_VERSIONS.items()
+               if name != "resume.rendered")

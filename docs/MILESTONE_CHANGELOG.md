@@ -454,3 +454,69 @@ All final gates are green. Existing M1 authentication, M2 shared reviewer access
 M3 limiter controls, M4 delivery, M5 unresolved evaluations and M6 grounding guards
 remain covered. M7 is complete. Stop here per the user's instruction: M8 has not
 started. No frozen UI changes or GitHub push were made for M7.
+
+
+## M8 — Phase 1 only. NOT COMPLETE, 2026-09-22
+
+Rendering infrastructure, approval binding, storage abstraction and the
+determinism harness. The DOCX and PDF renderer bodies and the S3/MinIO
+adapter are declared dependency boundaries that have not been written or
+executed. M8 must not be marked complete until they have been.
+
+Local checkpoint 332aca5 / tag m1-m7-verified was created first as the
+M1-M7 recovery point. No remote exists on this repository; nothing was
+pushed.
+
+### Verified by execution in this environment
+
+- make verify-schema: 12 passed, 0 failed; 8-revision chain, head
+  0008_artifact_binding; down migration reverses up.
+- SQLAlchemy name-shadowing audit: clean.
+- Down-migration freshness check: up to date.
+- M8 unit suite: 62 passed, 0 failed, 0 skipped - canonical document,
+  storage keys and filenames, determinism harness, filesystem store.
+- Two defects found and fixed by those tests: a path traversal in
+  `storage_key` when `template_version` was `..`, and a determinism harness
+  that asserted over renderers whose bodies raise.
+
+### Not verified by execution
+
+pytest, SQLAlchemy, FastAPI, structlog and boto3 are absent from this
+environment. The render service, worker, both endpoints, the integration
+suite and its fixture are written and parse, and have never been run.
+python-docx 1.2.0 and ReportLab 4.4.10 ARE installed here - an earlier report
+that they were unavailable was based on a `pip download` probe, which tests
+reachability of the index rather than the installed set. That was wrong, and
+it means the renderer bodies can be written and genuinely verified here.
+
+See docs/M8_RENDERING.md.
+
+
+## M8 — Phase 2: renderers implemented and measured. STILL NOT COMPLETE, 2026-09-22
+
+DocxResumeRenderer (python-docx 1.2.0) and PdfResumeRenderer (ReportLab
+4.4.10) implemented and executed against the real libraries.
+
+Determinism: byte-identical across four separate interpreter processes, 1.2s
+apart, PYTHONHASHSEED=random, both formats. DOCX needed exactly one fix -
+ZIP entry timestamps are the wall clock - handled by repacking with a fixed
+stamp without parsing or rewriting any entry. core.xml dates and w:rsid
+values were measured and found constant, so no OOXML surgery was performed.
+PDF needed Canvas(invariant=1), which pins /CreationDate, /ModDate and /ID.
+
+ATS extraction verified under pypdf and pdfminer: no control characters, no
+(cid:) markers. One real defect found and fixed - U+2022 in base-14
+Helvetica extracted as \x7f / (cid:127) under both extractors, so bullets
+are ASCII hyphens joined to their line.
+
+Anti-fabrication: structural import audit plus a word-for-word comparison of
+rendered output against persisted content for all three renderers, with a
+separate numeral assertion.
+
+Unit suite: 104 passed, 0 failed, 2 skipped - executed through a temporary
+stdlib harness in /tmp against the real production libraries, NOT through
+pytest. Schema, shadowing and down-migration gates: green.
+
+Still pending: boto3/S3 adapter, and executable verification of the service,
+worker, endpoints, migration and integration suite in the Mac .venv. M8 must
+not be marked complete until those pass. See docs/M8_RENDERING.md.

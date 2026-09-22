@@ -22,7 +22,11 @@ from redis.typing import EncodableT
 from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from packages.core.events.envelope import HUMAN_ONLY_EVENT_TYPES, KNOWN_EVENT_TYPES
+from packages.core.events.envelope import (
+    HUMAN_ONLY_EVENT_TYPES,
+    KNOWN_EVENT_TYPES,
+    SUPPORTED_EVENT_VERSIONS,
+)
 from packages.core.events.outbox import claim_event, emit, record_claim_result
 from packages.core.models import Event, ProcessedEvent
 from packages.shared.clock import utc_now
@@ -164,7 +168,7 @@ class DeliveryRuntime:
                 async with session.begin_nested():
                     if not await claim_event(session, event_id, self.group):
                         return "duplicate"
-                    if event.version != 1:
+                    if event.version not in SUPPORTED_EVENT_VERSIONS[event.type]:
                         raise InvalidEventError("Unsupported event version")
                     if event.type in HUMAN_ONLY_EVENT_TYPES and event.actor_type != "human":
                         raise InvalidEventError("Forbidden event actor")

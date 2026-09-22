@@ -30,6 +30,20 @@ cryptography==44.0.0
 structlog==24.4.0
 prometheus-client==0.21.1
 
+# --- document rendering (M8) -------------------------------------------
+# Runtime, not dev: the API serves artifacts and the render worker produces
+# them, so a production image without these cannot complete an application.
+# Pinned to the versions M8 Phase 2 determinism and ATS extraction were
+# measured against; changing either pin requires re-running that verification.
+python-docx==1.2.0
+reportlab==4.4.10
+
+# --- object storage (M8) ------------------------------------------------
+# Runtime, not dev: S3ArtifactStore is the production artifact store (MinIO
+# locally, S3 in production) and the API/worker construct it directly.
+# botocore and s3transfer come along transitively; not pinned separately.
+boto3==1.35.99
+
 # --- utilities ---------------------------------------------------------
 httpx==0.28.1
 python-dateutil==2.9.0.post0

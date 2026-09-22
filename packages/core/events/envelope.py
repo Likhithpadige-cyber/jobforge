@@ -73,6 +73,13 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
     }
 )
 
+#: Delivery compatibility, not a payload migration. Historical v1 remains
+#: supported; only resume.rendered has a canonical v2 producer today.
+SUPPORTED_EVENT_VERSIONS: dict[str, frozenset[int]] = {
+    event_type: frozenset({1, 2}) if event_type == "resume.rendered" else frozenset({1})
+    for event_type in KNOWN_EVENT_TYPES
+}
+
 #: Events a human alone may produce (EVENTS.md §3.4). An agent emitting one of
 #: these would mean an approval had been forged.
 HUMAN_ONLY_EVENT_TYPES: frozenset[str] = frozenset(

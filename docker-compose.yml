@@ -170,7 +170,11 @@ services:
     profiles: ["core", "full"]
 
   minio:
-    image: minio/minio:latest
+    # quay.io, not docker.io: Docker Hub's minio/minio repository now sits
+    # behind a login wall (MinIO's 2024 licensing change), and an anonymous
+    # `docker compose --profile full up` must keep working. quay.io/minio/minio
+    # is MinIO's own published mirror of the same image.
+    image: quay.io/minio/minio:latest
     container_name: jobforge-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"

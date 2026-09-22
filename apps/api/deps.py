@@ -27,6 +27,12 @@ from packages.core.auth import Session, csrf_matches, load_session
 from packages.core.cache import Limit, enforce, fingerprint, get_redis
 from packages.core.db import get_session
 from packages.core.models import User
+from packages.services.rendering.store import (
+    ArtifactStore,
+    ArtifactStoreUnavailableError,
+    FilesystemArtifactStore,
+    S3ArtifactStore,
+)
 from packages.shared.config import Settings, get_settings
 from packages.shared.errors import AppError
 
@@ -332,6 +338,41 @@ def rate_limited(build: Callable[[Settings], Limit]):  # type: ignore[no-untyped
         await enforce(redis, build(settings), str(user.id))
 
     return dependency
+
+
+def artifact_download_limit(settings: Settings) -> Limit:
+    return Limit(
+        name="artifact-download",
+        max_requests=settings.rate_limit_artifact_download_per_user,
+        window_seconds=settings.rate_limit_artifact_download_window_seconds,
+    )
+
+
+def artifact_store(settings: AppSettings) -> ArtifactStore:
+    """The configured object store, or a refusal.
+
+    There is no "fall back to the filesystem if S3 is not configured" branch,
+    and that absence is the point. A deployment that believes it is writing to
+    private S3 must not quietly start writing resumes onto a container's local
+    disk, where they survive no restart, appear in no backup, and are governed
+    by none of the bucket's access rules.
+    """
+    if settings.artifact_storage_backend == "filesystem":
+        return FilesystemArtifactStore(settings.artifact_storage_root)
+    if settings.artifact_storage_backend == "s3":
+        return S3ArtifactStore(
+            bucket=settings.s3_bucket,
+            endpoint_url=settings.s3_endpoint_url,
+            region_name=settings.s3_region,
+            access_key_id=settings.s3_access_key_id,
+            secret_access_key=settings.s3_secret_access_key,
+        )
+    raise ArtifactStoreUnavailableError(
+        f"unknown artifact storage backend {settings.artifact_storage_backend!r}"
+    )
+
+
+ArtifactStoreDep = Annotated[ArtifactStore, Depends(artifact_store)]
 
 
 def revision_client(settings: AppSettings) -> StructuredClient:

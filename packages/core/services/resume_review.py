@@ -40,6 +40,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from packages.agents.resume_optimizer.resume_persistence import RENDER_FORMATS
 from packages.core.events import emit
 from packages.core.models import (
     Application,
@@ -717,7 +718,7 @@ async def approve(
     }
     if approval.decision_note:
         payload["decision_note"] = approval.decision_note
-    await emit(
+    granted = await emit(
         session,
         type="approval.granted",
         aggregate_type="approval",
@@ -728,6 +729,35 @@ async def approve(
         actor_type="human",
         actor_id=str(actor.id),
         payload=payload,
+    )
+
+    # M8. Rendering is requested here, and only here, because this is the one
+    # place a human has just said yes to this exact resume version. B6 also
+    # knows how to emit this event, but it fires on verification success -
+    # before anybody has approved anything - so the first-draft path keeps it
+    # suppressed. Tying the request to the approval is what makes "only
+    # approved content is ever rendered" true by construction rather than by
+    # a check somewhere downstream.
+    #
+    # The event carries the approval and the version it authorised, so the
+    # renderer can revalidate against the same decision rather than
+    # rediscovering which one applied.
+    await emit(
+        session,
+        type="resume.render.requested",
+        aggregate_type="resume",
+        aggregate_id=resume.id,
+        correlation_id=application.id,
+        causation_id=granted.id,
+        actor_type="human",
+        actor_id=str(actor.id),
+        payload={
+            "resume_id": str(resume.id),
+            "resume_version": resume.version,
+            "application_id": str(application.id),
+            "approval_id": str(approval.id),
+            "formats": list(RENDER_FORMATS),
+        },
     )
     log.info(
         "resume_review.approved",

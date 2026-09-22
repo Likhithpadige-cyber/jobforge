@@ -537,6 +537,21 @@ class Artifact(UUIDPrimaryKeyMixin, Base):
     content_type: Mapped[str | None] = mapped_column(String(128))
     size_bytes: Mapped[int | None] = mapped_column(Integer)
     sha256: Mapped[str | None] = mapped_column(String(64))
+    # --- M8 render binding (migration 0008) ------------------------------
+    # Nullable here because this table also holds evidence uploads and handoff
+    # packets, which have no resume, no approval and no template. The CHECK
+    # below narrows all three to NOT NULL for the two rendered-resume kinds,
+    # so the contract binds exactly where it applies.
+    #
+    # `resume_version` is denormalised from the resume on purpose. `resume_id`
+    # gives the version transitively today, but an artifact must be able to
+    # say which version it rendered without depending on the resume row still
+    # holding that value.
+    resume_version: Mapped[int | None] = mapped_column(Integer)
+    approval_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), ForeignKey("approvals.id", ondelete="SET NULL")
+    )
+    template_version: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
     expires_at: Mapped[datetime | None]
 
@@ -545,5 +560,23 @@ class Artifact(UUIDPrimaryKeyMixin, Base):
             "kind IN ('resume_pdf','resume_docx','cover_letter_pdf','handoff_packet','evidence')",
             name="kind_allowed",
         ),
+        CheckConstraint(
+            "kind NOT IN ('resume_pdf', 'resume_docx') OR ("
+            "resume_id IS NOT NULL AND resume_version IS NOT NULL "
+            "AND approval_id IS NOT NULL AND template_version IS NOT NULL "
+            "AND content_type IS NOT NULL AND size_bytes IS NOT NULL "
+            "AND sha256 IS NOT NULL)",
+            name="render_binding",
+        ),
         UniqueConstraint("bucket", "storage_key", name="uq_artifacts_bucket_storage_key"),
+        Index(
+            "uq_artifacts_resume_render",
+            "resume_id",
+            "kind",
+            "template_version",
+            unique=True,
+            postgresql_where=sa_text(
+                "resume_id IS NOT NULL AND template_version IS NOT NULL"
+            ),
+        ),
     )

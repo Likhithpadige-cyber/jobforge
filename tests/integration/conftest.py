@@ -9,10 +9,11 @@ Tests skip cleanly when PostgreSQL is unreachable.
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import AsyncIterator
 from urllib.parse import quote
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -392,6 +393,121 @@ async def demo_resume(session: AsyncSession, demo_profile, demo_application):  #
     )
     await session.flush()
     return resume_id
+
+
+@pytest_asyncio.fixture
+async def approved_resume_fixtures(  # type: ignore[no-untyped-def]
+    session: AsyncSession, demo_profile, demo_application, demo_user, demo_job
+):
+    """Four resumes on one application, covering every M8 precondition.
+
+    Built with SQL rather than through the review service on purpose: this
+    fixture has to produce states the service would refuse to create, such as
+    an approval whose subject snapshot names a version that has since been
+    superseded. Driving the service would make the fixture agree with the
+    code by construction and prove nothing.
+
+    Synthetic content only.
+
+      approved_resume_id    v2, verification passed, granted approval whose
+                            snapshot names v2 - the only renderable one
+      unapproved_resume_id  v3, passed, no approval at all
+      failed_resume_id      v4, verification failed
+      superseded_resume_id  v5, passed, with a granted approval whose snapshot
+                            still names v2, so it must not authorise v5
+    """
+    application_id = demo_application["id"]
+    lines = {
+        2: ["Ran a synthetic migration.", "Reduced a synthetic number."],
+        3: ["A third synthetic line."],
+        4: ["A fourth synthetic line."],
+        5: ["A fifth synthetic line."],
+    }
+
+    def content(version: int) -> str:
+        entries = {
+            str(i): {"text": t, "fact_ids": [], "numerals_used": [], "order": i}
+            for i, t in enumerate(lines[version])
+        }
+        return json.dumps({"experience": entries})
+
+    ids: dict[int, UUID] = {}
+    for version, status in ((2, "passed"), (3, "passed"), (4, "failed"), (5, "passed")):
+        resume_id = uuid7()
+        ids[version] = resume_id
+        await session.execute(
+            text(
+                "INSERT INTO resumes (id, profile_id, application_id, kind, version, "
+                "content, verification_status, created_at, updated_at) VALUES "
+                "(:id, :profile_id, :application_id, 'tailored', :version, "
+                "CAST(:content AS jsonb), :status, now(), now())"
+            ),
+            {
+                "id": resume_id,
+                "profile_id": demo_profile,
+                "application_id": application_id,
+                "version": version,
+                "content": content(version),
+                "status": status,
+            },
+        )
+
+    def snapshot(resume_id: UUID, version: int) -> str:
+        return json.dumps(
+            {
+                "resume_id": str(resume_id),
+                "resume_version": version,
+                "resume_kind": "tailored",
+                "verification_status": "passed",
+                "claim_count": len(lines[version]),
+                "application_id": str(application_id),
+                "application_status": "approved",
+                "job_id": str(demo_job),
+                "model": None,
+                "prompt_version": None,
+            }
+        )
+
+    approval_id = uuid7()
+    await session.execute(
+        text(
+            "INSERT INTO approvals (id, application_id, kind, status, "
+            "subject_snapshot, requested_at, decided_at, decided_by, "
+            "created_at, updated_at) VALUES (:id, :application_id, 'resume', "
+            "'approved', CAST(:snapshot AS jsonb), now(), now(), :user, "
+            "now(), now())"
+        ),
+        {
+            "id": approval_id,
+            "application_id": application_id,
+            "snapshot": snapshot(ids[2], 2),
+            "user": demo_user,
+        },
+    )
+    await session.flush()
+
+    # Match approve()'s write order: the trigger must see the human-decided
+    # approval before the application enters approved, with the same approver.
+    await session.execute(
+        text(
+            "UPDATE applications SET status = 'approved', approved_by = :user, "
+            "approved_at = now() WHERE id = :id"
+        ),
+        {"id": application_id, "user": demo_user},
+    )
+    await session.flush()
+
+    return {
+        "application_id": application_id,
+        "approval_id": approval_id,
+        "approved_resume_id": ids[2],
+        "approved_version": 2,
+        "unapproved_resume_id": ids[3],
+        "failed_resume_id": ids[4],
+        "superseded_resume_id": ids[5],
+        "content_lines": list(lines[2]),
+        "content_words": ["synthetic", "migration"],
+    }
 
 
 @pytest_asyncio.fixture

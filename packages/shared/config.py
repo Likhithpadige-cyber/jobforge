@@ -201,6 +201,23 @@ class Settings(BaseSettings):
     rate_limit_fact_suggest_per_user: int = 30
     rate_limit_fact_suggest_window_seconds: int = 3600
 
+    # ------------------------------------------------------ artifacts (M8)
+    #: Which ArtifactStore the API and the render worker construct.
+    #: "s3" is the production backend - MinIO locally (docker compose
+    #: --profile full), real S3 in production - backed by boto3.
+    #: "filesystem" is for tests and local development without MinIO and
+    #: writes under `artifact_storage_root`. There is no automatic fallback
+    #: between the two: an "s3" deployment that cannot reach its store fails
+    #: closed through ArtifactStoreUnavailableError rather than writing to
+    #: local disk.
+    artifact_storage_backend: str = "s3"
+    artifact_storage_root: str = "/var/lib/jobforge/artifacts"
+
+    #: Downloads are authenticated and streamed, so this bounds how fast one
+    #: signed-in principal can pull resume documents - not how many exist.
+    rate_limit_artifact_download_per_user: int = 120
+    rate_limit_artifact_download_window_seconds: int = 3600
+
     # ------------------------------------------------------------- crypto
     #: base64 of 32 random bytes; encrypts users.totp_secret_enc only.
     #: Deliberately separate from session_secret - see SECURITY.md 3.4.
