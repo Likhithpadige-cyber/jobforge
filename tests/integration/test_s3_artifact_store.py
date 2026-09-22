@@ -160,7 +160,7 @@ async def test_an_unreachable_endpoint_fails_closed_through_the_stores_own_error
         endpoint_url="http://127.0.0.1:1",
         region_name=settings.s3_region,
         aws_access_key_id="synthetic-key",
-        aws_secret_access_key="synthetic-secret",
+        aws_secret_access_key="synthetic-secret",  # pragma: allowlist secret
         config=Config(
             signature_version="s3v4",
             connect_timeout=1,

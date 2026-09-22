@@ -127,7 +127,7 @@ def test_the_s3_adapter_exposes_no_url_minting() -> None:
         bucket="jobforge-artifacts-test",
         endpoint_url="http://localhost:9000",
         access_key_id="synthetic-key",
-        secret_access_key="synthetic-secret",
+        secret_access_key="synthetic-secret",  # pragma: allowlist secret
     )
     for forbidden in ("presigned_url", "public_url", "url_for", "generate_url"):
         assert not hasattr(s3_store, forbidden)
@@ -152,7 +152,7 @@ def s3_store() -> S3ArtifactStore:
         endpoint_url="http://localhost:9000",
         region_name="us-east-1",
         access_key_id="synthetic-key",
-        secret_access_key="synthetic-secret",
+        secret_access_key="synthetic-secret",  # pragma: allowlist secret
     )
 
 
@@ -310,7 +310,7 @@ def test_s3_backend_selection_never_falls_back_to_the_filesystem() -> None:
         s3_bucket=S3_BUCKET,
         s3_endpoint_url="http://localhost:9000",
         s3_access_key_id="synthetic-key",
-        s3_secret_access_key="synthetic-secret",
+        s3_secret_access_key="synthetic-secret",  # pragma: allowlist secret
     )
     for build in (api_artifact_store, worker_artifact_store):
         built = build(settings)

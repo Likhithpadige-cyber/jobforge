@@ -12,7 +12,7 @@ FULL := --profile full
         test test-unit \
         test-integration test-cov \
         lint fmt typecheck check web-install web-test web-lint web-build \
-        verify secrets-scan audit db-roles db-grants db-reset \
+        verify secrets-scan secrets-baseline audit db-roles db-grants db-reset \
         verify-schema check-shadowing test-security diagnose-roles db-verify-roles
 
 ## ----------------------------------------------------------------- meta ---
@@ -179,7 +179,20 @@ typecheck:  ## Mypy
 
 check: lint typecheck test-unit  ## Everything a PR must pass locally
 
-secrets-scan:  ## Scan the working tree for committed secrets
+secrets-scan:  ## Read-only gate: fail if any tracked file has an unbaselined secret
+	# `detect-secrets scan --baseline FILE` (the command this target ran
+	# before) is the *baseline-maintenance* command: it always rewrites the
+	# baseline and always exits 0, so it can never fail a build and silently
+	# mutates the working tree on every run - not a gate at all. This is the
+	# read-only counterpart the project's own .pre-commit-config.yaml already
+	# uses under the hood (the detect-secrets pre-commit hook wraps exactly
+	# this entry point): it compares tracked files against .secrets.baseline
+	# and exits non-zero on anything not already baselined, without writing
+	# to .secrets.baseline. To update the baseline itself, use
+	# `make secrets-baseline` and review the diff before committing it.
+	detect-secrets-hook --baseline .secrets.baseline $$(git ls-files)
+
+secrets-baseline:  ## Developer action: regenerate .secrets.baseline (review the diff before committing)
 	detect-secrets scan --baseline .secrets.baseline
 
 audit:  ## Dependency vulnerability audit

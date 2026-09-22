@@ -132,7 +132,12 @@ jobs:
       - name: Dependency audit
         run: pip-audit -r requirements.txt
       - name: Secret scan
-        run: detect-secrets scan --baseline .secrets.baseline
+        # detect-secrets-hook, not `detect-secrets scan`: the latter is the
+        # baseline-maintenance command (always rewrites the baseline, always
+        # exits 0) and was never actually gating this job. This is the
+        # read-only counterpart .pre-commit-config.yaml already uses, and it
+        # fails the build on anything not already in .secrets.baseline.
+        run: detect-secrets-hook --baseline .secrets.baseline $(git ls-files)
       - name: Assert no CAPTCHA/stealth dependencies
         # SECURITY.md §7.1: the capability must not exist in the codebase.
         run: |
