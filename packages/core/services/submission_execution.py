@@ -15,17 +15,21 @@ Fundamental execution invariant:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from uuid import UUID
+from datetime import timedelta
+from typing import TYPE_CHECKING, cast
+from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import select
+from sqlalchemy import Table, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import selectinload
 
 from packages.core.events import emit
+from packages.core.events.envelope import EventEnvelope
 from packages.core.models import (
     Application,
     ApplicationStatus,
     Artifact,
+    Event,
     Job,
     Profile,
     SitePolicy,
@@ -35,6 +39,13 @@ from packages.core.models import (
     User,
 )
 from packages.core.services.cover_letters import latest_cover_letter
+from packages.core.services.handoff_packet import (
+    NoCoverLetterError,
+    ResumeNotRenderedError,
+    generate_handoff_packet,
+    load_packet_source,
+    packet_storage_key,
+)
 from packages.core.services.resume_review import latest_tailored_resume
 from packages.core.services.review_completion import review_is_complete
 from packages.core.services.submission_gate import real_submission_enabled
@@ -49,12 +60,12 @@ from packages.services.delivery.email import (
 from packages.services.ingestion.policy import PolicyDecision, extract_domain, extract_email
 from packages.shared.clock import utc_now, utc_today
 from packages.shared.errors import ConflictError, NotFoundError, ValidationError
+from packages.shared.ids import uuid7
 from packages.shared.logging import get_logger
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from packages.core.models import Event
     from packages.services.rendering.store import ArtifactStore
     from packages.shared.config import Settings
 
@@ -279,48 +290,80 @@ async def execute_submission_attempt(
             result=str(submission.result),
         )
         return "completed"
+    return await _execute_attempt(
+        session, application, submission, event, settings=settings, store=store
+    )
 
+
+async def _fail_preflight(
+    session: AsyncSession,
+    application: Application,
+    submission: Submission,
+    event: Event,
+    reason: str,
+) -> str:
+    submission.result = SubmissionResult.FAILED
+    submission.failure_reason = reason
+    submission.started_at = None
+    submission.finished_at = utc_now()
+    submission.next_attempt_after = None
+    await transition_application(
+        session,
+        application,
+        ApplicationStatus.SUBMISSION_FAILED,
+        actor_type="system",
+        actor_id="submission_worker",
+        reason=reason,
+        correlation_id=application.id,
+        causation_id=event.id,
+    )
+    await emit(
+        session,
+        type="submission.failed",
+        aggregate_type="submission",
+        aggregate_id=submission.id,
+        correlation_id=application.id,
+        causation_id=event.id,
+        actor_type="system",
+        actor_id="submission_worker",
+        payload={
+            "submission_id": str(submission.id),
+            "application_id": str(application.id),
+            "attempt": submission.attempt,
+            "failure_reason": reason,
+            "will_retry": False,
+            "ambiguous": False,
+        },
+    )
+    await session.flush()
+    return "completed"
+
+
+async def _execute_attempt(
+    session: AsyncSession,
+    application: Application,
+    submission: Submission,
+    event: Event,
+    *,
+    settings: Settings,
+    store: ArtifactStore,
+) -> str:
+    """Execute preflights, transport send, and outcome classification for one attempt."""
     # Preflight 1: Safety gate at execution time - both switches must still be enabled
     if not await real_submission_enabled(session, settings):
         log.warning(
             "submission_execution.switches_disabled_at_execution",
-            application_id=str(application_id),
+            application_id=str(application.id),
         )
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = "submission switches disabled at execution time"
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
+        return await _fail_preflight(
             session,
             application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason="submission switches disabled at execution time",
-            correlation_id=application.id,
-            causation_id=event.id,
+            submission,
+            event,
+            "submission switches disabled at execution time",
         )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": "submission switches disabled at execution time",
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
 
-    # Preflight 2: Policy currency at execution time
+    # Preflight 2: Policy currency and method at execution time
     verdict, snapshot, policy_row, domain = await policy_verdict(session, application)
     if (
         verdict.decision is not PolicyDecision.ALLOWED
@@ -331,240 +374,170 @@ async def execute_submission_attempt(
         reason = str(verdict.reason or "policy review expired")
         log.warning(
             "submission_execution.policy_disallowed_at_execution",
-            application_id=str(application_id),
+            application_id=str(application.id),
             reason=reason,
         )
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = f"policy disallowed at execution time: {reason}"
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
+        return await _fail_preflight(
             session,
             application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason=f"policy disallowed at execution time: {reason}",
-            correlation_id=application.id,
-            causation_id=event.id,
+            submission,
+            event,
+            f"policy disallowed at execution time: {reason}",
         )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": f"policy disallowed at execution time: {reason}",
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
+    submission.policy_id = policy_row.id
 
     # Preflight 3: Revalidate materials & reviews at execution time
     if not await review_is_complete(session, application):
-        log.error("submission_execution.reviews_incomplete", application_id=str(application_id))
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = "application reviews not complete at execution time"
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
+        log.error("submission_execution.reviews_incomplete", application_id=str(application.id))
+        return await _fail_preflight(
             session,
             application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason="application reviews not complete at execution time",
-            correlation_id=application.id,
-            causation_id=event.id,
+            submission,
+            event,
+            "application reviews not complete at execution time",
         )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": "application reviews not complete at execution time",
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
 
     # Preflight 4: Authoritative destination email from persisted job data
     stmt_job = select(Job).options(selectinload(Job.company)).where(Job.id == application.job_id)
     job = (await session.execute(stmt_job)).scalar_one_or_none()
     if job is None:
         log.error("submission_execution.job_missing", job_id=str(application.job_id))
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = "job missing at execution time"
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
-            session,
-            application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason="job missing at execution time",
-            correlation_id=application.id,
-            causation_id=event.id,
+        return await _fail_preflight(
+            session, application, submission, event, "job missing at execution time"
         )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": "job missing at execution time",
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
 
     try:
         dest_email = extract_and_validate_authoritative_email(job, policy_row)
     except ValidationError as exc:
         log.error("submission_execution.destination_invalid", reason=str(exc))
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = str(exc)
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
-            session,
-            application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason=str(exc),
-            correlation_id=application.id,
-            causation_id=event.id,
-        )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": str(exc),
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
+        return await _fail_preflight(session, application, submission, event, str(exc))
 
     # Preflight 5: Artifacts and materials
     cover_letter = await latest_cover_letter(session, application.id)
     resume = await latest_tailored_resume(session, application.id)
     if cover_letter is None or resume is None:
-        log.error("submission_execution.materials_missing", application_id=str(application_id))
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = "approved resume or cover letter missing"
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
-            session,
-            application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason="approved resume or cover letter missing",
-            correlation_id=application.id,
-            causation_id=event.id,
+        log.error("submission_execution.materials_missing", application_id=str(application.id))
+        return await _fail_preflight(
+            session, application, submission, event, "approved resume or cover letter missing"
         )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": "approved resume or cover letter missing",
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
 
     resume_artifact = (
         await session.execute(
             select(Artifact).where(Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf")
         )
     ).scalar_one_or_none()
-
     if resume_artifact is None:
         log.error("submission_execution.resume_artifact_missing", resume_id=str(resume.id))
-        submission.result = SubmissionResult.FAILED
-        submission.failure_reason = "resume_pdf artifact not rendered"
-        submission.finished_at = utc_now()
-        submission.next_attempt_after = None
-        await transition_application(
+        return await _fail_preflight(
+            session, application, submission, event, "resume_pdf artifact not rendered"
+        )
+
+    try:
+        pdf_bytes = await store.get(resume_artifact.storage_key)
+    except Exception as exc:
+        log.error("submission_execution.resume_artifact_read_failed", error=str(exc))
+        return await _fail_preflight(
+            session, application, submission, event, f"resume artifact could not be read: {exc}"
+        )
+
+    if not pdf_bytes:
+        return await _fail_preflight(
+            session, application, submission, event, "resume artifact is empty"
+        )
+
+    # Preflight 6: Packet artifact binding and currentness check
+    if submission.packet_artifact_id is not None:
+        packet_art = (
+            await session.execute(
+                select(Artifact).where(Artifact.id == submission.packet_artifact_id)
+            )
+        ).scalar_one_or_none()
+        if packet_art is None:
+            log.error(
+                "submission_execution.packet_artifact_missing",
+                artifact_id=str(submission.packet_artifact_id),
+            )
+            return await _fail_preflight(
+                session, application, submission, event, "packet artifact missing at execution time"
+            )
+
+        # Content-addressed packet currentness check:
+        # Confirm that packet_art.storage_key corresponds to the CURRENT approved materials
+        try:
+            source = await load_packet_source(session, application)
+            expected_key = packet_storage_key(
+                application_id=application.id,
+                resume_id=source.resume.id,
+                resume_version=source.resume.version,
+                cover_letter_id=source.cover_letter.id,
+                cover_letter_version=source.cover_letter.version,
+                answers_digest=source.answers_digest,
+            )
+            if packet_art.storage_key != expected_key:
+                log.error(
+                    "submission_execution.packet_artifact_stale",
+                    artifact_id=str(packet_art.id),
+                    storage_key=packet_art.storage_key,
+                    expected_key=expected_key,
+                )
+                return await _fail_preflight(
+                    session,
+                    application,
+                    submission,
+                    event,
+                    "packet artifact is stale; does not match current approved materials",
+                )
+        except Exception as exc:
+            log.error("submission_execution.packet_verification_failed", error=str(exc))
+            return await _fail_preflight(
+                session,
+                application,
+                submission,
+                event,
+                f"packet material verification failed: {exc}",
+            )
+
+    # Preflight 7: Prior attempts integrity checks (no prior success, no prior ambiguous)
+    if submission.attempt > 1:
+        stmt_priors = select(Submission).where(
+            Submission.application_id == application.id,
+            Submission.id != submission.id,
+        )
+        priors = (await session.execute(stmt_priors)).scalars().all()
+        if any(p.result is SubmissionResult.SUCCEEDED for p in priors):
+            log.error(
+                "submission_execution.prior_success_exists", application_id=str(application.id)
+            )
+            return await _fail_preflight(
+                session, application, submission, event, "prior attempt already succeeded"
+            )
+        if any(p.failure_reason and p.failure_reason.startswith("ambiguous:") for p in priors):
+            log.error(
+                "submission_execution.prior_ambiguous_exists", application_id=str(application.id)
+            )
+            return await _fail_preflight(
+                session, application, submission, event, "prior attempt was ambiguous"
+            )
+
+    # Preflight 8: Attempt budget check
+    if submission.attempt > settings.submission_max_attempts:
+        log.error(
+            "submission_execution.attempt_exceeds_budget",
+            attempt=submission.attempt,
+            max_attempts=settings.submission_max_attempts,
+        )
+        return await _fail_preflight(
             session,
             application,
-            ApplicationStatus.SUBMISSION_FAILED,
-            actor_type="system",
-            actor_id="submission_worker",
-            reason="resume_pdf artifact not rendered",
-            correlation_id=application.id,
-            causation_id=event.id,
+            submission,
+            event,
+            (
+                f"submission attempt {submission.attempt} exceeds "
+                f"maximum attempts {settings.submission_max_attempts}"
+            ),
         )
-        await emit(
-            session,
-            type="submission.failed",
-            aggregate_type="submission",
-            aggregate_id=submission.id,
-            correlation_id=application.id,
-            causation_id=event.id,
-            actor_type="system",
-            actor_id="submission_worker",
-            payload={
-                "submission_id": str(submission.id),
-                "application_id": str(application.id),
-                "attempt": submission.attempt,
-                "failure_reason": "resume_pdf artifact not rendered",
-                "will_retry": False,
-                "ambiguous": False,
-            },
-        )
-        return "completed"
 
-    pdf_bytes = await store.get(resume_artifact.storage_key)
-
+    # All preflights passed. Execution actually begins now!
     company_name = ""
     if job.company:
         company_name = getattr(job.company, "name", str(job.company))
@@ -582,8 +555,6 @@ async def execute_submission_attempt(
         ),
     )
 
-    # All preflights passed. Execution actually begins now!
-    # Set started_at and emit submission.started immediately before transport attempt.
     submission.started_at = utc_now()
     await emit(
         session,
@@ -647,6 +618,7 @@ async def execute_submission_attempt(
         reason = f"ambiguous: {send_result.detail}"
         submission.result = SubmissionResult.FAILED
         submission.failure_reason = reason
+        submission.next_attempt_after = None
         await transition_application(
             session,
             application,
@@ -676,12 +648,88 @@ async def execute_submission_attempt(
                 "ambiguous": True,
             },
         )
+    elif send_result.status is EmailSendStatus.TRANSIENT_FAILURE:
+        can_retry = submission.attempt < settings.submission_max_attempts
+        if can_retry:
+            delay_idx = submission.attempt - 1
+            delay_sec = settings.submission_retry_delays_seconds[delay_idx]
+            next_after = utc_now() + timedelta(seconds=delay_sec)
+            submission.result = SubmissionResult.FAILED
+            submission.failure_reason = send_result.detail
+            submission.next_attempt_after = next_after
+            await transition_application(
+                session,
+                application,
+                ApplicationStatus.SUBMISSION_FAILED,
+                actor_type="system",
+                actor_id="submission_worker",
+                reason=f"transient failure: {send_result.detail}; retry scheduled",
+                correlation_id=application.id,
+                causation_id=event.id,
+            )
+            await emit(
+                session,
+                type="submission.failed",
+                aggregate_type="submission",
+                aggregate_id=submission.id,
+                correlation_id=application.id,
+                causation_id=event.id,
+                actor_type="system",
+                actor_id="submission_worker",
+                payload={
+                    "submission_id": str(submission.id),
+                    "application_id": str(application.id),
+                    "attempt": submission.attempt,
+                    "failure_reason": send_result.detail,
+                    "http_status": send_result.smtp_code,
+                    "will_retry": True,
+                    "ambiguous": False,
+                    "next_attempt_after": next_after.isoformat(),
+                },
+            )
+        else:
+            reason = f"exhausted {settings.submission_max_attempts} attempts: {send_result.detail}"
+            submission.result = SubmissionResult.FAILED
+            submission.failure_reason = reason
+            submission.next_attempt_after = None
+            await transition_application(
+                session,
+                application,
+                ApplicationStatus.SUBMISSION_FAILED,
+                actor_type="system",
+                actor_id="submission_worker",
+                reason=(
+                    f"retry exhausted ({settings.submission_max_attempts} attempts): "
+                    f"{send_result.detail}"
+                ),
+                correlation_id=application.id,
+                causation_id=event.id,
+            )
+            await emit(
+                session,
+                type="submission.failed",
+                aggregate_type="submission",
+                aggregate_id=submission.id,
+                correlation_id=application.id,
+                causation_id=event.id,
+                actor_type="system",
+                actor_id="submission_worker",
+                payload={
+                    "submission_id": str(submission.id),
+                    "application_id": str(application.id),
+                    "attempt": submission.attempt,
+                    "failure_reason": reason,
+                    "http_status": send_result.smtp_code,
+                    "will_retry": False,
+                    "ambiguous": False,
+                },
+            )
     else:
-        # REJECTED, AUTH_FAILED, TRANSIENT_FAILURE
-        # (Phase 2 treats transient as failed without retry)
+        # REJECTED, AUTH_FAILED
         reason = f"email send failed: {send_result.status.value}"
         submission.result = SubmissionResult.FAILED
         submission.failure_reason = send_result.detail
+        submission.next_attempt_after = None
         await transition_application(
             session,
             application,
@@ -714,3 +762,288 @@ async def execute_submission_attempt(
 
     await session.flush()
     return "completed"
+
+
+async def execute_submission_retry(
+    session: AsyncSession,
+    event: Event,
+    *,
+    settings: Settings,
+    store: ArtifactStore,
+) -> str:
+    """Claim and execute an automatic retry attempt from submission.retry_requested.
+
+    Runs within DeliveryRuntime on the dedicated 'submission' worker under app_agent.
+    Atomically:
+      1. Locks application and due failed submission;
+      2. Revalidates retry eligibility;
+      3. Clears next_attempt_after on the prior attempt;
+      4. Transitions application SUBMISSION_FAILED -> SUBMITTING (system actor);
+      5. Creates attempt N+1 append-only;
+      6. Executes delivery preflights & transport via _execute_attempt.
+    """
+    application_id = UUID(str(event.payload["application_id"]))
+    due_submission_id = UUID(str(event.payload["submission_id"]))
+
+    stmt_app = (
+        select(Application)
+        .where(Application.id == application_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    application = (await session.execute(stmt_app)).scalar_one_or_none()
+    if application is None:
+        log.warning("submission_retry.application_missing", application_id=str(application_id))
+        return "dead"
+
+    stmt_sub = (
+        select(Submission)
+        .where(Submission.id == due_submission_id)
+        .with_for_update()
+    )
+    prior_submission = (await session.execute(stmt_sub)).scalar_one_or_none()
+    if prior_submission is None:
+        log.warning("submission_retry.submission_missing", submission_id=str(due_submission_id))
+        return "dead"
+
+    # 1. Check if already claimed / not scheduled
+    if prior_submission.next_attempt_after is None:
+        log.info(
+            "submission_retry.already_claimed",
+            submission_id=str(due_submission_id),
+            application_id=str(application_id),
+        )
+        return "completed"
+
+    # 2. Check if not due yet
+    now = utc_now()
+    if prior_submission.next_attempt_after > now:
+        log.info(
+            "submission_retry.not_due_yet",
+            submission_id=str(due_submission_id),
+            due_at=prior_submission.next_attempt_after.isoformat(),
+        )
+        return "deferred"
+
+    # 3. Check application status is SUBMISSION_FAILED
+    if application.status is not ApplicationStatus.SUBMISSION_FAILED:
+        log.warning(
+            "submission_retry.invalid_application_status",
+            application_id=str(application_id),
+            status=str(application.status),
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 4. Check retry budget
+    if prior_submission.attempt >= settings.submission_max_attempts:
+        log.warning(
+            "submission_retry.budget_exhausted",
+            attempt=prior_submission.attempt,
+            max_attempts=settings.submission_max_attempts,
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 5. Check no pending attempt already exists
+    stmt_pending = select(Submission).where(
+        Submission.application_id == application_id,
+        Submission.result == SubmissionResult.PENDING,
+    )
+    pending_sub = (await session.execute(stmt_pending)).scalar_one_or_none()
+    if pending_sub is not None:
+        log.warning(
+            "submission_retry.pending_attempt_already_exists",
+            application_id=str(application_id),
+            pending_id=str(pending_sub.id),
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 6. Check prior outcomes: never retry if prior attempt succeeded or was ambiguous
+    stmt_all = select(Submission).where(Submission.application_id == application_id)
+    all_subs = (await session.execute(stmt_all)).scalars().all()
+    if any(s.result is SubmissionResult.SUCCEEDED for s in all_subs):
+        log.warning(
+            "submission_retry.prior_success_detected",
+            application_id=str(application_id),
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+    if any(s.failure_reason and s.failure_reason.startswith("ambiguous:") for s in all_subs):
+        log.warning(
+            "submission_retry.prior_ambiguous_detected",
+            application_id=str(application_id),
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 7. Re-evaluate current submission policy
+    verdict, snapshot, policy_row, domain = await policy_verdict(
+        session, application
+    )
+    today = utc_today()
+    is_expired = bool(
+        policy_row and policy_row.next_review_due and policy_row.next_review_due < today
+    )
+    if (
+        verdict.decision is not PolicyDecision.ALLOWED
+        or snapshot.submission_method is not SubmissionMethod.EMAIL
+        or policy_row is None
+        or is_expired
+    ):
+        log.warning(
+            "submission_retry.policy_invalid_at_claim",
+            application_id=str(application_id),
+            decision=str(verdict.decision),
+            method=str(snapshot.submission_method) if snapshot else None,
+            expired=is_expired,
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 8. Re-evaluate destination email from authoritative current job data
+    stmt_job = select(Job).options(selectinload(Job.company)).where(Job.id == application.job_id)
+    job = (await session.execute(stmt_job)).scalar_one_or_none()
+    if job is None:
+        log.warning("submission_retry.job_missing_at_claim", job_id=str(application.job_id))
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    try:
+        _dest_email = extract_and_validate_authoritative_email(job, policy_row)
+    except ValidationError as exc:
+        log.warning("submission_retry.destination_invalid_at_claim", reason=str(exc))
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 9. Re-evaluate review completion
+    if not await review_is_complete(session, application):
+        log.warning(
+            "submission_retry.reviews_incomplete_at_claim",
+            application_id=str(application_id),
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # 10. Resolve current valid handoff packet matching current materials
+    try:
+        packet_artifact = await generate_handoff_packet(
+            session,
+            application=application,
+            store=store,
+            method=str(snapshot.submission_method),
+            blocked_reason=None,
+        )
+    except (ResumeNotRenderedError, NoCoverLetterError, ConflictError, Exception) as exc:
+        log.warning(
+            "submission_retry.packet_resolution_failed_at_claim",
+            application_id=str(application_id),
+            error=str(exc),
+        )
+        prior_submission.next_attempt_after = None
+        return "completed"
+
+    # Eligibility confirmed. Clear next_attempt_after on attempt N atomically.
+    prior_submission.next_attempt_after = None
+
+    # Transition application SUBMISSION_FAILED -> SUBMITTING (system actor only)
+    await transition_application(
+        session,
+        application,
+        ApplicationStatus.SUBMITTING,
+        actor_type="system",
+        actor_id="submission_worker",
+        reason=f"initiating retry attempt {prior_submission.attempt + 1}",
+        correlation_id=application.id,
+        causation_id=event.id,
+    )
+
+    # Create attempt N+1 append-only with current provenance
+    new_submission = Submission(
+        id=uuid7(),
+        application_id=application.id,
+        attempt=prior_submission.attempt + 1,
+        method=snapshot.submission_method,
+        target_domain=domain,
+        policy_id=policy_row.id,
+        result=SubmissionResult.PENDING,
+        packet_artifact_id=packet_artifact.id,
+        started_at=None,
+        finished_at=None,
+        next_attempt_after=None,
+    )
+    session.add(new_submission)
+    await session.flush()
+
+    # Re-execute preflights and delivery attempt for attempt N+1
+    return await _execute_attempt(
+        session, application, new_submission, event, settings=settings, store=store
+    )
+
+
+async def schedule_due_retries(
+    session: AsyncSession,
+    *,
+    max_retries_per_tick: int = 50,
+) -> int:
+    """Discover due submission retries and emit submission.retry_requested.
+
+    Runs within the periodic scheduler under the app_monitor role.
+    Role constraints: SELECT on all tables, INSERT ON events.
+    Strictly zero mutations on submissions or applications.
+    """
+    now = utc_now()
+    stmt = (
+        select(
+            Submission.id,
+            Submission.application_id,
+            Submission.attempt,
+            Submission.next_attempt_after,
+        )
+        .where(
+            Submission.next_attempt_after.is_not(None),
+            Submission.next_attempt_after <= now,
+        )
+        .order_by(Submission.next_attempt_after.asc())
+        .limit(max_retries_per_tick)
+    )
+    due_rows = (await session.execute(stmt)).all()
+    emitted = 0
+    for sub_id, app_id, attempt, next_after in due_rows:
+        if next_after is None:
+            continue
+        tick_id = uuid5(
+            NAMESPACE_URL,
+            f"jobforge:submission-retry:{sub_id}:{next_after.isoformat()}",
+        )
+        envelope = EventEnvelope(
+            id=tick_id,
+            type="submission.retry_requested",
+            aggregate_type="submission",
+            aggregate_id=sub_id,
+            actor_type="system",
+            actor_id="scheduler",
+            correlation_id=app_id,
+            occurred_at=now,
+            payload={
+                "submission_id": str(sub_id),
+                "application_id": str(app_id),
+                "attempt": attempt,
+            },
+        )
+        stmt_ins = (
+            pg_insert(cast(Table, Event.__table__))
+            .values(**envelope.as_row())
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+        result = await session.execute(stmt_ins)
+        if result.rowcount > 0:
+            emitted += 1
+            log.info(
+                "submission_retry.scheduled",
+                submission_id=str(sub_id),
+                application_id=str(app_id),
+                attempt=attempt,
+            )
+    return emitted

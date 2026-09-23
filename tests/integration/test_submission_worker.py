@@ -462,8 +462,8 @@ async def test_submission_worker_transient_failure_no_auto_retry(
     assert sub.http_status == 421
     assert sub.started_at is not None
     assert sub.finished_at is not None
-    assert sub.started_at <= sub.finished_at
-    assert sub.next_attempt_after is None  # Phase 2: strictly no automatic retries
+    assert sub.next_attempt_after is not None  # Phase 3: transient failure schedules retry
+    assert sub.next_attempt_after > sub.finished_at
 
 
 async def test_submission_worker_switches_disabled_at_execution(

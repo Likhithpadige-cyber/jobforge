@@ -121,9 +121,10 @@ Legend — **P** = producer, **C** = consumers.
 | Event | P | C | Payload |
 |---|---|---|---|
 | `submission.requested` | API (human) | **SUB** | `{application_id, submission_id, requested_by}` |
+| `submission.retry_requested` | scheduler | **SUB** | `{submission_id, application_id, attempt}` |
 | `submission.started` | **SUB** | A3 | `{submission_id, application_id, attempt, method, target_domain, policy_id}` |
 | `submission.succeeded` | **SUB** | A3, API(SSE) | `{submission_id, application_id, method, external_reference?, confirmed_by: "system"}` |
-| `submission.failed` | **SUB** | A3, API(SSE) | `{submission_id, application_id, attempt, failure_reason, will_retry, ambiguous}` |
+| `submission.failed` | **SUB** | A3, API(SSE) | `{submission_id, application_id, attempt, failure_reason, will_retry, ambiguous, next_attempt_after?}` |
 | `submission.handoff.required` | A2 | A3, notifications | `{submission_id, application_id, reason, packet_artifact_id, apply_url}` |
 
 `submission.handoff.required` carries `reason` values including `policy_requires_human`, `captcha_encountered`, `bot_challenge_detected`, `login_required`, `unsupported_form`. These are recorded honestly and terminate automation for that attempt. There is no downstream consumer that treats any of them as something to work around.

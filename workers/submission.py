@@ -1,7 +1,8 @@
-"""Run human-authorized M11 Phase 2 email submission execution.
+"""Run human-authorized email submission execution and durable retry recovery (M11).
 
-Consumes `submission.requested` from `evt.submissions`. Performs external
-delivery via configured EmailTransport. Strictly no automatic retries.
+Consumes `submission.requested` and `submission.retry_requested` from
+`evt.submissions`. Performs external delivery via configured EmailTransport with
+bounded, deterministic retry handling for safe transient failures.
 """
 from workers.runtime import main
 

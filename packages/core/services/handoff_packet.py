@@ -76,6 +76,7 @@ PACKET_ELIGIBLE_STATUSES = frozenset(
         ApplicationStatus.SUBMISSION_READY,
         ApplicationStatus.MANUAL_HANDOFF,
         ApplicationStatus.POLICY_BLOCKED,
+        ApplicationStatus.SUBMISSION_FAILED,
     }
 )
 
@@ -210,6 +211,14 @@ def _checklist_text(
             "will be attempted by this version of JobForge. This packet's "
             "existence is not permission to auto-submit - if you wish to "
             "apply now, do so yourself using the enclosed materials.",
+        ]
+    elif status is ApplicationStatus.SUBMISSION_FAILED:
+        lines += [
+            "STATUS: Submission failed - awaiting retry or manual action.",
+            "",
+            f"An automated submission to {domain} via {method} failed. "
+            "JobForge may retry if a safe transient retry is scheduled. "
+            "Use the enclosed resume, cover letter and answers if applying directly.",
         ]
     else:  # pragma: no cover - defensive; PACKET_ELIGIBLE_STATUSES guards this
         lines += [f"STATUS: {status}."]
@@ -387,3 +396,8 @@ async def current_packet(session: AsyncSession, application_id: UUID) -> Artifac
             .limit(1)
         )
     ).scalar_one_or_none()
+
+
+load_packet_source = _load_source
+packet_storage_key = _packet_storage_key
+existing_packet = _existing_packet

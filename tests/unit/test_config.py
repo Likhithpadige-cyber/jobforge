@@ -118,7 +118,8 @@ def test_safe_dump_masks_every_secret() -> None:
 def test_safe_dump_masks_smtp_credentials() -> None:
     """M11 Phase 1: the SMTP credential must never appear in a config dump."""
     settings = Settings(
-        smtp_username="mailer", smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
+        smtp_username="mailer",
+        smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
     )
     dumped = settings.safe_dump()
     serialised = str(dumped)
@@ -145,3 +146,31 @@ def test_environment_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None
 def test_get_settings_is_cached() -> None:
     get_settings.cache_clear()
     assert get_settings() is get_settings()
+
+
+def test_submission_retry_defaults() -> None:
+    settings = Settings()
+    assert settings.submission_max_attempts == 3
+    assert settings.submission_retry_delays_seconds == (60, 300)
+
+
+def test_submission_retry_single_attempt_valid() -> None:
+    settings = Settings(submission_max_attempts=1, submission_retry_delays_seconds=())
+    assert settings.submission_max_attempts == 1
+    assert settings.submission_retry_delays_seconds == ()
+
+
+def test_submission_retry_validation_invalid_values() -> None:
+    # max_attempts < 1
+    with pytest.raises(PydanticValidationError, match="submission_max_attempts must be >= 1"):
+        Settings(submission_max_attempts=0, submission_retry_delays_seconds=())
+
+    # negative delays
+    with pytest.raises(
+        PydanticValidationError, match="submission_retry_delays_seconds must be non-negative"
+    ):
+        Settings(submission_max_attempts=2, submission_retry_delays_seconds=(-10,))
+
+    # length mismatch
+    with pytest.raises(PydanticValidationError, match="must equal submission_max_attempts - 1"):
+        Settings(submission_max_attempts=3, submission_retry_delays_seconds=(60,))

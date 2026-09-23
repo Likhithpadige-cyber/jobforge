@@ -60,8 +60,8 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         "approval.requested", "approval.granted", "approval.rejected",
         "approval.changes_requested", "approval.superseded",
         # submissions
-        "submission.requested", "submission.started", "submission.succeeded",
-        "submission.failed", "submission.handoff.required",
+        "submission.requested", "submission.retry_requested", "submission.started",
+        "submission.succeeded", "submission.failed", "submission.handoff.required",
         # system
         "agent.run.started", "agent.run.finished", "agent.run.failed",
         "worker.delivery.started",

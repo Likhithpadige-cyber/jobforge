@@ -61,6 +61,8 @@ IMPLEMENTED: frozenset[tuple[ApplicationStatus, ApplicationStatus]] = frozenset(
         (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING),
         (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMITTED),
         (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED),
+        # M11 Phase 3: automatic retry recovery.
+        (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMITTING),
     }
 )
 
@@ -89,9 +91,7 @@ def session():
 
 
 def added(session, kind):
-    return [
-        c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], kind)
-    ]
+    return [c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], kind)]
 
 
 def events(session):
@@ -110,9 +110,7 @@ def test_every_status_has_an_entry() -> None:
 
 def test_only_the_reviewed_edges_exist() -> None:
     edges = {
-        (current, target)
-        for current, targets in ALLOWED_TRANSITIONS.items()
-        for target in targets
+        (current, target) for current, targets in ALLOWED_TRANSITIONS.items() for target in targets
     }
     assert edges == set(IMPLEMENTED)
 
@@ -125,10 +123,7 @@ def test_reviewed_edges_are_allowed(current, target) -> None:
 @pytest.mark.parametrize(
     ("current", "target"),
     sorted(
-        (a, b)
-        for a in ApplicationStatus
-        for b in ApplicationStatus
-        if (a, b) not in IMPLEMENTED
+        (a, b) for a in ApplicationStatus for b in ApplicationStatus if (a, b) not in IMPLEMENTED
     ),
 )
 def test_every_other_pair_is_rejected(current, target) -> None:
@@ -157,13 +152,13 @@ def test_skipped_states_rejected(current, target) -> None:
 @pytest.mark.parametrize(
     ("current", "target"),
     [
-        (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMITTING),
+        (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMISSION_READY),
         (ApplicationStatus.SUBMITTED, ApplicationStatus.SUBMISSION_READY),
         (ApplicationStatus.VERIFICATION_FAILED, ApplicationStatus.RESUME_GENERATING),
     ],
 )
 def test_unimplemented_lifecycle_paths_rejected(current, target) -> None:
-    """Unimplemented retry paths stay closed - M11 Phase 3's, not guessed at here."""
+    """Unimplemented retry paths stay closed."""
     assert not can_transition(current, target)
 
 
@@ -173,12 +168,8 @@ def test_review_is_only_reachable_through_awaiting_approval() -> None:
     Entering review must stay a distinct, recorded step, so a decision cannot
     be made on a resume nobody opened for review.
     """
-    assert not can_transition(
-        ApplicationStatus.RESUME_READY, ApplicationStatus.APPROVED
-    )
-    assert not can_transition(
-        ApplicationStatus.RESUME_READY, ApplicationStatus.CHANGES_REQUESTED
-    )
+    assert not can_transition(ApplicationStatus.RESUME_READY, ApplicationStatus.APPROVED)
+    assert not can_transition(ApplicationStatus.RESUME_READY, ApplicationStatus.CHANGES_REQUESTED)
 
 
 def test_questions_pending_leads_only_to_awaiting_approval() -> None:
@@ -216,9 +207,7 @@ def test_recovery_returns_a_stranded_generation_to_changes_requested() -> None:
     generation error survives, and the application is stranded in
     `resume_generating` with nothing working on it.
     """
-    assert can_transition(
-        ApplicationStatus.RESUME_GENERATING, ApplicationStatus.CHANGES_REQUESTED
-    )
+    assert can_transition(ApplicationStatus.RESUME_GENERATING, ApplicationStatus.CHANGES_REQUESTED)
     assert ALLOWED_TRANSITIONS[ApplicationStatus.RESUME_GENERATING] == frozenset(
         {
             ApplicationStatus.RESUME_READY,
@@ -263,7 +252,9 @@ def test_approved_leads_only_to_submission_ready() -> None:
         {ApplicationStatus.SUBMITTED, ApplicationStatus.SUBMISSION_FAILED}
     )
     assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMITTED] == frozenset()
-    assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMISSION_FAILED] == frozenset()
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMISSION_FAILED] == frozenset(
+        {ApplicationStatus.SUBMITTING}
+    )
     assert ALLOWED_TRANSITIONS[ApplicationStatus.MANUAL_HANDOFF] == frozenset()
     assert ALLOWED_TRANSITIONS[ApplicationStatus.POLICY_BLOCKED] == frozenset()
 
@@ -278,9 +269,12 @@ async def test_successful_transition_writes_status_history_and_event(
     app = application(current)
     actor_type = (
         "human"
-        if (current, target)
-        == (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING)
-        else ("system" if current is ApplicationStatus.SUBMITTING else "agent")
+        if (current, target) == (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING)
+        else (
+            "system"
+            if current in (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED)
+            else "agent"
+        )
     )
     previous = await transition_application(
         session, app, target, actor_type=actor_type, actor_id="resume_optimizer"
@@ -405,9 +399,7 @@ async def test_submission_ready_to_submitting_requires_human_actor(session) -> N
         )
 
     with pytest.raises(IllegalTransitionError, match="requires actor in \\['human'\\]"):
-        await transition_application(
-            session, app, ApplicationStatus.SUBMITTING, actor_type="agent"
-        )
+        await transition_application(session, app, ApplicationStatus.SUBMITTING, actor_type="agent")
 
     # Human succeeds
     await transition_application(
@@ -420,18 +412,12 @@ async def test_submitting_completion_transitions_require_system_actor(session) -
     """Completion transitions from SUBMITTING are strictly owned by system worker."""
     app1 = application(ApplicationStatus.SUBMITTING)
     with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
-        await transition_application(
-            session, app1, ApplicationStatus.SUBMITTED, actor_type="human"
-        )
+        await transition_application(session, app1, ApplicationStatus.SUBMITTED, actor_type="human")
 
     with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
-        await transition_application(
-            session, app1, ApplicationStatus.SUBMITTED, actor_type="agent"
-        )
+        await transition_application(session, app1, ApplicationStatus.SUBMITTED, actor_type="agent")
 
-    await transition_application(
-        session, app1, ApplicationStatus.SUBMITTED, actor_type="system"
-    )
+    await transition_application(session, app1, ApplicationStatus.SUBMITTED, actor_type="system")
     assert app1.status is ApplicationStatus.SUBMITTED
 
     app2 = application(ApplicationStatus.SUBMITTING)
@@ -444,3 +430,22 @@ async def test_submitting_completion_transitions_require_system_actor(session) -
         session, app2, ApplicationStatus.SUBMISSION_FAILED, actor_type="system"
     )
     assert app2.status is ApplicationStatus.SUBMISSION_FAILED
+
+
+async def test_submission_failed_retry_transition_requires_system_actor(session) -> None:
+    """Retry recovery transition SUBMISSION_FAILED -> SUBMITTING is strictly system-owned."""
+    app = application(ApplicationStatus.SUBMISSION_FAILED)
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
+        await transition_application(session, app, ApplicationStatus.SUBMITTING, actor_type="human")
+
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
+        await transition_application(session, app, ApplicationStatus.SUBMITTING, actor_type="agent")
+
+    await transition_application(
+        session,
+        app,
+        ApplicationStatus.SUBMITTING,
+        actor_type="system",
+        actor_id="submission_worker",
+    )
+    assert app.status is ApplicationStatus.SUBMITTING

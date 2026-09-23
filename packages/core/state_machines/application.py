@@ -172,7 +172,8 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
         {ApplicationStatus.SUBMITTED, ApplicationStatus.SUBMISSION_FAILED}
     ),
     ApplicationStatus.SUBMITTED: frozenset(),
-    ApplicationStatus.SUBMISSION_FAILED: frozenset(),
+    # M11 Phase 3: bounded retry recovery transition.
+    ApplicationStatus.SUBMISSION_FAILED: frozenset({ApplicationStatus.SUBMITTING}),
     ApplicationStatus.MANUAL_HANDOFF: frozenset(),
     ApplicationStatus.POLICY_BLOCKED: frozenset(),
     ApplicationStatus.ABANDONED: frozenset(),
@@ -180,12 +181,16 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
 }
 
 
-ALLOWED_TRANSITION_ACTORS: dict[tuple[ApplicationStatus, ApplicationStatus], frozenset[ActorType]] = {
+ALLOWED_TRANSITION_ACTORS: dict[
+    tuple[ApplicationStatus, ApplicationStatus], frozenset[ActorType]
+] = {
     # M11 Phase 2: SUBMISSION_READY -> SUBMITTING is strictly human-authorized.
     (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING): frozenset({"human"}),
     # Completion transitions from SUBMITTING are strictly system-driven.
     (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMITTED): frozenset({"system"}),
     (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED): frozenset({"system"}),
+    # M11 Phase 3: retry recovery transition is strictly system-driven.
+    (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMITTING): frozenset({"system"}),
 }
 
 

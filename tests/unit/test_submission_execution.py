@@ -661,6 +661,7 @@ async def test_execute_attempt_outcome_mapping(
     sub.target_domain = "example.com"
     sub.method = SubmissionMethod.EMAIL
     sub.policy_id = uuid7()
+    sub.packet_artifact_id = None
 
     exec_res1 = MagicMock()
     exec_res1.scalar_one_or_none.return_value = app
@@ -751,8 +752,10 @@ async def test_execute_attempt_outcome_mapping(
         assert res == "completed"
         assert sub.result == expected_sub_result
         assert sub.started_at is not None
-        assert sub.finished_at is not None
-        assert sub.next_attempt_after is None
+        if send_status == EmailSendStatus.TRANSIENT_FAILURE:
+            assert sub.next_attempt_after is not None
+        else:
+            assert sub.next_attempt_after is None
         if send_status == EmailSendStatus.AMBIGUOUS:
             assert sub.failure_reason.startswith("ambiguous:")
 

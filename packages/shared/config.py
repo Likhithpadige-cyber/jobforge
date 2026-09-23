@@ -154,6 +154,8 @@ class Settings(BaseSettings):
     # These are operational limits, not guardrail toggles. The anti-fabrication
     # layers in SECURITY.md §4 are deliberately not configurable.
     submission_mode: SubmissionMode = SubmissionMode.DRY_RUN
+    submission_max_attempts: int = 3
+    submission_retry_delays_seconds: tuple[int, ...] = (60, 300)
     daily_application_quota: int = 100
     daily_evaluation_quota: int = 600
     daily_llm_cost_budget_usd: float = 25.00
@@ -308,6 +310,21 @@ class Settings(BaseSettings):
                 raise ValueError(
                     f"Missing required secrets for {self.environment}: {', '.join(missing)}"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_submission_retries(self) -> Settings:
+        """Validate bounded submission retry settings (M11 Phase 3)."""
+        if self.submission_max_attempts < 1:
+            raise ValueError("submission_max_attempts must be >= 1")
+        if any(d < 0 for d in self.submission_retry_delays_seconds):
+            raise ValueError("submission_retry_delays_seconds must be non-negative")
+        if len(self.submission_retry_delays_seconds) != self.submission_max_attempts - 1:
+            raise ValueError(
+                f"submission_retry_delays_seconds length "
+                f"({len(self.submission_retry_delays_seconds)}) "
+                f"must equal submission_max_attempts - 1 ({self.submission_max_attempts - 1})"
+            )
         return self
 
     # ---------------------------------------------------------- accessors

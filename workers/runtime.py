@@ -35,7 +35,11 @@ from packages.core.services.applications import (
 )
 from packages.core.services.artifacts import render_resume
 from packages.core.services.cover_letters import CoverLetterClient, generate_cover_letter
-from packages.core.services.submission_execution import execute_submission_attempt
+from packages.core.services.submission_execution import (
+    execute_submission_attempt,
+    execute_submission_retry,
+    schedule_due_retries,
+)
 from packages.core.services.submission_readiness import (
     check_readiness_on_approval,
     retry_packet_generation,
@@ -153,6 +157,7 @@ async def run(
             async def schedule() -> None:
                 async with sessions.begin() as session:
                     await schedule_snapshot(session)
+                    await schedule_due_retries(session)
             await serve(schedule, stop, interval=30)
         else:
             if kind == "first-draft":
@@ -286,9 +291,9 @@ async def run(
                     "cover_letter.generation.requested": draft,
                 }, retry=RetryPolicy(delays=()))
             elif kind == "submission":
-                # M11 Phase 2: email submission execution.
-                # Runs on cg.submission, consuming submission.requested from evt.submissions.
-                # Strictly no automatic retries in Phase 2.
+                # M11: email submission execution and durable retry recovery.
+                # Runs on cg.submission, consuming submission.requested and
+                # submission.retry_requested from evt.submissions.
                 submission_store = build_artifact_store(settings)
 
                 async def on_submission_requested(db: AsyncSession, event: Event) -> str:
@@ -296,10 +301,18 @@ async def run(
                         db, event, settings=settings, store=submission_store
                     )
 
+                async def on_submission_retry_requested(db: AsyncSession, event: Event) -> str:
+                    return await execute_submission_retry(
+                        db, event, settings=settings, store=submission_store
+                    )
+
                 runtime = DeliveryRuntime(
                     sessions,
                     "cg.submission",
-                    {"submission.requested": on_submission_requested},
+                    {
+                        "submission.requested": on_submission_requested,
+                        "submission.retry_requested": on_submission_retry_requested,
+                    },
                     retry=RetryPolicy(delays=()),
                 )
             elif kind == "optimizer":
