@@ -157,13 +157,36 @@ def evaluate_ingestion(
     )
 
 
-def evaluate_submission(policy: PolicySnapshot) -> PolicyVerdict:
+def evaluate_submission(policy: PolicySnapshot, *, today: date | None = None) -> PolicyVerdict:
     """Decide how an application may be submitted to this domain.
 
     Never returns ALLOWED for anything other than an explicitly permitted
     channel. `human_handoff` is REQUIRES_HUMAN, not ALLOWED, so a caller that
     checks `.permitted` can never auto-submit by accident.
+
+    M11 Phase 1 fix: an expired ToS review must not authorise an automated
+    send (`EMAIL` or `OFFICIAL_API`) any more than a current one that simply
+    forbids automation does. SECURITY.md §7.2 is explicit about the intended
+    outcome - "a policy older than its review date... reverts the domain to
+    `human_handoff` submission" - so this mirrors `evaluate_ingestion`'s own
+    `next_review_due` check in spirit (a stale review is not a review) but
+    not in its exact outcome: ingestion has no "do it by hand instead" path,
+    so a stale ingestion review is BLOCKED outright, while submission always
+    has human handoff as a safe fallback, so a stale submission review
+    degrades to REQUIRES_HUMAN - identical to the explicit `human_handoff`
+    branch below - rather than to BLOCKED. Either way nothing here is ever
+    reported ALLOWED on a stale review; "fail safely" and "match the
+    documented behaviour" agree in this case.
+
+    `EMAIL` deliberately has no `automation_allowed` check, unlike
+    `OFFICIAL_API` (locked M11 design decision 4): sending an email to a
+    published application address is not the kind of automated site
+    interaction that flag was built to gate. `EMAIL` still has to name the
+    method explicitly (nothing here defaults an unset/other method to email)
+    and, like every other automated method, still has to pass the review-
+    expiry check above.
     """
+    today = today or utc_today()
     if not policy.exists:
         return PolicyVerdict(
             PolicyDecision.BLOCKED, BlockReason.NO_POLICY,
@@ -178,6 +201,14 @@ def evaluate_submission(policy: PolicySnapshot) -> PolicyVerdict:
         return PolicyVerdict(
             PolicyDecision.REQUIRES_HUMAN, None,
             f"{policy.domain} requires a human to submit", policy,
+        )
+    # From here the method is EMAIL or OFFICIAL_API - an automated external
+    # action - so a stale review can no longer authorise it.
+    if policy.next_review_due and policy.next_review_due < today:
+        return PolicyVerdict(
+            PolicyDecision.REQUIRES_HUMAN, None,
+            f"ToS review for {policy.domain} expired on {policy.next_review_due}; "
+            "reverting to human handoff until it is re-reviewed", policy,
         )
     if policy.submission_method is SubmissionMethod.OFFICIAL_API and not policy.automation_allowed:
         return PolicyVerdict(

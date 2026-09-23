@@ -61,3 +61,10 @@ boto3==1.35.99
 # --- utilities ---------------------------------------------------------
 httpx==0.28.1
 python-dateutil==2.9.0.post0
+
+# --- email delivery (M11 Phase 1) ---------------------------------------
+# Runtime, not dev: the "smtp" EmailTransportMode connects with this client.
+# Pure-Python, no compiled extension. Default transport mode is "fake" and
+# opens no socket, so this dependency is inert unless EMAIL_TRANSPORT_MODE
+# is explicitly set to "smtp".
+aiosmtplib==5.1.3

@@ -491,6 +491,11 @@ class Submission(UUIDPrimaryKeyMixin, Base):
     )
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
+    #: M11 Phase 1 (migration 0010). NULL means no retry is scheduled for
+    #: this attempt. Nothing reads or writes this yet - it exists so a
+    #: later scheduler poll step (Phase 3, not built) has somewhere durable
+    #: to find attempts due for an automatic retry, without a second table.
+    next_attempt_after: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 
     application: Mapped[Application] = relationship(back_populates="submissions")

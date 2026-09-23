@@ -523,6 +523,7 @@ CREATE UNIQUE INDEX uq_one_pending_approval
 | `blocked_reason` | TEXT | e.g. `captcha_encountered`, `policy_forbids_automation` |
 | `packet_artifact_id` | UUID FK → artifacts | For human_handoff |
 | `started_at`, `finished_at` | TIMESTAMPTZ | |
+| `next_attempt_after` | TIMESTAMPTZ | Migration 0010 (M11 Phase 1). NULL = no retry scheduled. Not yet read or written by any code; the retry-scheduling poll step is M11 Phase 3. |
 | `created_at` | TIMESTAMPTZ | |
 
 `blocked_reason` deliberately records CAPTCHA and bot-detection encounters as terminal facts. They are metrics to review, never inputs to a workaround.

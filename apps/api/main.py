@@ -30,6 +30,9 @@ from apps.api.routers import (
     resume_review,
     resumes,
 )
+from apps.api.routers import (
+    settings as settings_router,
+)
 from packages.core.cache import close_redis, init_redis
 from packages.core.db import (
     dispose_audit_engine,
@@ -167,6 +170,7 @@ def create_app() -> FastAPI:
     app.include_router(artifacts.router, prefix=settings.api_prefix)
     app.include_router(applications.router, prefix=settings.api_prefix)
     app.include_router(cover_letter_review.router, prefix=settings.api_prefix)
+    app.include_router(settings_router.router, prefix=settings.api_prefix)
 
     return app
 

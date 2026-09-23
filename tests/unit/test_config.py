@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
-from packages.shared.config import Environment, LLMMode, Settings, SubmissionMode, get_settings
+from packages.shared.config import (
+    EmailTransportMode,
+    Environment,
+    LLMMode,
+    Settings,
+    SubmissionMode,
+    get_settings,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -18,6 +25,11 @@ def test_defaults_are_safe() -> None:
     assert settings.submission_enabled is False
     assert settings.llm_mode is LLMMode.REPLAY
     assert settings.daily_application_quota == 100
+
+
+def test_email_transport_mode_defaults_to_fake() -> None:
+    """M11 Phase 1: never opens a socket unless explicitly configured to."""
+    assert Settings().email_transport_mode is EmailTransportMode.FAKE
 
 
 def test_no_secret_has_a_usable_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -101,6 +113,24 @@ def test_safe_dump_masks_every_secret() -> None:
     assert "sk-real-key" not in serialised
     assert dumped["postgres_password"] == "***set***"
     assert dumped["session_secret"] == "***unset***"
+
+
+def test_safe_dump_masks_smtp_credentials() -> None:
+    """M11 Phase 1: the SMTP credential must never appear in a config dump."""
+    settings = Settings(
+        smtp_username="mailer", smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
+    )
+    dumped = settings.safe_dump()
+    serialised = str(dumped)
+    assert "s3cr3t-smtp-pw" not in serialised
+    assert dumped["smtp_username"] == "***set***"
+    assert dumped["smtp_password"] == "***set***"
+
+
+def test_safe_dump_reports_unset_smtp_credentials() -> None:
+    settings = Settings(smtp_username="", smtp_password="")
+    dumped = settings.safe_dump()
+    assert dumped["smtp_password"] == "***unset***"
 
 
 def test_environment_overrides_are_read(monkeypatch: pytest.MonkeyPatch) -> None:

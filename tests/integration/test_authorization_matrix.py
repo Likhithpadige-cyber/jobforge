@@ -312,6 +312,10 @@ OWNER_ONLY = frozenset(
         ("POST", "/api/v1/jobs/import"),
         ("GET", "/api/v1/sources"),
         ("POST", "/api/v1/sources"),
+        # M11 Phase 1. The persisted submission-dispatch switch: as
+        # consequential and non-reviewable as first-draft/master-resume
+        # above, so it gets the same owner-only gate.
+        ("PUT", "/api/v1/settings/submission-enabled"),
     }
 )
 
@@ -370,6 +374,10 @@ OWNER_AND_REVIEWER = frozenset(
         # (resume, cover letter, answers) - owner + reviewer, same as
         # GET /artifacts/{id}/content is for a single rendered artifact.
         ("GET", "/api/v1/applications/{application_id}/packet"),
+        # M11 Phase 1. Reading the persisted submission-dispatch switch is
+        # shared, same as every other read in this workspace; only changing
+        # it is owner-only (OWNER_ONLY above).
+        ("GET", "/api/v1/settings/submission-enabled"),
     }
 )
 

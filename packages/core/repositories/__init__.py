@@ -20,6 +20,7 @@ from packages.core.repositories.revision_attempts import (
     AttemptSourceConflictError,
     RevisionAttemptRepository,
 )
+from packages.core.repositories.settings import SettingsRepository
 
 __all__ = [
     "CHILD_REPOSITORIES",
@@ -36,6 +37,7 @@ __all__ = [
     "ProfileRepository",
     "ProjectRepository",
     "RevisionAttemptRepository",
+    "SettingsRepository",
     "SitePolicyRepository",
     "SkillRepository",
     "SourceRepository",

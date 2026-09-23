@@ -41,6 +41,22 @@ class SubmissionMode(StrEnum):
     ENABLED = "enabled"
 
 
+class EmailTransportMode(StrEnum):
+    """Which `EmailTransport` implementation to construct (M11 Phase 1).
+
+    Deliberately independent of `SubmissionMode`: that is a business/safety
+    gate (is a real send *authorised*), this is an implementation choice
+    (which client actually gets built). The two axes are orthogonal, the
+    same way `LLMMode` is independent of any permission check on whether an
+    agent may run at all. Defaults to `FAKE` for the same reason `LLMMode`
+    defaults to `REPLAY`: safe by default, opt into a real transport rather
+    than opt out of one.
+    """
+
+    FAKE = "fake"
+    SMTP = "smtp"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -150,6 +166,17 @@ class Settings(BaseSettings):
     s3_access_key_id: str = ""
     s3_secret_access_key: str = ""
     s3_region: str = "us-east-1"
+
+    # ------------------------------------------------------- email delivery
+    # M11 Phase 1. `email_transport_mode` selects the implementation only;
+    # it never authorises a send by itself - `SUBMISSION_MODE` and the
+    # persisted `submission_enabled` switch (packages.core.services.
+    # submission_gate) are what govern whether a send may happen at all.
+    email_transport_mode: EmailTransportMode = EmailTransportMode.FAKE
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025  # MailHog's default local port (docker-compose.yml)
+    smtp_username: str = ""
+    smtp_password: str = ""
 
     # ------------------------------------------------------------ session
     session_secret: str = ""
@@ -354,6 +381,8 @@ class Settings(BaseSettings):
             "s3_access_key_id",
             "s3_secret_access_key",
             "session_secret",
+            "smtp_username",
+            "smtp_password",
             "database_url",
             "audit_database_url",
             "redis_url",
