@@ -672,18 +672,26 @@ def _already_decided(
     context: ReviewContext,
     *,
     status: ApprovalStatus,
-    application_status: ApplicationStatus,
+    application_status: ApplicationStatus | None,
 ) -> bool:
     """Has this exact decision already been recorded for this exact resume?
 
     That is what makes a retry safe: the second call finds the terminal state
     it was trying to produce, already bound to the same resume id and version,
     and does nothing rather than writing a duplicate decision.
+
+    `application_status` is optional: `request_changes` still checks it
+    (that decision always moves `applications.status` itself, unconditionally).
+    `approve` (M10 Phase 2 on) passes `None` - the RESUME approval can now be
+    granted while the application stays `awaiting_approval`, waiting on
+    COVER_LETTER and/or ANSWERS, so the approval row's own state is what a
+    retry must match, not a status this decision may not have caused to move.
     """
     approval = context.approval
+    if application_status is not None and context.application.status is not application_status:
+        return False
     return (
-        context.application.status is application_status
-        and approval is not None
+        approval is not None
         and approval.status is status
         and snapshot_matches(approval.subject_snapshot, context.resume)
     )
@@ -696,20 +704,29 @@ async def approve(
     actor: User,
     decision_note: str | None = None,
 ) -> ReviewState:
-    """Record a human approval: `awaiting_approval -> approved`.
+    """Record a human approval of the resume.
 
-    The write order is load-bearing. `trg_applications_require_real_approval`
-    runs BEFORE UPDATE on `applications` and looks for an already-approved
-    `approvals` row naming the same human, so the approval is decided and
-    flushed first. Doing it the other way round does not produce a subtly wrong
-    audit trail - it produces a rejected transaction, which is the behaviour
-    that keeps the trail honest.
+    M10 Phase 2: this no longer transitions `applications.status` itself.
+    Granting the RESUME approval is necessary but not sufficient - the
+    application only leaves `awaiting_approval` once COVER_LETTER, and
+    ANSWERS if any questions were prepared, are *also* current-approved
+    (`packages.core.services.review_completion.maybe_mark_application_approved`,
+    called below). Approving the resume first, last, or in the middle all
+    behave identically: whichever approval happens to complete the set is the
+    one that moves the application. See that module's docstring for why
+    approval order used to matter here and no longer does.
+
+    The write order remains load-bearing for the trigger, just narrower in
+    scope now: `trg_applications_require_real_approval` runs BEFORE UPDATE on
+    `applications` and looks for an already-approved `approvals` row naming
+    the same human, so this approval is decided and flushed *before* the
+    completion gate ever queries for it.
     """
     context = await _context(session, application_id, lock=True)
     if _already_decided(
         context,
         status=ApprovalStatus.APPROVED,
-        application_status=ApplicationStatus.APPROVED,
+        application_status=None,
     ):
         log.info(
             "resume_review.approve.idempotent", application_id=str(application_id)
@@ -725,21 +742,9 @@ async def approve(
     approval.decided_at = decided_at
     if decision_note is not None:
         approval.decision_note = decision_note.strip() or None
-    # Flushed on its own, before the application moves: the trigger reads this
-    # row during the UPDATE that follows.
+    # Flushed on its own, before the completion gate queries for it below.
     await session.flush()
 
-    application.approved_by = actor.id
-    application.approved_at = decided_at
-    await transition_application(
-        session,
-        application,
-        ApplicationStatus.APPROVED,
-        actor_type="human",
-        actor_id=str(actor.id),
-        reason="resume approved by reviewer",
-        correlation_id=application.id,
-    )
     payload: dict[str, Any] = {
         "approval_id": str(approval.id),
         "application_id": str(application.id),
@@ -761,6 +766,18 @@ async def approve(
         actor_type="human",
         actor_id=str(actor.id),
         payload=payload,
+    )
+
+    # The completion gate: `awaiting_approval -> approved` only if COVER_LETTER
+    # and ANSWERS (if required) are already current-approved too. `causation_id`
+    # ties the resulting `application.status.changed`, if any, to the grant
+    # that caused it - a local import, not a module-level one, because
+    # `review_completion` imports back from this module for `snapshot_matches`
+    # and `latest_tailored_resume`.
+    from packages.core.services.review_completion import maybe_mark_application_approved
+
+    await maybe_mark_application_approved(
+        session, application, actor=actor, causation_id=granted.id
     )
 
     # M8. Rendering is requested here, and only here, because this is the one

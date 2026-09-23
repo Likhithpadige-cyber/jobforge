@@ -640,7 +640,14 @@ async def approve_cover_letter(
     actor: User,
     decision_note: str | None = None,
 ) -> CoverLetterReviewState:
-    """Approve the current cover-letter version. Does not move `applications.status`.
+    """Approve the current cover-letter version.
+
+    M10 Phase 2: may move `applications.status` from `awaiting_approval` to
+    `approved`, but only through the shared completion gate
+    (`packages.core.services.review_completion.maybe_mark_application_approved`)
+    and only when RESUME and (if required) ANSWERS are also current-approved -
+    this call alone is never sufficient, the same way granting the RESUME
+    approval alone is not. See that module's docstring.
 
     Idempotent by state: a retry that finds the same version already
     approved by this decision returns the current state untouched rather
@@ -670,7 +677,7 @@ async def approve_cover_letter(
         approval.decision_note = decision_note.strip() or None
     await session.flush()
 
-    await emit(
+    granted = await emit(
         session,
         type="approval.granted",
         aggregate_type="approval",
@@ -685,6 +692,14 @@ async def approve_cover_letter(
             "decided_by": str(actor.id),
             "decision_note": approval.decision_note,
         },
+    )
+
+    # Local import: review_completion imports back from this module for
+    # cover_letter_snapshot_matches/latest_cover_letter.
+    from packages.core.services.review_completion import maybe_mark_application_approved
+
+    await maybe_mark_application_approved(
+        session, application, actor=actor, causation_id=granted.id
     )
     return await cover_letter_review_state(session, application_id)
 

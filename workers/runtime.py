@@ -35,6 +35,10 @@ from packages.core.services.applications import (
 )
 from packages.core.services.artifacts import render_resume
 from packages.core.services.cover_letters import CoverLetterClient, generate_cover_letter
+from packages.core.services.submission_readiness import (
+    check_readiness_on_approval,
+    retry_packet_generation,
+)
 from packages.services.rendering import production_renderers
 from packages.services.rendering.store import (
     ArtifactStore,
@@ -211,10 +215,39 @@ async def run(
                     )
                     return "completed"
 
+                # M10 Phase 2. Also deterministic and offline - a snapshot
+                # comparison and an already-built policy lookup, no model.
+                # Reuses this same worker kind rather than a new one, per the
+                # locked design: readiness needs no LLM/audit-engine wiring,
+                # so it belongs beside "prepare", not beside "cover-letter".
+                readiness_store = build_artifact_store(settings)
+
+                async def on_approval_granted(db: AsyncSession, event: Event) -> str:
+                    return await check_readiness_on_approval(
+                        db, event, store=readiness_store
+                    )
+
+                # M10 Phase 2 stabilization (part C). The deterministic retry
+                # path for the packet race: resume.render.requested fires the
+                # instant a resume is approved, but the "render" worker that
+                # turns it into a resume_pdf artifact is asynchronous and may
+                # not have finished by the time readiness ran. Already an
+                # expected cg.application stream (ARCHITECTURE.md's own
+                # table), and almost every delivery is a cheap no-op - see
+                # retry_packet_generation's own docstring.
+                async def on_resume_rendered(db: AsyncSession, event: Event) -> str:
+                    return await retry_packet_generation(
+                        db, event, store=readiness_store
+                    )
+
                 runtime = DeliveryRuntime(
                     sessions,
                     "cg.application",
-                    {"application.questions.requested": prepare},
+                    {
+                        "application.questions.requested": prepare,
+                        "approval.granted": on_approval_granted,
+                        "resume.rendered": on_resume_rendered,
+                    },
                 )
             elif kind == "cover-letter":
                 # M10 Phase 1. LLM-calling and cost-shaped, like "first-draft":

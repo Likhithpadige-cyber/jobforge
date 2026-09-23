@@ -1,10 +1,12 @@
 """M9 - application preparation: extraction, review and the answers approval.
+M10 Phase 2 adds the handoff-packet download at the bottom of this file.
 
     POST  /api/v1/applications/{id}/prepare               owner only
     GET   /api/v1/applications/{id}/questions              owner + reviewer
     PATCH /api/v1/applications/{id}/answers/{answer_id}    owner + reviewer
     POST  /api/v1/applications/{id}/package/approve        owner + reviewer
     POST  /api/v1/applications/{id}/package/request-changes owner + reviewer
+    GET   /api/v1/applications/{id}/packet                 owner + reviewer
 
 Mirrors `apps/api/routers/resume_review.py`'s shape: thin handlers that
 establish the human from the session, delegate to
@@ -24,12 +26,15 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from apps.api.deps import (
+    AppSettings,
     CsrfProtected,
     CurrentHumanActor,
     DbSession,
+    artifact_download_limit,
+    artifact_store,
     authenticated_api,
     rate_limited,
     require_owner,
@@ -54,6 +59,9 @@ from packages.core.services.applications import (
     request_application_questions,
     request_changes_answers,
 )
+from packages.core.services.handoff_packet import PACKET_CONTENT_TYPE, current_packet
+from packages.services.rendering.keys import sanitize_filename
+from packages.services.rendering.store import ArtifactIntegrityError
 from packages.shared.config import Settings
 from packages.shared.errors import NotFoundError
 
@@ -212,3 +220,47 @@ async def request_package_changes(
     )
     await session.commit()
     return ApprovalRead.from_model(approval)
+
+
+@router.get(
+    "/{application_id}/packet",
+    summary="Download the handoff packet",
+    response_class=Response,
+    dependencies=[Depends(rate_limited(artifact_download_limit))],
+)
+async def download_packet(
+    application_id: UUID, session: DbSession, settings: AppSettings
+) -> Response:
+    """The bytes, with the checksum re-checked on the way out - the same
+    three-step discipline `download_artifact` uses in `artifacts.py`: read
+    the row, validate the content type against a fixed value rather than
+    echoing it, re-hash before returning. Serves the packet M10 Phase 2's
+    readiness step already generated; does not generate one on the fly.
+
+    Owner and reviewer alike, matching every other application-review route
+    in this file - this system has no per-resource ACL beyond that role
+    check (SECURITY.md's own threat model excludes multi-tenant isolation).
+    """
+    await _existing_application(session, application_id)
+    artifact = await current_packet(session, application_id)
+    if artifact is None:
+        raise NotFoundError(
+            "no handoff packet exists yet for this application"
+        )
+    if artifact.content_type != PACKET_CONTENT_TYPE:
+        raise ArtifactIntegrityError("packet artifact has an unsupported content type")
+
+    store = artifact_store(settings)
+    data = await store.get(artifact.storage_key)
+    if artifact.sha256:
+        await store.verify(artifact.storage_key, sha256=artifact.sha256)
+
+    filename = sanitize_filename(f"jobforge-packet-{application_id}.zip")
+    return Response(
+        content=data,
+        media_type=artifact.content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "private, no-store",
+        },
+    )

@@ -365,6 +365,11 @@ OWNER_AND_REVIEWER = frozenset(
         ("GET", "/api/v1/applications/{application_id}/cover-letter-review"),
         ("POST", "/api/v1/applications/{application_id}/cover-letter-review/approve"),
         ("POST", "/api/v1/applications/{application_id}/cover-letter-review/request-changes"),
+        # M10 Phase 2. Downloading the handoff packet is read access to what
+        # the application review routes above already expose piece by piece
+        # (resume, cover letter, answers) - owner + reviewer, same as
+        # GET /artifacts/{id}/content is for a single rendered artifact.
+        ("GET", "/api/v1/applications/{application_id}/packet"),
     }
 )
 

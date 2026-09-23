@@ -80,6 +80,28 @@ human exists (trigger `jobforge_require_real_approval`, plus
 those - a caller without a genuine human decision fails at flush, which is the
 intended behaviour.
 
+**The `approved -> submission_ready -> {manual_handoff | policy_blocked}`
+edges are M10 Phase 2's.** Both are driven by one deterministic worker step,
+`packages.core.services.submission_readiness.check_readiness_on_approval`,
+reacting to `approval.granted` on the existing `cg.application` consumer
+(no new worker kind). `approved -> submission_ready` fires only once the
+application's *current* resume, cover letter, and - if any questions were
+prepared - answers package each carry a human `APPROVED` decision bound to
+that exact current version (never a stale one; see that module's snapshot
+checks). The application always reaches `submission_ready` first, regardless
+of what `evaluate_submission` decides, because "ready" describes packet
+completeness, not policy permission. The same step then immediately
+evaluates policy and takes the second edge only for `BLOCKED`
+(`-> policy_blocked`) or `REQUIRES_HUMAN` (`-> manual_handoff`); an `ALLOWED`
+verdict leaves the application at `submission_ready` - M10 implements no
+submission dispatcher for any channel, so "policy permits it" is not treated
+as "a human should act now."
+
+Note what was deliberately not added. `submission_ready -> submitting`,
+`submitting -> submitted`, `submitting -> submission_failed`, and any
+retry/abandon path stay absent - M11's, not guessed at here, exactly as this
+module's opening paragraph says every unsettled edge should.
+
 Unlike the job machine, a move here is not just a field assignment. Three
 things happen together or not at all: the status changes, an append-only
 `application_status_history` row records who moved it and why, and
@@ -134,8 +156,13 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
     ApplicationStatus.CHANGES_REQUESTED: frozenset(
         {ApplicationStatus.RESUME_GENERATING}
     ),
-    ApplicationStatus.APPROVED: frozenset(),
-    ApplicationStatus.SUBMISSION_READY: frozenset(),
+    # M10 Phase 2. See the module docstring's readiness section. Only these
+    # three edges: `submission_ready -> submitting` and everything past it
+    # remain absent on purpose - M11's, not guessed at here.
+    ApplicationStatus.APPROVED: frozenset({ApplicationStatus.SUBMISSION_READY}),
+    ApplicationStatus.SUBMISSION_READY: frozenset(
+        {ApplicationStatus.MANUAL_HANDOFF, ApplicationStatus.POLICY_BLOCKED}
+    ),
     ApplicationStatus.SUBMITTING: frozenset(),
     ApplicationStatus.SUBMITTED: frozenset(),
     ApplicationStatus.SUBMISSION_FAILED: frozenset(),

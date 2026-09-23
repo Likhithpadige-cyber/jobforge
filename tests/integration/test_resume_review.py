@@ -46,12 +46,15 @@ from packages.core.models import (
     ApprovalKind,
     ApprovalStatus,
     ClaimVerdict,
+    CoverLetter,
+    CoverLetterClaim,
     Event,
     Resume,
     ResumeClaim,
     User,
 )
 from packages.core.services import applications as applications_service
+from packages.core.services import cover_letters as cover_letter_service
 from packages.core.services import resume_review as service
 from packages.shared.ids import uuid7
 from tests.integration import test_resume_read_api as c1
@@ -210,6 +213,61 @@ async def _approve(session, application_id, actor, note=None):
     )
 
 
+async def _complete_cover_letter_approval(session, application_id, actor, fact_id):
+    """M10 Phase 2 stabilization: resume approval alone no longer moves
+    `applications.status` to `approved` - `resume_review.enter_review` now
+    also requires a current, approved cover letter (Phase 1), and the
+    completion gate (`review_completion.maybe_mark_application_approved`)
+    checks for it. This file's own helpers predate that requirement, so
+    tests that need the application to actually *reach* `approved` build one
+    directly here - a hand-built row with real claim shape, like `c1.
+    _generate` hand-builds a resume, rather than the full cassette-driven
+    LLM pipeline `test_cover_letter_review.py` exercises, since generation
+    itself is not what these tests are about.
+    """
+    application = await _application(session, application_id)
+    cover_letter = CoverLetter(
+        id=uuid7(),
+        profile_id=application.profile_id,
+        application_id=application_id,
+        version=1,
+        content={"body": {"0": {"text": "Synthetic cover letter paragraph."}}},
+        body_text="Synthetic cover letter paragraph.",
+        verification_status="passed",
+        verification_report={"triggering_event_id": f"test-{uuid7()}"},
+    )
+    session.add(cover_letter)
+    await session.flush()
+    session.add(
+        CoverLetterClaim(
+            id=uuid7(),
+            cover_letter_id=cover_letter.id,
+            section="body",
+            path="/body/0",
+            claim_text="Synthetic cover letter paragraph.",
+            fact_ids=[fact_id],
+            verdict=ClaimVerdict.SUPPORTED,
+            verdict_reason="Synthetic.",
+        )
+    )
+    await session.flush()
+    approval = Approval(
+        id=uuid7(),
+        application_id=application_id,
+        kind=ApprovalKind.COVER_LETTER,
+        status=ApprovalStatus.PENDING,
+        subject_snapshot={
+            "cover_letter_id": str(cover_letter.id),
+            "cover_letter_version": cover_letter.version,
+        },
+    )
+    session.add(approval)
+    await session.flush()
+    return await cover_letter_service.approve_cover_letter(
+        session, application_id=application_id, actor=actor
+    )
+
+
 async def _request_changes(session, application_id, actor, note):
     state = await service.request_changes(
         session, application_id=application_id, actor=actor, note=note
@@ -350,6 +408,7 @@ async def test_review_cannot_be_opened_from_approved(
     actor = await _actor(session, demo_application)
     await _start(session, app_id, actor)
     await _approve(session, app_id, actor)
+    await _complete_cover_letter_approval(session, app_id, actor, facts[0].id)
 
     with pytest.raises(service.ReviewStateError, match="questions_pending"):
         await _start(session, app_id, actor)
@@ -465,6 +524,11 @@ async def test_approve_records_the_decision_and_moves_the_application(
     await _ready(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await _start(session, app_id, actor)
+    # M10 Phase 2: the cover letter must also be current-approved before
+    # *any* approval completes the set and moves the application - done
+    # first here so the resume approval below is the one that completes it,
+    # preserving this test's own "approve moves the application" premise.
+    await _complete_cover_letter_approval(session, app_id, actor, facts[0].id)
 
     state = await _approve(session, app_id, actor, note="Reads well; every line cited.")
 
@@ -498,6 +562,7 @@ async def test_the_deciding_human_comes_from_the_session_not_the_request(
     signed_in = await _actor(session, demo_application)
     other = await _second_user(session)
     await _start(session, app_id, signed_in)
+    await _complete_cover_letter_approval(session, app_id, signed_in, facts[0].id)
 
     await _approve(session, app_id, signed_in)
 
@@ -638,16 +703,22 @@ async def test_approve_emits_a_human_approval_granted_event(
     await _ready(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await _start(session, app_id, actor)
+    # M10 Phase 2: completed first so the RESUME grant below is the one that
+    # completes the set - this test is about the RESUME approval.granted
+    # event specifically, hence checking the *last* one (kind=resume) below
+    # rather than assuming only one exists.
+    await _complete_cover_letter_approval(session, app_id, actor, facts[0].id)
 
     await _approve(session, app_id, actor)
 
     granted = await _events(session, app_id, "approval.granted")
-    assert len(granted) == 1
+    assert len(granted) == 2
+    resume_granted = next(e for e in granted if e.payload["kind"] == str(ApprovalKind.RESUME))
     # EVENTS.md §3.4: no agent may produce this. The envelope enforces it, so
     # an event that exists at all is one a human produced.
-    assert granted[0].actor_type == "human"
-    assert granted[0].actor_id == str(actor.id)
-    assert granted[0].payload["decided_by"] == str(actor.id)
+    assert resume_granted.actor_type == "human"
+    assert resume_granted.actor_id == str(actor.id)
+    assert resume_granted.payload["decided_by"] == str(actor.id)
 
     changed = await _events(session, app_id, "application.status.changed")
     assert changed[-1].payload["to_status"] == "approved"
@@ -689,6 +760,7 @@ async def test_the_database_approval_trigger_is_satisfied_naturally(
     await _ready(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await _start(session, app_id, actor)
+    await _complete_cover_letter_approval(session, app_id, actor, facts[0].id)
 
     await _approve(session, app_id, actor)
     await session.flush()
@@ -1147,6 +1219,7 @@ async def test_review_read_exposes_the_approved_decision(
     await _ready(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await _start(session, app_id, actor)
+    await _complete_cover_letter_approval(session, app_id, actor, facts[0].id)
     await _approve(session, app_id, actor, note="Cleared for sending.")
 
     read = await get_resume_review(app_id, session)

@@ -989,6 +989,23 @@ def _build_answers_snapshot(
     }
 
 
+def answers_snapshot_matches(
+    snapshot: dict[str, Any], application: Application, questions: list[ApplicationQuestion]
+) -> bool:
+    """Does this approval still describe the *current* answers content?
+
+    M10 Phase 2's readiness gate needs this the same way
+    `resume_review.snapshot_matches`/`cover_letters.cover_letter_snapshot_matches`
+    let it check a resume or cover-letter approval against the current
+    version - except an answers approval has no version to compare, because
+    `edit_answer` can change an `application_answers` row after its approval
+    was granted (unlike a resume or cover-letter row, which is immutable once
+    created). So staleness here means exact content equality against a fresh
+    snapshot, not an id/version match.
+    """
+    return snapshot == _build_answers_snapshot(application, questions)
+
+
 def _unresolved(questions: list[ApplicationQuestion]) -> list[ApplicationQuestion]:
     return [
         q for q in questions
@@ -1072,7 +1089,7 @@ async def _decide_answers(
         payload["decision_note"] = decision_note
     if status is ApprovalStatus.CHANGES_REQUESTED:
         payload["instructions"] = changes_requested
-    await emit(
+    decided_event = await emit(
         session,
         type=event_type,
         aggregate_type="approval",
@@ -1082,6 +1099,21 @@ async def _decide_answers(
         actor_id=str(actor.id),
         payload=payload,
     )
+
+    if status is ApprovalStatus.APPROVED:
+        # M10 Phase 2. The completion gate: awaiting_approval -> approved
+        # only if RESUME and COVER_LETTER are also current-approved - this
+        # decision alone is never sufficient. Local import: review_completion
+        # imports back from this module for answers_snapshot_matches/
+        # existing_questions.
+        from packages.core.services.review_completion import (
+            maybe_mark_application_approved,
+        )
+
+        await maybe_mark_application_approved(
+            session, application, actor=actor, causation_id=decided_event.id
+        )
+
     log.info(
         "applications.answers_decided",
         application_id=str(application_id),

@@ -48,6 +48,15 @@ IMPLEMENTED: frozenset[tuple[ApplicationStatus, ApplicationStatus]] = frozenset(
         # the start of generation: a revision earns resume_ready by passing
         # verification, never by inheriting the previous attempt's.
         (ApplicationStatus.CHANGES_REQUESTED, ApplicationStatus.RESUME_GENERATING),
+        # Submission readiness (M10 Phase 2). One deterministic worker step
+        # takes `approved -> submission_ready` unconditionally once RESUME,
+        # COVER_LETTER, and (if any were prepared) ANSWERS are each approved
+        # for their current version, then immediately the policy fan-out
+        # decides whether a second edge follows - see
+        # packages/core/services/submission_readiness.py.
+        (ApplicationStatus.APPROVED, ApplicationStatus.SUBMISSION_READY),
+        (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.MANUAL_HANDOFF),
+        (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.POLICY_BLOCKED),
     }
 )
 
@@ -142,13 +151,17 @@ def test_skipped_states_rejected(current, target) -> None:
 @pytest.mark.parametrize(
     ("current", "target"),
     [
-        (ApplicationStatus.APPROVED, ApplicationStatus.SUBMISSION_READY),
+        (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING),
+        (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMITTED),
+        (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED),
         (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMITTING),
         (ApplicationStatus.VERIFICATION_FAILED, ApplicationStatus.RESUME_GENERATING),
     ],
 )
 def test_unimplemented_lifecycle_paths_rejected(current, target) -> None:
-    """Unimplemented submission and failure-retry paths stay closed."""
+    """Unimplemented submission and failure-retry paths stay closed - M11's,
+    not guessed at here. `approved -> submission_ready` is M10 Phase 2's own
+    edge now (see IMPLEMENTED); everything past `submission_ready` is not."""
     assert not can_transition(current, target)
 
 
@@ -232,8 +245,19 @@ def test_recovery_does_not_open_a_route_around_verification() -> None:
         assert not can_transition(ApplicationStatus.CHANGES_REQUESTED, target)
 
 
-def test_decisions_are_terminal_in_the_current_graph() -> None:
-    assert ALLOWED_TRANSITIONS[ApplicationStatus.APPROVED] == frozenset()
+def test_approved_leads_only_to_submission_ready() -> None:
+    """M10 Phase 2's sole exit from `approved` - readiness, not a decision
+    reopening review. `submission_ready`/`manual_handoff`/`policy_blocked`
+    stay terminal in this graph: `submitting` and everything past it is
+    M11's."""
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.APPROVED] == frozenset(
+        {ApplicationStatus.SUBMISSION_READY}
+    )
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMISSION_READY] == frozenset(
+        {ApplicationStatus.MANUAL_HANDOFF, ApplicationStatus.POLICY_BLOCKED}
+    )
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.MANUAL_HANDOFF] == frozenset()
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.POLICY_BLOCKED] == frozenset()
 
 
 # --- the write path ---------------------------------------------------------

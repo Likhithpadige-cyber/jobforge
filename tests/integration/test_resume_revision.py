@@ -858,6 +858,8 @@ async def test_v2_can_be_approved_independently(
         bullet_text="Delivered AWS infrastructure work.",
     )
     await c2._start(session, app_id, actor)
+    # M10 Phase 2: resume approval alone no longer completes review.
+    await c2._complete_cover_letter_approval(session, app_id, actor, facts[0].id)
 
     state = await c2._approve(session, app_id, actor, note="Better.")
 

@@ -143,11 +143,12 @@ async def _cycle_count(db, app_id):
 
 
 async def test_three_human_cycles_survive_failures_and_third_revision_is_approvable(
-    scenario, monkeypatch, tmp_path
+    scenario, monkeypatch, tmp_path, demo_application, inputs
 ):
     from packages.shared.errors import DependencyUnavailableError
 
     http, app_id, first_id, maker, _, _ = scenario
+    _base, _evaluation, facts = inputs
     original = resume_revision.persist_resume
     failures_left = 2
 
@@ -255,6 +256,12 @@ async def test_three_human_cycles_survive_failures_and_third_revision_is_approva
             await c2._history_count(db, app_id),
             len(await c2._events(db, app_id, "approval.changes_requested")),
         ) == before
+    # M10 Phase 2: resume approval alone no longer completes review.
+    async with maker() as db:
+        actor = await c2._actor(db, demo_application)
+        await c2._complete_cover_letter_approval(db, app_id, actor, facts[0].id)
+        await db.commit()
+
     approved = await http.post(
         f"/api/v1/applications/{app_id}/resume-review/approve", json={}
     )
