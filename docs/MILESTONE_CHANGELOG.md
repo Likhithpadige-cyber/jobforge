@@ -1044,3 +1044,74 @@ already existed, unused, since migrations `0002`/`0003`.
 
 No remote push occurred for this milestone; this repository has no
 configured remote.
+
+
+## M11 — COMPLETE, verified 2026-09-23
+
+### Submission safety foundation
+
+- Enforced expiration of `site_policies.next_review_due` for automated submission decisions; any policy past its review due date fails closed.
+- Dual safety switch architecture: real automated submission strictly requires both the environment configuration `SUBMISSION_MODE=enabled` and the persisted database setting `settings.submission_enabled = true`. Disabling either switch halts dispatch with zero external network I/O.
+- Fake-by-default email transport boundary (`FakeEmailTransport`), ensuring local tests and default environments perform zero live network calls.
+- `SMTPEmailTransport` with conservative delivery outcome classification: `SENT` (250), `TRANSIENT_FAILURE` (4xx, connection error before DATA), `REJECTED` (5xx, recipients refused), `AUTH_FAILED` (credential error), and `AMBIGUOUS` (disconnect during or after DATA, timeout, unclassified error).
+- Migration `0010_submission_retry_schedule` adding nullable `next_attempt_after` (`TIMESTAMPTZ`) to `submissions` with index `ix_submissions_retry_schedule` on `(next_attempt_after, attempt)` for efficient scheduler discovery.
+
+### Human-authorized email submission
+
+- Consequential execution boundary: real submission requires an explicit owner-authenticated HTTP request to `POST /api/v1/applications/{id}/submit` with CSRF protection, strict authentication before lookup, and non-enumeration guarantees.
+- Zero automatic initial submission: applications reaching `SUBMISSION_READY` never automatically transition to `SUBMITTING`.
+- Recipient grounding: destination email is derived exclusively from authoritative persisted `job.url` containing an explicit `mailto:` URI matching the target policy domain or subdomain. The submit request accepts zero caller-supplied recipient fields (`extra="forbid"`).
+- State-machine invariant: initial transition `SUBMISSION_READY -> SUBMITTING` is strictly restricted to `human` actors (`ALLOWED_TRANSITION_ACTORS`).
+- Dedicated submission worker running under `app_agent` consuming `submission.requested` on stream `evt.submissions` / consumer group `cg.submission`.
+- Worker-side execution: worker independently acquires row-level locks on `Application` and `Submission`, revalidates safety switches, current unexpired policy, authoritative recipient, and review completeness before dispatch.
+- Exact submission timestamping: `submission.started_at` is set immediately before transport invocation, and `finished_at` is recorded upon return.
+- Event audit trail: emits `submission.requested` (human actor), `submission.started` (system actor), and terminal `submission.succeeded` or `submission.failed` (system actor), carrying no credentials, recipient addresses, or candidate content.
+
+### Durable retry and recovery
+
+- Safe retry authority: automatic retry eligibility is persisted exclusively when the transport outcome is classified as `EmailSendStatus.TRANSIENT_FAILURE` at execution time by populating `submission.next_attempt_after = <future timestamp>`. No textual parsing of failure strings or SMTP codes reconstructs retry eligibility.
+- Bounded retry budget and schedule: `submission_max_attempts = 3`, with deterministic backoff delays of `60s` after attempt 1 and `300s` after attempt 2. Attempt 3 transient failure exhausts the budget and leaves `next_attempt_after = NULL`.
+- Periodic scheduler: runs every 30s under the restricted `app_monitor` database role (read-only on core tables, insert on `events`). Discovers due rows (`next_attempt_after <= now()`) and emits deterministic `submission.retry_requested` events using UUID5 deduplication (`ON CONFLICT (id) DO NOTHING`). The scheduler performs zero mutations on applications or submissions.
+- Atomic worker claim: worker consumes `submission.retry_requested`, acquires row-level locks on `Application` and due `Submission` attempt N, and atomically clears `prior_submission.next_attempt_after = None` to seal the claim.
+- State-machine recovery: adds `SUBMISSION_FAILED -> SUBMITTING` transition restricted exclusively to `system` actors.
+- Dynamic N+1 provenance rebinding: under the claim transaction, worker re-evaluates current policy, destination, review completeness, and resolves a fresh handoff packet. Attempt N+1 is created append-only (`attempt = N + 1`, `result = PENDING`) bound to current provenance rather than stale attempt N attributes.
+- Content-addressed packet currentness: preflight 6 matches the bound packet artifact's storage key against the content-addressed digest formula of current approved resume/cover-letter versions and answers. Stale-but-existing packets fail preflight closed with zero sends.
+- Historical immutability: attempt N historical rows remain immutable (preserving result, failure reason, HTTP status, timestamps, policy, and packet binding), with only `next_attempt_after` cleared as scheduling metadata upon claim.
+
+### Critical safety behavior
+
+- AMBIGUOUS transport outcomes (such as server disconnects during DATA or timeouts) NEVER automatically retry under any circumstance (`will_retry=False`, `ambiguous=True`).
+- REJECTED (5xx) and AUTH_FAILED outcomes never automatically retry.
+- Both safety switches (`SUBMISSION_MODE=enabled` and `settings.submission_enabled=true`) and all policy/material gates are revalidated before every external attempt.
+- The scheduler cannot initiate an initial submission and has no database privileges to mutate application or submission rows.
+- No caller-controlled or LLM-synthesized destination email addresses can authorize external dispatch.
+
+### Explicit limitations
+
+- EMAIL execution currently requires an authoritative persisted `mailto:` destination in job data; ordinary URLs without an authoritative `mailto:` cannot be dispatched via email.
+- No ATS/API submission channel has been implemented.
+- No browser-based application submission exists.
+- No CAPTCHA automation, bypass, or stealth proxies exist anywhere in the codebase.
+- Ambiguous delivery outcomes require human investigation and are never automatically retried.
+- Maximum of three total email attempts per application; no infinite retries.
+- No dedicated manual UI retry or reconciliation workflow exists yet.
+- M12 operational monitoring and alerting has not been implemented.
+- Broader UI/UX redesign remains outside M11.
+
+### Final verification counts
+
+- make lint: clean.
+- make typecheck: 157 source files, no issues.
+- make verify-schema: 12 passed, 0 failed; 10-revision chain, head
+  0010_submission_retry_schedule.
+- make check-shadowing: clean.
+- make test-unit: 1915 passed.
+- make test-integration: 1096 passed.
+- make test-security: 1243 passed, 0 skipped, under
+  REQUIRE_SECURITY_TESTS=1.
+- make test-evals: 61 passed, 51 corpus cases, 0 provider calls.
+- make audit: no known vulnerabilities.
+- make secrets-scan: passing, read-only.
+
+No remote push occurred for this milestone; this repository has no
+configured remote.
