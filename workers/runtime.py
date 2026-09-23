@@ -35,6 +35,7 @@ from packages.core.services.applications import (
 )
 from packages.core.services.artifacts import render_resume
 from packages.core.services.cover_letters import CoverLetterClient, generate_cover_letter
+from packages.core.services.submission_execution import execute_submission_attempt
 from packages.core.services.submission_readiness import (
     check_readiness_on_approval,
     retry_packet_generation,
@@ -53,7 +54,7 @@ log = get_logger(__name__)
 
 WorkerKind = Literal[
     "relay", "monitor", "scheduler", "optimizer", "first-draft", "render", "application",
-    "cover-letter",
+    "cover-letter", "submission",
 ]
 
 
@@ -142,7 +143,7 @@ async def run(
             engine,
             "app_agent"
             if kind in {"relay", "optimizer", "first-draft", "render", "application",
-                        "cover-letter"}
+                        "cover-letter", "submission"}
             else "app_monitor",
         )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
@@ -284,6 +285,23 @@ async def run(
                 runtime = DeliveryRuntime(sessions, "cg.cover-letter", {
                     "cover_letter.generation.requested": draft,
                 }, retry=RetryPolicy(delays=()))
+            elif kind == "submission":
+                # M11 Phase 2: email submission execution.
+                # Runs on cg.submission, consuming submission.requested from evt.submissions.
+                # Strictly no automatic retries in Phase 2.
+                submission_store = build_artifact_store(settings)
+
+                async def on_submission_requested(db: AsyncSession, event: Event) -> str:
+                    return await execute_submission_attempt(
+                        db, event, settings=settings, store=submission_store
+                    )
+
+                runtime = DeliveryRuntime(
+                    sessions,
+                    "cg.submission",
+                    {"submission.requested": on_submission_requested},
+                    retry=RetryPolicy(delays=()),
+                )
             elif kind == "optimizer":
                 selected = os.environ.get("WORKER_PROFILE_ID")
                 handler = evaluation_handler(

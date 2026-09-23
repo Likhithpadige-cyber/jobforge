@@ -141,6 +141,10 @@ async def _existing_submission(session: AsyncSession, application_id: UUID) -> S
     ).scalar_one_or_none()
 
 
+policy_verdict = _policy_verdict
+existing_submission = _existing_submission
+
+
 async def compute_readiness(
     session: AsyncSession,
     *,

@@ -57,6 +57,10 @@ IMPLEMENTED: frozenset[tuple[ApplicationStatus, ApplicationStatus]] = frozenset(
         (ApplicationStatus.APPROVED, ApplicationStatus.SUBMISSION_READY),
         (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.MANUAL_HANDOFF),
         (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.POLICY_BLOCKED),
+        # M11 Phase 2: human Submit action and execution outcomes.
+        (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING),
+        (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMITTED),
+        (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED),
     }
 )
 
@@ -67,6 +71,8 @@ class FakeApplication:
     status: ApplicationStatus
     approved_at: object = None
     approved_by: object = None
+    submitted_at: object = None
+    error_reason: object = None
     outcome: str = "pending"
     extras: dict[str, object] = field(default_factory=dict)
 
@@ -151,17 +157,13 @@ def test_skipped_states_rejected(current, target) -> None:
 @pytest.mark.parametrize(
     ("current", "target"),
     [
-        (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING),
-        (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMITTED),
-        (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED),
         (ApplicationStatus.SUBMISSION_FAILED, ApplicationStatus.SUBMITTING),
+        (ApplicationStatus.SUBMITTED, ApplicationStatus.SUBMISSION_READY),
         (ApplicationStatus.VERIFICATION_FAILED, ApplicationStatus.RESUME_GENERATING),
     ],
 )
 def test_unimplemented_lifecycle_paths_rejected(current, target) -> None:
-    """Unimplemented submission and failure-retry paths stay closed - M11's,
-    not guessed at here. `approved -> submission_ready` is M10 Phase 2's own
-    edge now (see IMPLEMENTED); everything past `submission_ready` is not."""
+    """Unimplemented retry paths stay closed - M11 Phase 3's, not guessed at here."""
     assert not can_transition(current, target)
 
 
@@ -246,16 +248,22 @@ def test_recovery_does_not_open_a_route_around_verification() -> None:
 
 
 def test_approved_leads_only_to_submission_ready() -> None:
-    """M10 Phase 2's sole exit from `approved` - readiness, not a decision
-    reopening review. `submission_ready`/`manual_handoff`/`policy_blocked`
-    stay terminal in this graph: `submitting` and everything past it is
-    M11's."""
+    """Readiness leads to submission_ready; human Submit action leads to submitting."""
     assert ALLOWED_TRANSITIONS[ApplicationStatus.APPROVED] == frozenset(
         {ApplicationStatus.SUBMISSION_READY}
     )
     assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMISSION_READY] == frozenset(
-        {ApplicationStatus.MANUAL_HANDOFF, ApplicationStatus.POLICY_BLOCKED}
+        {
+            ApplicationStatus.MANUAL_HANDOFF,
+            ApplicationStatus.POLICY_BLOCKED,
+            ApplicationStatus.SUBMITTING,
+        }
     )
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMITTING] == frozenset(
+        {ApplicationStatus.SUBMITTED, ApplicationStatus.SUBMISSION_FAILED}
+    )
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMITTED] == frozenset()
+    assert ALLOWED_TRANSITIONS[ApplicationStatus.SUBMISSION_FAILED] == frozenset()
     assert ALLOWED_TRANSITIONS[ApplicationStatus.MANUAL_HANDOFF] == frozenset()
     assert ALLOWED_TRANSITIONS[ApplicationStatus.POLICY_BLOCKED] == frozenset()
 
@@ -268,8 +276,14 @@ async def test_successful_transition_writes_status_history_and_event(
     session, current, target
 ) -> None:
     app = application(current)
+    actor_type = (
+        "human"
+        if (current, target)
+        == (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING)
+        else ("system" if current is ApplicationStatus.SUBMITTING else "agent")
+    )
     previous = await transition_application(
-        session, app, target, actor_type="agent", actor_id="resume_optimizer"
+        session, app, target, actor_type=actor_type, actor_id="resume_optimizer"
     )
     assert previous is current
     assert app.status is target
@@ -380,3 +394,53 @@ async def test_does_not_commit(session) -> None:
     app = application(ApplicationStatus.CREATED)
     await transition_application(session, app, ApplicationStatus.RESUME_GENERATING)
     session.commit.assert_not_called()
+
+
+async def test_submission_ready_to_submitting_requires_human_actor(session) -> None:
+    """Explicit human action is required for SUBMISSION_READY -> SUBMITTING."""
+    app = application(ApplicationStatus.SUBMISSION_READY)
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['human'\\]"):
+        await transition_application(
+            session, app, ApplicationStatus.SUBMITTING, actor_type="system"
+        )
+
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['human'\\]"):
+        await transition_application(
+            session, app, ApplicationStatus.SUBMITTING, actor_type="agent"
+        )
+
+    # Human succeeds
+    await transition_application(
+        session, app, ApplicationStatus.SUBMITTING, actor_type="human", actor_id="user-123"
+    )
+    assert app.status is ApplicationStatus.SUBMITTING
+
+
+async def test_submitting_completion_transitions_require_system_actor(session) -> None:
+    """Completion transitions from SUBMITTING are strictly owned by system worker."""
+    app1 = application(ApplicationStatus.SUBMITTING)
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
+        await transition_application(
+            session, app1, ApplicationStatus.SUBMITTED, actor_type="human"
+        )
+
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
+        await transition_application(
+            session, app1, ApplicationStatus.SUBMITTED, actor_type="agent"
+        )
+
+    await transition_application(
+        session, app1, ApplicationStatus.SUBMITTED, actor_type="system"
+    )
+    assert app1.status is ApplicationStatus.SUBMITTED
+
+    app2 = application(ApplicationStatus.SUBMITTING)
+    with pytest.raises(IllegalTransitionError, match="requires actor in \\['system'\\]"):
+        await transition_application(
+            session, app2, ApplicationStatus.SUBMISSION_FAILED, actor_type="human"
+        )
+
+    await transition_application(
+        session, app2, ApplicationStatus.SUBMISSION_FAILED, actor_type="system"
+    )
+    assert app2.status is ApplicationStatus.SUBMISSION_FAILED

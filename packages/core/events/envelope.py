@@ -99,7 +99,7 @@ SUPPORTED_EVENT_VERSIONS: dict[str, frozenset[int]] = {
 #: these would mean an approval had been forged.
 HUMAN_ONLY_EVENT_TYPES: frozenset[str] = frozenset(
     {"approval.granted", "approval.rejected", "approval.changes_requested",
-     "resume.master.imported", "resume.first_draft.requested"}
+     "resume.master.imported", "resume.first_draft.requested", "submission.requested"}
 )
 
 

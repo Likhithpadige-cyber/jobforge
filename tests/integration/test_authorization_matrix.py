@@ -316,6 +316,9 @@ OWNER_ONLY = frozenset(
         # consequential and non-reviewable as first-draft/master-resume
         # above, so it gets the same owner-only gate.
         ("PUT", "/api/v1/settings/submission-enabled"),
+        # M11 Phase 2. Submitting an application is an external side-effecting
+        # action with real-world consequences, owner-only.
+        ("POST", "/api/v1/applications/{application_id}/submit"),
     }
 )
 

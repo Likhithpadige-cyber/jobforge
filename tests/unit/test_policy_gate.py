@@ -15,6 +15,7 @@ from packages.services.ingestion.policy import (
     evaluate_ingestion,
     evaluate_submission,
     extract_domain,
+    extract_email,
 )
 
 pytestmark = [pytest.mark.unit, pytest.mark.safety]
@@ -27,10 +28,20 @@ pytestmark = [pytest.mark.unit, pytest.mark.safety]
         ("https://www.example.invalid/x", "example.invalid"),
         ("HTTPS://Example.Invalid:8443/x", "example.invalid"),
         ("https://user:pw@example.invalid/x", "example.invalid"),
+        ("mailto:careers@example.invalid", "example.invalid"),
+        ("mailto:jobs@sub.example.invalid?subject=apply", "sub.example.invalid"),
+        ("jobs@example.invalid", "example.invalid"),
     ],
 )
 def test_extract_domain(url: str, expected: str) -> None:
     assert extract_domain(url) == expected
+
+
+def test_extract_email() -> None:
+    assert extract_email("mailto:careers@example.invalid") == "careers@example.invalid"
+    assert extract_email("mailto:jobs@example.invalid?subject=hi") == "jobs@example.invalid"
+    assert extract_email("https://example.invalid/jobs/1") is None
+    assert extract_email("invalid-email") is None
 
 
 def test_unknown_domain_is_blocked_not_an_exception() -> None:

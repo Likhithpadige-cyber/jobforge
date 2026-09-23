@@ -121,6 +121,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from packages.core.events import emit
 from packages.core.models import ApplicationStatus, ApplicationStatusHistory
 from packages.core.state_machines.job import IllegalTransitionError
+from packages.shared.clock import utc_now
 from packages.shared.ids import uuid7
 
 if TYPE_CHECKING:  # `Application` is needed only for the annotation; the
@@ -156,14 +157,20 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
     ApplicationStatus.CHANGES_REQUESTED: frozenset(
         {ApplicationStatus.RESUME_GENERATING}
     ),
-    # M10 Phase 2. See the module docstring's readiness section. Only these
-    # three edges: `submission_ready -> submitting` and everything past it
-    # remain absent on purpose - M11's, not guessed at here.
+    # M10 Phase 2. See the module docstring's readiness section.
     ApplicationStatus.APPROVED: frozenset({ApplicationStatus.SUBMISSION_READY}),
+    # M11 Phase 2: human Submit action opens SUBMITTING.
     ApplicationStatus.SUBMISSION_READY: frozenset(
-        {ApplicationStatus.MANUAL_HANDOFF, ApplicationStatus.POLICY_BLOCKED}
+        {
+            ApplicationStatus.MANUAL_HANDOFF,
+            ApplicationStatus.POLICY_BLOCKED,
+            ApplicationStatus.SUBMITTING,
+        }
     ),
-    ApplicationStatus.SUBMITTING: frozenset(),
+    # M11 Phase 2: submission execution transitions to SUBMITTED or SUBMISSION_FAILED.
+    ApplicationStatus.SUBMITTING: frozenset(
+        {ApplicationStatus.SUBMITTED, ApplicationStatus.SUBMISSION_FAILED}
+    ),
     ApplicationStatus.SUBMITTED: frozenset(),
     ApplicationStatus.SUBMISSION_FAILED: frozenset(),
     ApplicationStatus.MANUAL_HANDOFF: frozenset(),
@@ -173,8 +180,28 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
 }
 
 
-def can_transition(current: ApplicationStatus, target: ApplicationStatus) -> bool:
-    return target in ALLOWED_TRANSITIONS.get(current, frozenset())
+ALLOWED_TRANSITION_ACTORS: dict[tuple[ApplicationStatus, ApplicationStatus], frozenset[ActorType]] = {
+    # M11 Phase 2: SUBMISSION_READY -> SUBMITTING is strictly human-authorized.
+    (ApplicationStatus.SUBMISSION_READY, ApplicationStatus.SUBMITTING): frozenset({"human"}),
+    # Completion transitions from SUBMITTING are strictly system-driven.
+    (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMITTED): frozenset({"system"}),
+    (ApplicationStatus.SUBMITTING, ApplicationStatus.SUBMISSION_FAILED): frozenset({"system"}),
+}
+
+
+def can_transition(
+    current: ApplicationStatus,
+    target: ApplicationStatus,
+    *,
+    actor_type: ActorType | None = None,
+) -> bool:
+    if target not in ALLOWED_TRANSITIONS.get(current, frozenset()):
+        return False
+    if actor_type is not None:
+        allowed = ALLOWED_TRANSITION_ACTORS.get((current, target))
+        if allowed is not None and actor_type not in allowed:
+            return False
+    return True
 
 
 async def transition_application(
@@ -207,7 +234,27 @@ async def transition_application(
             f"{sorted(str(s) for s in ALLOWED_TRANSITIONS.get(current, frozenset()))})"
         )
 
+    allowed_actors = ALLOWED_TRANSITION_ACTORS.get((current, target))
+    if allowed_actors is not None and actor_type not in allowed_actors:
+        raise IllegalTransitionError(
+            f"application {application.id}: transition {current} -> {target} "
+            f"requires actor in {sorted(allowed_actors)}, got {actor_type!r}"
+        )
+
     application.status = target
+    if (
+        target is ApplicationStatus.SUBMITTED
+        and hasattr(application, "submitted_at")
+        and application.submitted_at is None
+    ):
+        application.submitted_at = utc_now()
+    if (
+        target is ApplicationStatus.SUBMISSION_FAILED
+        and reason
+        and hasattr(application, "error_reason")
+        and not application.error_reason
+    ):
+        application.error_reason = reason
     session.add(
         ApplicationStatusHistory(
             id=uuid7(),

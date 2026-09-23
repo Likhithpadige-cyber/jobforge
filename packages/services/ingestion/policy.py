@@ -73,11 +73,28 @@ AUTOMATED_METHODS = frozenset({IngestionMethod.OFFICIAL_API, IngestionMethod.PUB
 
 def extract_domain(url: str) -> str:
     """Registrable host, lowercased, without `www.`."""
-    netloc = urlsplit(url.strip()).netloc.lower()
+    parsed = urlsplit(url.strip())
+    netloc = parsed.netloc.lower()
+    if not netloc and parsed.scheme == "mailto":
+        path = parsed.path.split("?", 1)[0]
+        if "@" in path:
+            netloc = path.rsplit("@", 1)[1].lower()
+    elif not netloc and "@" in url:
+        part = url.strip().split("?", 1)[0]
+        netloc = part.rsplit("@", 1)[1].lower()
     if "@" in netloc:
         netloc = netloc.rsplit("@", 1)[1]
     netloc = netloc.split(":")[0]
     return netloc[4:] if netloc.startswith("www.") else netloc
+
+
+def extract_email(url: str) -> str | None:
+    """Extract email destination from a mailto: URL or raw email, if present."""
+    clean = url.strip()
+    if clean.lower().startswith("mailto:"):
+        addr = clean[7:].split("?", 1)[0].strip()
+        return addr if "@" in addr else None
+    return None
 
 
 def blocked_policy(domain: str) -> PolicySnapshot:

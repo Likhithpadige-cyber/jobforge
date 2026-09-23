@@ -1,5 +1,6 @@
 """M9 - application preparation: extraction, review and the answers approval.
 M10 Phase 2 adds the handoff-packet download at the bottom of this file.
+M11 Phase 2 adds the owner-only human submission endpoint.
 
     POST  /api/v1/applications/{id}/prepare               owner only
     GET   /api/v1/applications/{id}/questions              owner + reviewer
@@ -7,6 +8,7 @@ M10 Phase 2 adds the handoff-packet download at the bottom of this file.
     POST  /api/v1/applications/{id}/package/approve        owner + reviewer
     POST  /api/v1/applications/{id}/package/request-changes owner + reviewer
     GET   /api/v1/applications/{id}/packet                 owner + reviewer
+    POST  /api/v1/applications/{id}/submit                 owner only
 
 Mirrors `apps/api/routers/resume_review.py`'s shape: thin handlers that
 establish the human from the session, delegate to
@@ -33,6 +35,7 @@ from apps.api.deps import (
     CsrfProtected,
     CurrentHumanActor,
     DbSession,
+    RequireOwner,
     artifact_download_limit,
     artifact_store,
     authenticated_api,
@@ -48,6 +51,8 @@ from apps.api.schemas.applications import (
     PrepareRequest,
     PrepareResponse,
     QuestionRead,
+    SubmitRequest,
+    SubmitResponse,
 )
 from packages.core.cache.rate_limit import Limit
 from packages.core.models import Application
@@ -60,6 +65,7 @@ from packages.core.services.applications import (
     request_changes_answers,
 )
 from packages.core.services.handoff_packet import PACKET_CONTENT_TYPE, current_packet
+from packages.core.services.submission_execution import request_submission
 from packages.services.rendering.keys import sanitize_filename
 from packages.services.rendering.store import ArtifactIntegrityError
 from packages.shared.config import Settings
@@ -263,4 +269,43 @@ async def download_packet(
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "private, no-store",
         },
+    )
+
+
+@router.post(
+    "/{application_id}/submit",
+    response_model=SubmitResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request human-authorized email submission",
+    dependencies=[Depends(require_owner)],
+)
+async def submit_application(
+    application_id: UUID,
+    session: DbSession,
+    owner: RequireOwner,
+    settings: AppSettings,
+    _csrf: CsrfProtected,
+    _payload: SubmitRequest | None = None,
+) -> SubmitResponse:
+    """Human-authorized email submission (M11 Phase 2).
+
+    Consequential external action: OWNER only, CSRF protected.
+    Authenticates before resource lookup, answers missing applications with 404
+    (preserving non-enumeration). Preconditions verified atomically.
+    Destination email is derived solely from authoritative persisted job data (job.url mailto:).
+    Transitions to SUBMITTING and emits submission.requested; performs zero
+    network/SMTP I/O in the request path.
+    """
+    submission = await request_submission(
+        session,
+        application_id,
+        settings,
+        actor=owner,
+    )
+    await session.commit()
+    return SubmitResponse(
+        application_id=application_id,
+        submission_id=submission.id,
+        status="submitting",
+        attempt=submission.attempt,
     )

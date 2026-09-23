@@ -166,3 +166,23 @@ class ApprovalRead(BaseModel):
             decision_note=approval.decision_note,
             changes_requested=approval.changes_requested,
         )
+
+
+class SubmitRequest(BaseModel):
+    """Submit request payload.
+
+    The destination email cannot be provided or overridden by the caller;
+    it is derived solely from authoritative persisted job data.
+    Any supplied body fields are forbidden and rejected with 422.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SubmitResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    application_id: UUID
+    submission_id: UUID
+    status: str
+    attempt: int

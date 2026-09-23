@@ -120,10 +120,10 @@ Legend — **P** = producer, **C** = consumers.
 
 | Event | P | C | Payload |
 |---|---|---|---|
-| `submission.requested` | API, A2 | **A2** | `{application_id, requested_by, method}` |
-| `submission.started` | A2 | A3 | `{submission_id, application_id, attempt, method, target_domain, policy_id}` |
-| `submission.succeeded` | A2, DLV, API | A3, API(SSE) | `{submission_id, application_id, method, external_reference?, confirmed_by: "system"\|"human"}` |
-| `submission.failed` | A2, DLV | A3, API(SSE) | `{submission_id, application_id, attempt, failure_reason, http_status?, will_retry}` |
+| `submission.requested` | API (human) | **SUB** | `{application_id, submission_id, requested_by}` |
+| `submission.started` | **SUB** | A3 | `{submission_id, application_id, attempt, method, target_domain, policy_id}` |
+| `submission.succeeded` | **SUB** | A3, API(SSE) | `{submission_id, application_id, method, external_reference?, confirmed_by: "system"}` |
+| `submission.failed` | **SUB** | A3, API(SSE) | `{submission_id, application_id, attempt, failure_reason, will_retry, ambiguous}` |
 | `submission.handoff.required` | A2 | A3, notifications | `{submission_id, application_id, reason, packet_artifact_id, apply_url}` |
 
 `submission.handoff.required` carries `reason` values including `policy_requires_human`, `captcha_encountered`, `bot_challenge_detected`, `login_required`, `unsupported_form`. These are recorded honestly and terminate automation for that attempt. There is no downstream consumer that treats any of them as something to work around.
@@ -233,7 +233,7 @@ event is emitted.
 | `evt.resumes` | 20,000 | `cg.application`, `cg.render`, `cg.monitor` |
 | `evt.applications` | 20,000 | `cg.optimizer`, `cg.application`, `cg.monitor` |
 | `evt.approvals` | 20,000 | `cg.application`, `cg.optimizer`, `cg.monitor` |
-| `evt.submissions` | 20,000 | `cg.monitor` |
+| `evt.submissions` | 20,000 | `cg.submission`, `cg.monitor` |
 | `evt.system` | 50,000 | `cg.monitor` |
 | `evt.dlq` | unbounded | `cg.monitor` (alerting only; drained by a human) |
 
