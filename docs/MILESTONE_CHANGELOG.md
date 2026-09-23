@@ -842,3 +842,205 @@ one, because nothing here calls one.
 
 No remote push occurred for this milestone; this repository has no
 configured remote.
+
+## M10 — COMPLETE, verified 2026-09-22
+
+Submission readiness and human handoff: `grounded cover letter -> human
+review/rework -> every current required approval satisfied -> approved ->
+submission_ready -> policy evaluation -> submission_ready / manual_handoff /
+policy_blocked -> deterministic handoff packet`. Never submits anything -
+real submission, retry/backoff execution and Agent 3 monitoring are M11's,
+and M10 does not implement, emit, or route toward any of them. Built in two
+passes plus a stabilization fix, all landing before this milestone was
+frozen: cover-letter generation and review/rework first, then submission
+readiness and the handoff packet, then a genuine approval-order bug found
+during that second pass's own acceptance check was fixed and re-verified
+before commit.
+
+### What M10 delivers
+
+**Grounded cover-letter generation.** `packages/agents/cover_letter/
+drafting.py` is B3's sibling, not a fork of resume tailoring: the same
+`TailoringContext`/`load_tailoring_context` (B0), the same numeral-provenance
+guard, and the same independent Claim Verifier (B5) resumes use, via
+`verify_claim_for_handoff` - reused, not re-implemented, per the locked
+design decision that cover-letter drafting needed its own prompt and service
+but not a competing verifier. Every paragraph must cite a currently verified
+fact (`fact_ids` has `min_length=1` on the schema itself - there is no
+"connective" paragraph exempt from the citation requirement), and a numeral
+absent from every cited fact's structured data is refused before it can ever
+reach an approvable version. Only a cover letter whose every claim verifies
+`supported` opens review; a version that fails is still persisted in full,
+honestly, but is never put in front of a human.
+
+**Cover-letter review and rework.** `cover_letters.py` mirrors
+`resume_review.py`'s versioning shape with no schema change: `cover_letters`
+already carried the identical `application_id`/`version` shape `resumes`
+does, unused, since migration `0002`. Every generation - first draft or a
+regeneration after a reviewer requests changes - is a new, append-only row;
+nothing UPDATEs an existing version's content. `Approval.subject_snapshot`
+binds a decision to `{cover_letter_id, cover_letter_version}` exactly, the
+same two-field discipline `resume_review.snapshot_matches` already uses, so
+a decision made about an older version can never authorize a newer one
+(`test_stale_cover_letter_approval_cannot_satisfy_readiness`,
+`test_stale_cover_letter_approval_cannot_complete_review`). The lifecycle -
+generate, review, request changes, regenerate, review, approve - lives
+entirely inside `awaiting_approval`; no `ApplicationStatus` edge was added
+for it, matching `ApprovalKind.ANSWERS`'s precedent rather than resume
+rework's `changes_requested` path.
+
+**Event-driven, idempotent regeneration.** `cover_letter.generation.
+requested` (the one new event this milestone adds; `cover_letter.generated`
+was already reserved and is reused unchanged, now carrying
+`cover_letter_version`) is requested automatically the moment human review
+opens (`resume_review.enter_review`, no owner action needed the way M9's
+question capture needs one) and again on every reviewer request-changes.
+Runs on a dedicated `"cover-letter"` worker kind (`workers/cover_letter.py`,
+mirroring `"first-draft"`'s audit-engine/pricing shape, not the deterministic
+`"application"`/`"render"` workers') rather than the existing `"application"`
+worker, because it is the one M10 pipeline that calls a model. Idempotent by
+an existing-row check keyed to the triggering event id
+(`_cover_letter_for_event`), the same pattern `generate_first_draft` already
+established - a redelivered request produces no second version.
+
+**Review completion - the approval-order bug and its fix.** A new shared
+gate, `packages/core/services/review_completion.py`, owns
+`awaiting_approval -> approved` exclusively via
+`maybe_mark_application_approved`, called from all three approval-granting
+functions (`resume_review.approve`, `cover_letters.approve_cover_letter`,
+`applications.approve_answers`) after each records its own decision. This
+replaces an earlier version of this milestone in which `resume_review.
+approve` alone transitioned the application the instant the resume approval
+was granted, regardless of the other two - discovered during this
+milestone's own acceptance check, before it was frozen, and fixed before
+commit. The condition is asked fresh every time: current RESUME approved,
+current COVER_LETTER approved, and - only if any questions were ever
+prepared - current ANSWERS approved (zero-question applications never
+require one, preserving M9's own `_decide_answers` behavior exactly). Every
+leg is snapshot/version-validated using each source module's own matcher, so
+a stale approval of any kind can never complete review, and approval order
+no longer matters by construction - `test_approval_order_does_not_matter`
+and `test_zero_question_approval_order_does_not_matter` each exercise every
+permutation of the three (and two) decisions and assert the application
+reaches `approved` only after the last one, whichever kind that is.
+
+**Submission readiness and the policy fan-out.** `packages/core/services/
+submission_readiness.py` runs on the *existing* `"application"` worker
+(`cg.application`, no new worker kind - readiness needs no model call, only
+a snapshot comparison and an already-built policy lookup) reacting to
+`approval.granted`. `approved -> submission_ready` fires unconditionally once
+review completion's own invariant holds (defense in depth: `submission_
+readiness` imports `review_completion`'s checking functions rather than
+duplicating them); the *existing*, unmodified `evaluate_submission()` policy
+gate then decides the fan-out - `ALLOWED` leaves the application at
+`submission_ready` (M10 implements no dispatcher for any channel, so policy
+permission is never treated as "a human should act now"), `REQUIRES_HUMAN`
+reaches `manual_handoff`, `BLOCKED` reaches `policy_blocked`. `submission_
+ready -> submitting` and everything past it is deliberately absent from
+`ALLOWED_TRANSITIONS` - M11's, not guessed at here.
+
+**Submission record.** One `submissions` row per application, created
+exactly once (`attempt = 1`, guarded by both an application-level idempotency
+check and the database's own `uq_submissions_application_id_attempt` index).
+`result` stays `pending` for the whole of M10 - nothing is ever actually
+sent, so `succeeded`/`failed` would be a lie - with no `http_status` or
+`external_reference`. `method` and `policy_id` record what the policy gate
+actually decided; `blocked_reason` is populated only on the `BLOCKED` path;
+`packet_artifact_id` is populated once a handoff packet exists for the
+current source material, and stays `NULL` rather than pointing at anything
+incomplete when it does not yet.
+
+**Handoff packet.** A deterministic ZIP (`packages/core/services/
+handoff_packet.py`): the current approved resume PDF (the real M8 artifact,
+reused rather than re-rendered), the current approved cover letter as plain
+text (see Limitations), prepared questions and answers when any exist, job/
+target metadata, and a status-specific checklist that is the one place a
+human reads what M10 actually decided - `manual_handoff` states human action
+is required, `policy_blocked` states automated submission is blocked and
+will not be attempted, `submission_ready` states plainly that no automated
+submission has been attempted or will be by this version of JobForge and
+that the packet's existence is not permission to auto-submit. Bound to
+current source material with no new column and no migration: the storage key
+itself is content-addressed from the current resume id+version, cover-letter
+id+version, and a digest of the current answers content, so two calls with
+unchanged material reuse the same artifact (replay-safe, no duplicate
+logical packet) and any source change - a new cover-letter version, an
+edited answer - addresses a different key by construction, never a stale
+one silently served. If the resume PDF is not rendered yet when readiness
+runs (`resume.render.requested` fires the instant the resume is approved,
+but the render worker consuming it is asynchronous), readiness completes
+regardless and `packet_artifact_id` stays `NULL` rather than pointing at
+incomplete bytes; the *existing* `resume.rendered` event, subscribed to on
+the same `"application"` worker, is the deterministic recovery path
+(`retry_packet_generation`) - no new event, and no reliance on a client
+repeatedly polling `GET /packet` to repair state. That endpoint
+(`GET /api/v1/applications/{id}/packet`) only ever serves what already
+exists; owner + reviewer, authentication before lookup, the same
+non-enumeration discipline `artifacts.py` documents, no presigned URLs, no
+public ACL, no filesystem-store special-casing.
+
+**Events.** `application.ready`, `application.status.changed` (every real
+transition, without exception, via the unmodified `transition_application`),
+and `policy.blocked` (only when that path is actually entered, payload
+matching its existing documented shape) are the events M10 emits. None of
+`submission.requested`/`started`/`succeeded`/`failed`/`handoff.required` are
+emitted anywhere - M10 attempts no real submission, so none was semantically
+required; `cover_letter.generation.requested` is the one genuinely new event
+this milestone adds anywhere.
+
+**Authorization and security.** `GET /applications/{id}/packet` and the
+cover-letter review routes are owner + reviewer, added to the
+route-enumerated authorization matrix. No agent role can write
+`site_policies` - `app_agent`'s only interaction with it anywhere in M10 is
+one read (`SitePolicyRepository.get_by_domain`), confirmed by inspection, not
+just by grant absence. No employer/ATS network call, no email delivery, no
+browser automation, and no CAPTCHA/stealth/proxy/bypass capability exists
+anywhere in this milestone's code - there is nothing to disable, because
+nothing was built.
+
+**Schema.** No migration. Every table, enum, and grant M10 needed -
+`submissions`, `site_policies`, `ApprovalKind.COVER_LETTER`,
+`SubmissionMethod`, `SubmissionResult`, the `handoff_packet`/
+`cover_letter_pdf` artifact kinds, and the relevant `app_agent` grants -
+already existed, unused, since migrations `0002`/`0003`.
+
+### Explicit limitations
+
+- The cover letter is included in the handoff packet as deterministic plain
+  text (`CoverLetter.body_text`), not a rendered PDF. M8's rendering pipeline
+  (`packages/services/rendering/document.py`) is structurally coupled to
+  resume section shape, not a linear paragraph sequence; building a second
+  rendering pipeline for this milestone was judged out of proportion to it.
+- `evaluate_submission()` does not enforce `next_review_due` expiration the
+  way `evaluate_ingestion()` does. A `site_policies` row past its review date
+  is still honored for a submission decision. Pre-existing in code this
+  milestone reused unmodified; not silently fixed during this milestone.
+- Applications with an `ALLOWED` policy verdict intentionally remain at
+  `submission_ready` indefinitely - a visible, by-design "stuck" state until
+  M11 implements a real permitted-channel dispatcher. Policy permission is
+  never treated as "a human should act now."
+- No cover-letter-PDF-specific binding column exists on `artifacts`; packet
+  binding is entirely storage-key/content-addressed rather than
+  column-backed, by design, requiring no migration.
+- Real submission execution, retry/backoff, and submission-outcome handling
+  (`submitting`, `submitted`, `submission_failed`, and the `submission.*`
+  events) remain M11+.
+- Agent 3 (monitoring/dashboard) remains later work; no code for it exists.
+
+### Final verification counts
+
+- make lint: clean.
+- make typecheck: 150 source files, no issues.
+- make verify-schema: 12 passed, 0 failed; 9-revision chain, head
+  0009_application_preferences (unchanged by this milestone).
+- make check-shadowing: clean.
+- make test-unit: 1651 passed.
+- make test-integration: 1042 passed.
+- make test-security: 1134 passed, 0 skipped, under
+  REQUIRE_SECURITY_TESTS=1.
+- make test-evals: 61 passed, 51 corpus cases, 0 provider calls.
+- make audit: no known vulnerabilities.
+- make secrets-scan: passing, read-only.
+
+No remote push occurred for this milestone; this repository has no
+configured remote.
