@@ -1187,3 +1187,35 @@ debt (identical ASTs) and refreshed four `.secrets.baseline` line numbers.
 - Safety: 1335 passed, 0 skipped, under REQUIRE_SECURITY_TESTS=1.
 - Offline evals: 61 passed, 51 corpus cases, 0 provider calls. Frontend: 171 passed.
 - pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
+
+## M12 Phase 3 — COMPLETE, verified 2026-11-03
+
+Commit `1cdc545`. Details: [M12_PHASE3.md](M12_PHASE3.md).
+
+### Operator UI
+
+- Backend, owner only and additive:
+  - The pause status adds `unresolved_auto_pause_count`.
+  - `GET /api/v1/alerts` gains `status` (open/resolved/all), `kind`, `severity` and `auto_paused` filters and `limit`/`offset` pagination, newest first.
+  - Alert reads add a server-derived fixed `title`, `requires_human`, `resolution` (human/monitor), and `application_id`/`job_id` only where the UI can navigate. Raw detail and other entity identifiers remain hidden.
+- Frontend:
+  - The API client treats HTTP 503 as an error except for the readiness probe, and non-JSON bodies surface as `ApiError`.
+  - A server-authoritative `OperationsProvider` drives a global generation-pause banner. It never clears optimistically, keeps the last confirmed state with a stale warning when a refresh fails, and fetches nothing for non-owners.
+  - `/alerts` and `/alerts/[id]`: filters, pagination, and explicit, consequence-stating human resolution.
+  - `/monitoring`: built from real snapshots, with stale-data and Redis-unavailable states. Missing metrics show "Not available".
+  - An owner-only Operations navigation section, and a header bell showing the real unresolved count. The hard-coded "4 items" bell is gone.
+
+### Explicit limitations
+
+- State is polled every 30 s (and on focus), not pushed.
+- Verified by tests and the production build. Live-browser verification was deferred to the isolated demo environment.
+- No migration, grant change or new event type.
+
+### Final verification counts
+
+- ruff check and `ruff format --check .`: clean. mypy: 163 source files, no issues.
+- verify-schema: 12 passed; head 0010_submission_retry_schedule. check-shadowing and down migration: clean.
+- Unit: 1959 passed. Integration: 1190 passed. Safety: 1356 passed, 0 skipped, under REQUIRE_SECURITY_TESTS=1.
+- Offline evals: 61 passed, 51 cases, 0 provider calls.
+- Frontend: lint and typecheck clean, 213 tests passed, production build succeeded.
+- pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
