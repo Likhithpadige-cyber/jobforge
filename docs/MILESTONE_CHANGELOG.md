@@ -1151,3 +1151,39 @@ Commit `4ade88b`. Details: [M12_PHASE1.md](M12_PHASE1.md).
 - Offline evals: 61 passed, 51 corpus cases, 0 provider calls.
 - pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
 - `ruff format --check .`: 174 pre-existing files; M12 added no new violations.
+
+## M12 Phase 2 — COMPLETE, verified 2026-11-03
+
+Commit `4b0dfa4`. Details: [M12_PHASE2.md](M12_PHASE2.md). Preceded by the
+formatting-only commit `5d5da3c`, which resolved the 174-file `ruff format`
+debt (identical ASTs) and refreshed four `.secrets.baseline` line numbers.
+
+### Operational monitoring
+
+- The existing `cg.monitor` `schedule.tick` handler runs the unchanged job snapshot, then `evaluate_operations` under a transaction-scoped advisory lock, and merges the results into the bucket's `metrics_snapshots.metrics.operations`. Stale ticks (older than 900 s) skip the rules.
+- Rules and resolution:
+  - `worker_heartbeat_missing` (high): registered instance silent > 90 s; auto-resolves only when the same instance beats again.
+  - `dead_letter` (high): one per dead-lettered (group, event); human only.
+  - `submission_ambiguous` (high): structured `ambiguous: true` on `submission.failed`; human only.
+  - `submission_failure_spike` (high): latest 10 real send attempts (`started_at` set), fires at 4+ failures, never with fewer than 10 attempts; auto-resolves on a full window with 3 or fewer.
+  - `application_stalled` (medium): system-owned status > 24 h; auto-resolves when the status changes.
+  - `approval_backlog` (low): pending > 30; auto-resolves at 30 or fewer.
+  - `consumer_lag` (medium): lag > 500 now and 10 minutes earlier; auto-resolves when known and 500 or fewer.
+- Alerts: one unresolved alert per (kind, subject); `uuid5` identities with `ON CONFLICT DO NOTHING`, so repeated evaluation is idempotent and never reopens a resolved alert. Every operational alert has `auto_paused = false`.
+- Heartbeats: every worker kind registers in Redis before its first step and a background pulse refreshes it (liveness, not progress). Only a signalled clean stop deregisters.
+- Owner-only, typed, read-only `GET /api/v1/monitoring/summary` and `GET /api/v1/monitoring/snapshots`, with no alert detail, worker instance names or entity identifiers.
+
+### Explicit limitations
+
+- Detection granularity is one 5-minute tick. Heartbeat and lag rules depend on Redis and pause, rather than guess, during an outage. The monitor cannot report its own death.
+- No notifications, digests, Prometheus endpoint or frontend (M12 Phase 3+).
+- No migration, grant change or new event type.
+
+### Final verification counts
+
+- ruff check and `ruff format --check .`: clean (297 files formatted).
+- mypy: 163 source files, no issues. verify-schema: 12 passed, 0 failed; head 0010_submission_retry_schedule. check-shadowing: clean. Down migration up to date.
+- Unit (`tests/unit`): 1959 passed. Integration: 1169 passed.
+- Safety: 1335 passed, 0 skipped, under REQUIRE_SECURITY_TESTS=1.
+- Offline evals: 61 passed, 51 corpus cases, 0 provider calls. Frontend: 171 passed.
+- pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
