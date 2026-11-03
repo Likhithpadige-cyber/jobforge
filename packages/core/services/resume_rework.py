@@ -714,9 +714,7 @@ async def _t5_recover(
     try:
         # Match T1/T2 and inspect eligibility only after acquisition is
         # excluded by the application lock. A pre-lock read can go stale.
-        application = await resume_review._load_application(
-            session, application_id, lock=True
-        )
+        application = await resume_review._load_application(session, application_id, lock=True)
         state = await attempts.recovery_state(attempt_id)
         if state is None or not state[1]:
             await session.rollback()

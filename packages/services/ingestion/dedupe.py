@@ -48,11 +48,29 @@ class DuplicateMatch:
 
 
 #: Tracking parameters that change per referral but not per posting.
-TRACKING_PARAMS = frozenset({
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "src", "source", "ref", "referrer", "gh_src", "trk", "trackingid",
-    "lipi", "refid", "jobsearchtracking", "sessionid", "cid", "fbclid", "gclid",
-})
+TRACKING_PARAMS = frozenset(
+    {
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "src",
+        "source",
+        "ref",
+        "referrer",
+        "gh_src",
+        "trk",
+        "trackingid",
+        "lipi",
+        "refid",
+        "jobsearchtracking",
+        "sessionid",
+        "cid",
+        "fbclid",
+        "gclid",
+    }
+)
 
 
 def canonical_url(url: str) -> str:
@@ -119,7 +137,9 @@ def find_duplicate(
                 continue
             if other.description_hash == candidate.description_hash:
                 return DuplicateMatch(
-                    other.id, DuplicateReason.EXACT_CONTENT, 1.0,
+                    other.id,
+                    DuplicateReason.EXACT_CONTENT,
+                    1.0,
                     "identical normalized title, company and description",
                 )
 
@@ -130,7 +150,9 @@ def find_duplicate(
                 continue
             if other.external_id and other.external_id == candidate.external_id:
                 return DuplicateMatch(
-                    other.id, DuplicateReason.SAME_SOURCE_ID, 1.0,
+                    other.id,
+                    DuplicateReason.SAME_SOURCE_ID,
+                    1.0,
                     f"same external_id {candidate.external_id!r}",
                 )
 
@@ -140,7 +162,9 @@ def find_duplicate(
             continue
         if canonical_url(other.url) == canonical_candidate_url:
             return DuplicateMatch(
-                other.id, DuplicateReason.SAME_URL, 1.0,
+                other.id,
+                DuplicateReason.SAME_URL,
+                1.0,
                 "same URL once tracking parameters are removed",
             )
 
@@ -158,7 +182,9 @@ def find_duplicate(
         if best:
             score, other = best
             return DuplicateMatch(
-                other.id, DuplicateReason.SAME_ROLE_AT_COMPANY, round(score, 3),
+                other.id,
+                DuplicateReason.SAME_ROLE_AT_COMPANY,
+                round(score, 3),
                 f"same company, title similarity {score:.2f}",
             )
 

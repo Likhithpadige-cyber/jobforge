@@ -1705,9 +1705,7 @@ async def test_scheduler_event_alone_cannot_bypass_revalidation() -> None:
         "attempt": 1,
     }
 
-    res = await execute_submission_retry(
-        session, event, settings=Settings(), store=MagicMock()
-    )
+    res = await execute_submission_retry(session, event, settings=Settings(), store=MagicMock())
     assert res == "completed"
     assert prior_sub.next_attempt_after is None
     session.add.assert_not_called()

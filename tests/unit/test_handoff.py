@@ -136,9 +136,7 @@ def facts_for(ref, context):
 def verified(ref, context, verdict=ClaimVerdict.SUPPORTED, explanation="ok"):
     return bind(
         ref,
-        VerificationResult(
-            verdict=verdict, explanation=explanation, prompt_version="v"
-        ),
+        VerificationResult(verdict=verdict, explanation=explanation, prompt_version="v"),
         facts_for(ref, context),
     )
 
@@ -182,9 +180,7 @@ def test_claim_identity_reuses_section_and_json_pointer(context, bullets, select
 
 
 @pytest.mark.parametrize("verdict", [ClaimVerdict.OVERREACH, ClaimVerdict.UNSUPPORTED])
-def test_negative_result_is_preserved_structurally(
-    context, bullets, selection, verdict
-):
+def test_negative_result_is_preserved_structurally(context, bullets, selection, verdict):
     ref = bullet_refs(bullets, selection)[0]
     item = verified(ref, context, verdict=verdict, explanation="inflated scope")
     assert item.verdict is verdict
@@ -209,9 +205,9 @@ def test_digest_is_independent_of_citation_order(context):
     """Same evidence, different sequence: one verification input, one digest."""
     cited = ClaimRef("skills", "/skills/0", "Both.", (FACT_A, FACT_B))
     reordered = ClaimRef("skills", "/skills/0", "Both.", (FACT_B, FACT_A))
-    assert compute_input_digest(
-        "Both.", facts_for(cited, context)
-    ) == compute_input_digest("Both.", facts_for(reordered, context))
+    assert compute_input_digest("Both.", facts_for(cited, context)) == compute_input_digest(
+        "Both.", facts_for(reordered, context)
+    )
 
 
 def test_canonical_fact_order_is_deterministic(context):
@@ -233,9 +229,9 @@ def test_digest_still_detects_changed_fact_sets(context, left, right):
     """Canonicalizing order must not canonicalize away membership."""
     a = ClaimRef("skills", "/skills/0", "Claim.", left)
     b = ClaimRef("skills", "/skills/0", "Claim.", right)
-    assert compute_input_digest(
-        "Claim.", facts_for(a, context)
-    ) != compute_input_digest("Claim.", facts_for(b, context))
+    assert compute_input_digest("Claim.", facts_for(a, context)) != compute_input_digest(
+        "Claim.", facts_for(b, context)
+    )
 
 
 def test_reordered_citation_does_not_read_as_stale(context, selection):
@@ -260,9 +256,7 @@ def test_reordering_helper_cannot_change_membership(context):
     reordered = normalize_fact_order(ref, (FACT_B, FACT_A))
     assert reordered.fact_ids == (FACT_B, FACT_A)
     # Presentation changed; the verification input did not.
-    assert (
-        verified(reordered, context).input_digest == verified(ref, context).input_digest
-    )
+    assert verified(reordered, context).input_digest == verified(ref, context).input_digest
     with pytest.raises(HandoffError):
         normalize_fact_order(ref, (FACT_A,))
 
@@ -330,9 +324,7 @@ def test_duplicate_claim_identity_rejected():
         assert_unique_identities((a, b))
 
 
-def test_generated_identities_are_unique_by_construction(
-    context, bullets, selection, sentences
-):
+def test_generated_identities_are_unique_by_construction(context, bullets, selection, sentences):
     """The builders cannot collide: the index disambiguates within a section,
     and no B1 section is named `summary`."""
     refs = bullet_refs(bullets, selection) + sentence_refs(sentences)
@@ -349,9 +341,7 @@ def test_bullet_citing_unselected_fact_is_refused(context, selection):
 def test_changed_claim_text_rejected(context, bullets, selection, sentences):
     results = list(all_verified(context, bullets, selection, sentences))
     stale = results[0]
-    results[0] = replace(
-        stale, claim=replace(stale.claim, claim_text="Something else entirely.")
-    )
+    results[0] = replace(stale, claim=replace(stale.claim, claim_text="Something else entirely."))
     with pytest.raises(HandoffError, match="Claim text changed"):
         covered(tuple(results), bullets, sentences, context, selection)
 
@@ -371,9 +361,7 @@ def test_input_digest_mismatch_rejected(context, bullets, selection, sentences):
         covered(tuple(results), bullets, sentences, context, selection)
 
 
-def test_evidence_edited_after_verification_rejected(
-    context, bullets, selection, sentences
-):
+def test_evidence_edited_after_verification_rejected(context, bullets, selection, sentences):
     """The fact's text is unchanged in the claim but changed underneath it."""
     results = all_verified(context, bullets, selection, sentences)
     edited = replace(context.facts[0], structured={"count": 999})
@@ -383,9 +371,7 @@ def test_evidence_edited_after_verification_rejected(
 
 
 @pytest.mark.parametrize("status", [FactStatus.RETIRED, FactStatus.DRAFT])
-def test_unverified_fact_rejected_at_handoff(
-    context, bullets, selection, sentences, status
-):
+def test_unverified_fact_rejected_at_handoff(context, bullets, selection, sentences, status):
     results = all_verified(context, bullets, selection, sentences)
     retired = replace(context.facts[0], status=status)
     mutated = replace(context, facts=(retired, *context.facts[1:]))
@@ -409,9 +395,7 @@ def test_not_checked_result_rejected_by_gate(context, bullets, selection, senten
 
 def test_negative_verdicts_pass_the_gate(context, bullets, selection, sentences):
     """The gate checks binding, not verdicts - B6 decides what a failure means."""
-    results = all_verified(
-        context, bullets, selection, sentences, verdict=ClaimVerdict.UNSUPPORTED
-    )
+    results = all_verified(context, bullets, selection, sentences, verdict=ClaimVerdict.UNSUPPORTED)
     out = covered(results, bullets, sentences, context, selection)
     assert all(c.is_negative for c in out)
 
@@ -464,9 +448,7 @@ def cassette(client, claim_text, cited, body):
     )
 
 
-async def test_wrapper_returns_supported_result(
-    session, context, bullets, selection, tmp_path
-):
+async def test_wrapper_returns_supported_result(session, context, bullets, selection, tmp_path):
     ref = bullet_refs(bullets, selection)[0]
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
     cassette(
@@ -535,9 +517,7 @@ async def test_wrapper_persists_nothing(session, context, bullets, selection, tm
     assert all(isinstance(o, AgentRun | AgentRunStep | LlmCall) for o in rows)
 
 
-def test_validate_coverage_persists_nothing(
-    session, context, bullets, selection, sentences
-):
+def test_validate_coverage_persists_nothing(session, context, bullets, selection, sentences):
     covered(
         all_verified(context, bullets, selection, sentences),
         bullets,

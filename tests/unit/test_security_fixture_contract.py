@@ -63,8 +63,9 @@ def _executable_statements(path: Path, name: str) -> list[str]:
         rendered = re.sub(r"\s+", " ", ast.unparse(statement)).strip()
         # settings lookup differs cosmetically (local variable vs inline call)
         rendered = rendered.replace("settings = get_settings()", "")
-        rendered = rendered.replace("str(settings.database_url)",
-                                    "str(get_settings().database_url)")
+        rendered = rendered.replace(
+            "str(settings.database_url)", "str(get_settings().database_url)"
+        )
         if rendered:
             normalised.append(rendered)
     return normalised
@@ -86,7 +87,7 @@ class TestDiagnosticMirrorsFixture:
         """partition() would split at an '@' inside the owner password."""
         for path, name in ((CONFTEST, "_url"), (DIAGNOSE, "agent_url")):
             body = _function_body(path, name)
-            assert 'rpartition' in body, f"{path.name}::{name} must use rpartition"
+            assert "rpartition" in body, f"{path.name}::{name} must use rpartition"
 
     def test_both_percent_encode_the_password(self) -> None:
         for path, name in ((CONFTEST, "_url"), (DIAGNOSE, "agent_url")):
@@ -106,22 +107,22 @@ class TestFailClosed:
         # Only the helper itself may call pytest.skip directly.
         helper = _function_body(CONFTEST, "_skip_or_fail")
         allowed = sum(1 for line in helper.splitlines() if "pytest.skip(" in line)
-        assert len(bare_skips) == allowed, (
-            f"pytest.skip() called outside _skip_or_fail: {bare_skips}"
-        )
+        assert (
+            len(bare_skips) == allowed
+        ), f"pytest.skip() called outside _skip_or_fail: {bare_skips}"
 
     def test_helper_fails_when_security_is_required(self) -> None:
         helper = _function_body(CONFTEST, "_skip_or_fail")
-        assert 'REQUIRE_SECURITY_TESTS' in helper
+        assert "REQUIRE_SECURITY_TESTS" in helper
         assert "pytest.fail(" in helper
 
     def test_make_target_sets_the_flag(self) -> None:
         makefile = (ROOT / "Makefile").read_text()
-        target = makefile[makefile.index("test-security:"):]
+        target = makefile[makefile.index("test-security:") :]
         target = target[: target.index("\n\n")]
-        assert "REQUIRE_SECURITY_TESTS=1" in target, (
-            "make test-security must set REQUIRE_SECURITY_TESTS=1 so skips fail"
-        )
+        assert (
+            "REQUIRE_SECURITY_TESTS=1" in target
+        ), "make test-security must set REQUIRE_SECURITY_TESTS=1 so skips fail"
 
 
 class TestNoPrivilegedFallback:
@@ -151,9 +152,7 @@ class TestNoPrivilegedFallback:
         ]
         assert tests, "no tests found"
         missing = [
-            node.name
-            for node in tests
-            if "agent_engine" not in {arg.arg for arg in node.args.args}
+            node.name for node in tests if "agent_engine" not in {arg.arg for arg in node.args.args}
         ]
         assert not missing, f"tests not using agent_engine: {missing}"
 
@@ -162,14 +161,14 @@ class TestDiagnosticCoverage:
     @pytest.mark.parametrize(
         "probe",
         [
-            "pg_roles",              # role existence
-            "rolcanlogin",           # LOGIN capability
-            "rolpassword",           # password configured
+            "pg_roles",  # role existence
+            "rolcanlogin",  # LOGIN capability
+            "rolpassword",  # password configured
             "has_database_privilege",  # CONNECT
             "has_schema_privilege",  # USAGE / CREATE on public
-            "has_table_privilege",   # SELECT / INSERT / UPDATE / DELETE
+            "has_table_privilege",  # SELECT / INSERT / UPDATE / DELETE
             "has_function_privilege",  # the one permitted write path
-            "current_user",          # actual connection result
+            "current_user",  # actual connection result
         ],
     )
     def test_diagnostic_probes_are_present(self, probe: str) -> None:

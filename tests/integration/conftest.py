@@ -560,8 +560,12 @@ async def committed_fact(engine):  # type: ignore[no-untyped-def]
                 "'experience', 'Committed demo fact', '{}'::jsonb, 'experiences', "
                 ":source_id, 'verified', :user_id, now(), now(), now())"
             ),
-            {"id": fact_id, "profile_id": profile_id,
-             "source_id": experience_id, "user_id": user_id},
+            {
+                "id": fact_id,
+                "profile_id": profile_id,
+                "source_id": experience_id,
+                "user_id": user_id,
+            },
         )
         await setup.commit()
 
@@ -587,10 +591,9 @@ async def committed_fact(engine):  # type: ignore[no-untyped-def]
             await teardown.execute(
                 text("DELETE FROM profiles WHERE user_id = :id"), {"id": user_id}
             )
-            await teardown.execute(
-                text("DELETE FROM users WHERE id = :id"), {"id": user_id}
-            )
+            await teardown.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
             await teardown.commit()
+
 
 @pytest_asyncio.fixture
 async def api_sessions(app_client, engine):  # type: ignore[no-untyped-def]
@@ -665,9 +668,7 @@ async def api_sessions(app_client, engine):  # type: ignore[no-untyped-def]
             idle_minutes=settings.session_idle_timeout_minutes,
             absolute_hours=settings.session_absolute_timeout_hours,
         )
-        client = httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://test"
-        )
+        client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
         client.cookies.set(settings.session_cookie_name, live.id)
         client.cookies.set(settings.csrf_cookie_name, live.csrf_token)
         client.headers[CSRF_HEADER] = live.csrf_token
@@ -682,9 +683,7 @@ async def api_sessions(app_client, engine):  # type: ignore[no-untyped-def]
             await client.aclose()  # type: ignore[attr-defined]
         async with maker() as teardown:
             for user_id in created_users:
-                await teardown.execute(
-                    text("DELETE FROM users WHERE id = :id"), {"id": user_id}
-                )
+                await teardown.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
             await teardown.commit()
 
 

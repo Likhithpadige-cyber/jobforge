@@ -148,9 +148,7 @@ async def test_concurrent_callers_cannot_exceed_the_limit(redis) -> None:
 
     Exactly three are allowed, with distinct counts from atomic transactions.
     """
-    results = await asyncio.gather(
-        *(consume(redis, LIMIT, "alice") for _ in range(20))
-    )
+    results = await asyncio.gather(*(consume(redis, LIMIT, "alice") for _ in range(20)))
     assert sum(1 for r in results if r.allowed) == LIMIT.max_requests
     assert sorted(r.count for r in results) == list(range(1, 21))
 

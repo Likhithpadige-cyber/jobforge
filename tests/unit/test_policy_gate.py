@@ -65,8 +65,11 @@ def test_every_default_is_restrictive() -> None:
 
 def test_disabled_source_is_blocked_even_with_a_good_policy() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
-        ingestion_method=IngestionMethod.PUBLIC_FEED, requires_login=False,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
+        ingestion_method=IngestionMethod.PUBLIC_FEED,
+        requires_login=False,
     )
     verdict = evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED, source_enabled=False)
     assert verdict.reason is BlockReason.SOURCE_DISABLED
@@ -74,7 +77,9 @@ def test_disabled_source_is_blocked_even_with_a_good_policy() -> None:
 
 def test_method_mismatch_is_blocked() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
         ingestion_method=IngestionMethod.MANUAL_IMPORT,
     )
     verdict = evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED)
@@ -83,43 +88,55 @@ def test_method_mismatch_is_blocked() -> None:
 
 def test_automated_method_needs_automation_permission() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=False,
-        ingestion_method=IngestionMethod.PUBLIC_FEED, requires_login=False,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=False,
+        ingestion_method=IngestionMethod.PUBLIC_FEED,
+        requires_login=False,
     )
-    assert evaluate_ingestion(
-        policy, IngestionMethod.PUBLIC_FEED
-    ).reason is BlockReason.AUTOMATION_FORBIDDEN
+    assert (
+        evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED).reason
+        is BlockReason.AUTOMATION_FORBIDDEN
+    )
 
 
 def test_login_required_blocks_automated_ingestion() -> None:
     """Automated authentication is never performed, so a login wall ends it."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
-        ingestion_method=IngestionMethod.PUBLIC_FEED, requires_login=True,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
+        ingestion_method=IngestionMethod.PUBLIC_FEED,
+        requires_login=True,
     )
-    assert evaluate_ingestion(
-        policy, IngestionMethod.PUBLIC_FEED
-    ).reason is BlockReason.LOGIN_REQUIRED
+    assert (
+        evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED).reason is BlockReason.LOGIN_REQUIRED
+    )
 
 
 def test_expired_review_blocks_ingestion() -> None:
     """Terms change; a stale review is not a review."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
-        ingestion_method=IngestionMethod.PUBLIC_FEED, requires_login=False,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
+        ingestion_method=IngestionMethod.PUBLIC_FEED,
+        requires_login=False,
         reviewed_at=datetime(2025, 1, 1, tzinfo=UTC),
         next_review_due=date(2025, 6, 1),
     )
-    verdict = evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED,
-                                 today=date(2026, 9, 9))
+    verdict = evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED, today=date(2026, 9, 9))
     assert verdict.reason is BlockReason.REVIEW_EXPIRED
 
 
 def test_manual_import_does_not_need_automation_permission() -> None:
     """A human pasting a posting they are already reading is not automation."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=False,
-        ingestion_method=IngestionMethod.MANUAL_IMPORT, requires_login=True,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=False,
+        ingestion_method=IngestionMethod.MANUAL_IMPORT,
+        requires_login=True,
     )
     verdict = evaluate_ingestion(policy, IngestionMethod.MANUAL_IMPORT)
     assert verdict.decision is PolicyDecision.ALLOWED
@@ -127,23 +144,28 @@ def test_manual_import_does_not_need_automation_permission() -> None:
 
 def test_extension_capture_does_not_need_automation_permission() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
-        ingestion_method=IngestionMethod.EXTENSION_CAPTURE, requires_login=True,
+        domain="example.invalid",
+        exists=True,
+        ingestion_method=IngestionMethod.EXTENSION_CAPTURE,
+        requires_login=True,
     )
-    assert evaluate_ingestion(
-        policy, IngestionMethod.EXTENSION_CAPTURE
-    ).decision is PolicyDecision.ALLOWED
+    assert (
+        evaluate_ingestion(policy, IngestionMethod.EXTENSION_CAPTURE).decision
+        is PolicyDecision.ALLOWED
+    )
 
 
 def test_fully_permitted_feed_is_allowed() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
-        ingestion_method=IngestionMethod.PUBLIC_FEED, requires_login=False,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
+        ingestion_method=IngestionMethod.PUBLIC_FEED,
+        requires_login=False,
         reviewed_at=datetime(2026, 8, 1, tzinfo=UTC),
         next_review_due=date(2027, 8, 1),
     )
-    verdict = evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED,
-                                 today=date(2026, 9, 9))
+    verdict = evaluate_ingestion(policy, IngestionMethod.PUBLIC_FEED, today=date(2026, 9, 9))
     assert verdict.permitted is True
 
 
@@ -156,7 +178,8 @@ def test_human_handoff_is_never_reported_as_allowed() -> None:
     """`.permitted` must be False for handoff, or a caller checking it could
     auto-submit to a site that requires a human."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.HUMAN_HANDOFF,
     )
     verdict = evaluate_submission(policy)
@@ -166,7 +189,9 @@ def test_human_handoff_is_never_reported_as_allowed() -> None:
 
 def test_api_submission_requires_automation_permission() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=False,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=False,
         submission_method=SubmissionMethod.OFFICIAL_API,
     )
     assert evaluate_submission(policy).reason is BlockReason.AUTOMATION_FORBIDDEN
@@ -174,7 +199,8 @@ def test_api_submission_requires_automation_permission() -> None:
 
 def test_email_submission_is_allowed() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.EMAIL,
     )
     assert evaluate_submission(policy).permitted is True
@@ -186,7 +212,8 @@ def test_email_submission_is_allowed() -> None:
 def test_current_email_policy_behaves_normally() -> None:
     """A current (non-expired) review changes nothing: still ALLOWED."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.EMAIL,
         reviewed_at=datetime(2026, 8, 1, tzinfo=UTC),
         next_review_due=date(2027, 8, 1),
@@ -198,7 +225,9 @@ def test_current_email_policy_behaves_normally() -> None:
 
 def test_current_official_api_policy_behaves_normally() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
         submission_method=SubmissionMethod.OFFICIAL_API,
         reviewed_at=datetime(2026, 8, 1, tzinfo=UTC),
         next_review_due=date(2027, 8, 1),
@@ -210,7 +239,8 @@ def test_current_official_api_policy_behaves_normally() -> None:
 def test_expired_email_policy_cannot_authorise_submission() -> None:
     """The known asymmetry: an expired review must not permit a real send."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.EMAIL,
         reviewed_at=datetime(2025, 1, 1, tzinfo=UTC),
         next_review_due=date(2025, 6, 1),
@@ -222,7 +252,9 @@ def test_expired_email_policy_cannot_authorise_submission() -> None:
 
 def test_expired_official_api_policy_cannot_authorise_submission() -> None:
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True, automation_allowed=True,
+        domain="example.invalid",
+        exists=True,
+        automation_allowed=True,
         submission_method=SubmissionMethod.OFFICIAL_API,
         reviewed_at=datetime(2025, 1, 1, tzinfo=UTC),
         next_review_due=date(2025, 6, 1),
@@ -236,7 +268,8 @@ def test_expired_review_reverts_to_requires_human_not_blocked() -> None:
     """SECURITY.md §7.2: reverts to human_handoff, not a hard block - human
     handoff is always a safe fallback, unlike ingestion which has none."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.EMAIL,
         next_review_due=date(2020, 1, 1),
     )
@@ -258,7 +291,8 @@ def test_human_handoff_policy_is_unaffected_by_review_expiry() -> None:
     """A policy that already says human_handoff has nothing to revert from -
     an expired review on it changes nothing, it was never automated."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.HUMAN_HANDOFF,
         next_review_due=date(2020, 1, 1),
     )
@@ -270,7 +304,8 @@ def test_email_without_a_review_date_on_record_is_unaffected() -> None:
     """No `next_review_due` recorded at all (None) is not treated as
     expired, matching `evaluate_ingestion`'s identical precedent."""
     policy = PolicySnapshot(
-        domain="example.invalid", exists=True,
+        domain="example.invalid",
+        exists=True,
         submission_method=SubmissionMethod.EMAIL,
     )
     verdict = evaluate_submission(policy, today=date(2026, 9, 22))

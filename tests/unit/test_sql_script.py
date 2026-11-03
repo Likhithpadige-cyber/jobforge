@@ -55,9 +55,9 @@ def test_no_statement_is_cut_through_a_dollar_quoted_body(filename: str) -> None
     """
     statements = split_sql_statements((SQL_DIR / filename).read_text(encoding="utf-8"))
     for statement in statements:
-        assert statement.count("$$") % 2 == 0, (
-            f"{filename}: statement cut through a dollar-quoted body:\n{statement[:200]}"
-        )
+        assert (
+            statement.count("$$") % 2 == 0
+        ), f"{filename}: statement cut through a dollar-quoted body:\n{statement[:200]}"
         assert not statement.endswith(";"), f"{filename}: trailing semicolon kept"
         assert statement.strip() == statement
 
@@ -133,8 +133,7 @@ def test_a_plpgsql_body_survives_whole() -> None:
     assert statements[1].startswith("CREATE TRIGGER")
 
 
-def test_an_unterminated_body_is_returned_rather_than_guessed(
-) -> None:
+def test_an_unterminated_body_is_returned_rather_than_guessed() -> None:
     """Better one failing statement than a boundary invented mid-body."""
     statements = split_sql_statements("SELECT $$ unterminated; still going")
     assert statements == ["SELECT $$ unterminated; still going"]
@@ -145,6 +144,7 @@ def test_an_e_string_backslash_escape_is_respected() -> None:
         r"SELECT E'a\';b'",
         "SELECT 2",
     ]
+
 
 # =====================================================================
 # 3. The runner contract: no revision may go back to single-shot execution

@@ -80,9 +80,7 @@ def test_python_and_sql_agree_over_the_cross_product(
     python = can_retry(
         attempt, failure_class, max_attempts=max_attempts, evidence_stale_budget=budget
     )
-    sql = _sql_says_retryable(
-        failure_class, attempt, max_attempts=max_attempts, budget=budget
-    )
+    sql = _sql_says_retryable(failure_class, attempt, max_attempts=max_attempts, budget=budget)
     assert python == sql, (
         f"{failure_class.value} at attempt_count={attempt_count}, "
         f"stale={stale_count}, max={max_attempts}, budget={budget}: "
@@ -127,6 +125,4 @@ def test_only_evidence_stale_is_budgeted() -> None:
 def test_the_ceiling_stops_every_class() -> None:
     at_ceiling = _Attempt(attempt_count=3, evidence_stale_retry_count=0)
     for failure_class in RETRYABLE:
-        assert not can_retry(
-            at_ceiling, failure_class, max_attempts=3, evidence_stale_budget=1
-        )
+        assert not can_retry(at_ceiling, failure_class, max_attempts=3, evidence_stale_budget=1)

@@ -182,9 +182,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppError)
     async def _app_error(request: Request, exc: AppError) -> JSONResponse:
-        log.warning(
-            "request.app_error", error=type(exc).__name__, status=exc.status_code
-        )
+        log.warning("request.app_error", error=type(exc).__name__, status=exc.status_code)
         return JSONResponse(
             status_code=exc.status_code,
             content=exc.to_problem(instance=str(request.url.path)),
@@ -194,9 +192,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_error(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=422,
             content={
@@ -214,9 +210,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def _http_error(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content={

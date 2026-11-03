@@ -202,9 +202,7 @@ async def request_submission(
     if application is None:
         raise NotFoundError(f"Application {application_id} not found")
 
-    submission, _dest = await validate_submit_preconditions(
-        session, application, settings
-    )
+    submission, _dest = await validate_submit_preconditions(session, application, settings)
 
     # Lock submission row as well
     await session.execute(
@@ -796,11 +794,7 @@ async def execute_submission_retry(
         log.warning("submission_retry.application_missing", application_id=str(application_id))
         return "dead"
 
-    stmt_sub = (
-        select(Submission)
-        .where(Submission.id == due_submission_id)
-        .with_for_update()
-    )
+    stmt_sub = select(Submission).where(Submission.id == due_submission_id).with_for_update()
     prior_submission = (await session.execute(stmt_sub)).scalar_one_or_none()
     if prior_submission is None:
         log.warning("submission_retry.submission_missing", submission_id=str(due_submission_id))
@@ -879,9 +873,7 @@ async def execute_submission_retry(
         return "completed"
 
     # 7. Re-evaluate current submission policy
-    verdict, snapshot, policy_row, domain = await policy_verdict(
-        session, application
-    )
+    verdict, snapshot, policy_row, domain = await policy_verdict(session, application)
     today = utc_today()
     is_expired = bool(
         policy_row and policy_row.next_review_due and policy_row.next_review_due < today

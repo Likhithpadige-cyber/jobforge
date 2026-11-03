@@ -46,8 +46,7 @@ def job(**kwargs: object) -> FakeJob:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("https://example.invalid/jobs/1?utm_source=linkedin",
-         "https://example.invalid/jobs/1"),
+        ("https://example.invalid/jobs/1?utm_source=linkedin", "https://example.invalid/jobs/1"),
         ("https://www.example.invalid/jobs/1", "https://example.invalid/jobs/1"),
         ("https://example.invalid/jobs/1/", "https://example.invalid/jobs/1"),
         ("https://example.invalid/jobs/1#apply", "https://example.invalid/jobs/1"),
@@ -151,9 +150,7 @@ def test_first_strategy_wins() -> None:
     company = uuid4()
     fuzzy = job(company_id=company, normalized_title="cloud engineer")
     exact = job(description_hash="same")
-    candidate = job(
-        company_id=company, normalized_title="cloud engineer", description_hash="same"
-    )
+    candidate = job(company_id=company, normalized_title="cloud engineer", description_hash="same")
     match = find_duplicate(candidate, [fuzzy, exact])
     assert match is not None
     assert match.reason == DuplicateReason.EXACT_CONTENT

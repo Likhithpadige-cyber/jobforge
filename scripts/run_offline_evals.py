@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the synthetic offline grounding corpus and emit machine-readable metrics."""
+
 from __future__ import annotations
 
 import argparse
@@ -36,18 +37,26 @@ def summarize(results: dict[str, bool]) -> dict[str, object]:
             counts["total"] += 1
             counts["passed"] += int(outcomes.get(key, False))
     return {
-        "suite": "jobforge-offline-grounding", "corpus_version": corpus["version"],
+        "suite": "jobforge-offline-grounding",
+        "corpus_version": corpus["version"],
         "corpus_sha256": hashlib.sha256(CORPUS.read_bytes()).hexdigest(),
-        "mode": "offline", "provider_calls": 0,
-        "prompt_sha256": {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                          for path in sorted((ROOT / "packages" / "agents" /
-                                              "resume_optimizer" / "prompts").glob("*.txt"))},
+        "mode": "offline",
+        "provider_calls": 0,
+        "prompt_sha256": {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(
+                (ROOT / "packages" / "agents" / "resume_optimizer" / "prompts").glob("*.txt")
+            )
+        },
         "measurement": (
             "deterministic guard and scripted replay enforcement; not live-model accuracy"
         ),
         "passed": not errors and not missing and len(outcomes) == len(corpus["cases"]),
-        "cases": len(corpus["cases"]), "categories": categories, "mechanisms": mechanisms,
-        "failed_or_skipped_tests": errors, "missing_cases": missing,
+        "cases": len(corpus["cases"]),
+        "categories": categories,
+        "mechanisms": mechanisms,
+        "failed_or_skipped_tests": errors,
+        "missing_cases": missing,
     }
 
 

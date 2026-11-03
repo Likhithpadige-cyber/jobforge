@@ -94,8 +94,11 @@ def check_module(path: Path) -> None:
         for name, lineno in bound:
             if name in RESERVED_ATTRS:
                 findings.append(
-                    ("RESERVED", f"{rel}:{lineno}",
-                     f"{cls.name}.{name} collides with a Declarative reserved attribute")
+                    (
+                        "RESERVED",
+                        f"{rel}:{lineno}",
+                        f"{cls.name}.{name} collides with a Declarative reserved attribute",
+                    )
                 )
 
         # SHADOW-CALL: a bound name later called within the same class body.
@@ -109,18 +112,24 @@ def check_module(path: Path) -> None:
             called = node.func.id
             if called in bound_names and node.lineno > first_bind[called]:
                 findings.append(
-                    ("SHADOW-CALL", f"{rel}:{node.lineno}",
-                     f"{cls.name}.{called} is a column but is called as {called}(...) "
-                     f"on line {node.lineno}; use an alias import instead")
+                    (
+                        "SHADOW-CALL",
+                        f"{rel}:{node.lineno}",
+                        f"{cls.name}.{called} is a column but is called as {called}(...) "
+                        f"on line {node.lineno}; use an alias import instead",
+                    )
                 )
 
         # ANNOTATION: column name equals a module import used in annotations.
         for name, lineno in bound:
             if name in module_names and name in annotation_refs:
                 findings.append(
-                    ("ANNOTATION", f"{rel}:{lineno}",
-                     f"{cls.name}.{name} shadows the module-level import `{name}`, "
-                     f"which is also used inside a Mapped[...] annotation in this class")
+                    (
+                        "ANNOTATION",
+                        f"{rel}:{lineno}",
+                        f"{cls.name}.{name} shadows the module-level import `{name}`, "
+                        f"which is also used inside a Mapped[...] annotation in this class",
+                    )
                 )
 
 

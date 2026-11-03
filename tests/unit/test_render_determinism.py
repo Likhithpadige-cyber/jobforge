@@ -105,9 +105,10 @@ def test_the_production_renderers_are_exactly_docx_and_pdf() -> None:
 def test_both_production_renderers_are_exercised_here() -> None:
     """Guards against a vacuous pass if a renderer became unavailable."""
     exercised = {r.kind for r in renderers_under_test()}
-    assert {"resume_docx", "resume_pdf"} <= exercised, (
-        f"production renderers missing from the determinism run: {exercised}"
-    )
+    assert {
+        "resume_docx",
+        "resume_pdf",
+    } <= exercised, f"production renderers missing from the determinism run: {exercised}"
 
 
 @pytest.mark.parametrize("renderer", renderers_under_test(), ids=lambda r: r.kind)

@@ -19,9 +19,7 @@ ANY_DB_ERROR = (IntegrityError, DBAPIError)
 
 # ---------------------------------------------- the human-approval invariant
 @pytest.mark.safety
-async def test_application_cannot_be_approved_without_approver(
-    session, demo_application
-) -> None:
+async def test_application_cannot_be_approved_without_approver(session, demo_application) -> None:
     """ck_applications_approved_requires_human."""
     with pytest.raises(ANY_DB_ERROR) as exc:
         await session.execute(
@@ -201,9 +199,7 @@ async def test_verified_fact_substance_is_immutable(session, verified_fact) -> N
     await session.rollback()
 
 
-async def test_verified_fact_can_be_returned_to_draft_then_edited(
-    session, verified_fact
-) -> None:
+async def test_verified_fact_can_be_returned_to_draft_then_edited(session, verified_fact) -> None:
     await session.execute(
         text(
             "UPDATE profile_facts SET status = 'draft', verified_by = NULL, "
@@ -257,9 +253,7 @@ async def test_one_live_application_per_job(session, demo_application, demo_prof
     await session.rollback()
 
 
-async def test_abandoned_application_frees_the_job(
-    session, demo_application, demo_profile
-) -> None:
+async def test_abandoned_application_frees_the_job(session, demo_application, demo_profile) -> None:
     """The partial index excludes terminal-failed states, so a job can be
     re-applied to after an abandoned attempt."""
     job_id = (
@@ -298,9 +292,7 @@ async def test_one_pending_approval_per_kind(session, demo_application, pending_
 
 
 @pytest.mark.safety
-async def test_sensitive_answer_cannot_be_agent_authored(
-    session, demo_application
-) -> None:
+async def test_sensitive_answer_cannot_be_agent_authored(session, demo_application) -> None:
     """ck_application_answers_sensitive_human_only."""
     question_id = uuid7()
     await session.execute(
@@ -364,8 +356,7 @@ async def test_status_history_is_append_only(session, demo_application) -> None:
     await session.flush()
     with pytest.raises(ANY_DB_ERROR) as exc:
         await session.execute(
-            text("UPDATE application_status_history SET reason = 'rewritten' "
-                 "WHERE id = :id"),
+            text("UPDATE application_status_history SET reason = 'rewritten' " "WHERE id = :id"),
             {"id": history_id},
         )
         await session.flush()
@@ -393,8 +384,7 @@ async def test_events_are_immutable_except_for_publication(session) -> None:
     # Content may not.
     with pytest.raises(ANY_DB_ERROR):
         await session.execute(
-            text("UPDATE events SET payload = '{\"tampered\": true}'::jsonb "
-                 "WHERE id = :id"),
+            text("UPDATE events SET payload = '{\"tampered\": true}'::jsonb " "WHERE id = :id"),
             {"id": event_id},
         )
         await session.flush()

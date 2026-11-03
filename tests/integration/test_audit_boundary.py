@@ -158,9 +158,7 @@ async def test_two_diagnostics_about_one_attempt_are_both_kept(audit_boundary_en
     failure is two facts about one attempt, and collapsing them would lose the
     order events happened in."""
     ctx = _context()
-    first = await AuditBoundary().record(
-        "revision.attempt.fenced_out_before_failure", context=ctx
-    )
+    first = await AuditBoundary().record("revision.attempt.fenced_out_before_failure", context=ctx)
     second = await AuditBoundary().record("revision.attempt.recovery_failed", context=ctx)
     assert first != second
     assert await _read_event(first) is not None
@@ -174,9 +172,12 @@ async def test_try_record_survives_the_audit_database_being_gone() -> None:
     """No engine at all - the state of a process whose audit init failed."""
     await dispose_audit_engine()
     assert not audit_engine_ready()
-    assert await AuditBoundary().try_record(
-        "revision.attempt.failure_record_failed", context=_context()
-    ) is None
+    assert (
+        await AuditBoundary().try_record(
+            "revision.attempt.failure_record_failed", context=_context()
+        )
+        is None
+    )
 
 
 async def test_a_dead_audit_engine_does_not_replace_the_original_error() -> None:
@@ -195,9 +196,7 @@ async def test_a_dead_audit_engine_does_not_replace_the_original_error() -> None
         try:
             raise original
         except RuntimeError:
-            await AuditBoundary().try_record(
-                "revision.attempt.recovery_failed", context=_context()
-            )
+            await AuditBoundary().try_record("revision.attempt.recovery_failed", context=_context())
             raise
 
     with pytest.raises(RuntimeError) as caught:
@@ -238,9 +237,7 @@ async def test_the_boundary_works_as_the_least_privileged_role(
     await dispose_audit_engine()
     try:
         await init_audit_engine(settings)
-        event_id = await AuditBoundary().record(
-            "revision.attempt.reconciled", context=_context()
-        )
+        event_id = await AuditBoundary().record("revision.attempt.reconciled", context=_context())
         assert settings.audit_dsn_is_separate
         assert await _read_event(event_id) is not None
     finally:

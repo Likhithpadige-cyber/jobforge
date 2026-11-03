@@ -22,9 +22,14 @@ pytestmark = [pytest.mark.unit, pytest.mark.safety]
 
 def _message() -> OutboundEmail:
     return OutboundEmail(
-        to="hiring@example.invalid", subject="Application", body="See attached.",
-        attachments=(EmailAttachment(filename="resume.pdf", content=b"%PDF-fake",
-                                      content_type="application/pdf"),),
+        to="hiring@example.invalid",
+        subject="Application",
+        body="See attached.",
+        attachments=(
+            EmailAttachment(
+                filename="resume.pdf", content=b"%PDF-fake", content_type="application/pdf"
+            ),
+        ),
     )
 
 
@@ -34,6 +39,7 @@ async def test_fake_transport_never_performs_network_io(monkeypatch: pytest.Monk
     send`. Poison it and prove the fake transport never routes through it -
     a precise check that does not also break pytest's own asyncio machinery
     the way patching raw `socket.socket` would."""
+
     async def _forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("FakeEmailTransport must never touch a real socket")
 
@@ -181,6 +187,7 @@ async def test_smtp_transport_classifies_read_timeout_after_data_as_ambiguous(
     `SMTPTimeoutError` before it is anything else - the message may already
     have been accepted, so it must never be reported as a plain retryable
     transient failure."""
+
     async def _raise(*args: object, **kwargs: object) -> None:
         raise smtp_errors.SMTPReadTimeoutError("no response")
 
@@ -202,6 +209,7 @@ async def test_smtp_transport_classifies_server_disconnected_as_ambiguous_not_tr
     message the remote server already accepted - so this must be AMBIGUOUS,
     never TRANSIENT_FAILURE, even though some of its real causes (e.g. a
     STARTTLS failure) are in fact always pre-send."""
+
     async def _raise(*args: object, **kwargs: object) -> None:
         raise smtp_errors.SMTPServerDisconnected("Connection lost")
 
@@ -219,6 +227,7 @@ async def test_smtp_transport_still_classifies_pure_connect_error_as_transient(
     is ever sent - provably safe to auto-retry. This is the control case
     proving the fix above did not overcorrect into treating every
     connection-shaped failure as ambiguous."""
+
     async def _raise(*args: object, **kwargs: object) -> None:
         raise smtp_errors.SMTPConnectError("connection refused")
 
@@ -270,7 +279,8 @@ def test_smtp_credentials_are_not_exposed_by_default_repr() -> None:
     dump printing it, and the plain default object repr carries no
     attributes at all."""
     settings = Settings(
-        smtp_host="localhost", smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
+        smtp_host="localhost",
+        smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
     )
     transport = SMTPEmailTransport(settings, sender="a@b.invalid")
     assert "s3cr3t-smtp-pw" not in repr(transport)
@@ -284,7 +294,8 @@ async def test_smtp_failure_detail_never_echoes_the_configured_password(
 
     monkeypatch.setattr("packages.services.delivery.email.aiosmtplib.send", _raise)
     settings = Settings(
-        smtp_host="localhost", smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
+        smtp_host="localhost",
+        smtp_password="s3cr3t-smtp-pw",  # pragma: allowlist secret
     )
     transport = SMTPEmailTransport(settings, sender="a@b.invalid")
     result = await transport.send(_message())

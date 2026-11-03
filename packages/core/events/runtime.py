@@ -38,8 +38,14 @@ Handler = Callable[[AsyncSession, Event], Awaitable[str]]
 Outcome = Literal["completed", "duplicate", "dead", "retry", "deferred", "busy", "unsubscribed"]
 ACKABLE = {"completed", "duplicate", "dead", "unsubscribed"}
 STREAMS = ("jobs", "resumes", "applications", "approvals", "submissions", "system")
-ROUTES = {"job": "jobs", "resume": "resumes", "cover_letter": "resumes",
-          "application": "applications", "approval": "approvals", "submission": "submissions"}
+ROUTES = {
+    "job": "jobs",
+    "resume": "resumes",
+    "cover_letter": "resumes",
+    "application": "applications",
+    "approval": "approvals",
+    "submission": "submissions",
+}
 
 
 @dataclass(frozen=True)
@@ -68,8 +74,11 @@ async def publish_event(redis: Redis, event: Event, prefix: str = "evt") -> None
     # No profile content, instructions, credentials, or other payload PII on Redis.
     message: dict[EncodableT, EncodableT] = {"event_id": str(event.id)}
     await redis.xadd(stream_for(event.type, prefix), message)
-    if (event.type == "agent.run.failed" and event.payload.get("delivery_runtime") == 1
-            and event.payload.get("will_retry") is False):
+    if (
+        event.type == "agent.run.failed"
+        and event.payload.get("delivery_runtime") == 1
+        and event.payload.get("will_retry") is False
+    ):
         await redis.xadd(f"{prefix}.dlq", message)
     event.published = True
     event.published_at = utc_now()
@@ -84,8 +93,14 @@ class InvalidEventError(ValueError):
 
 
 class OutboxRelay:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], redis: Redis,
-                 *, prefix: str = "evt", batch_size: int = 200) -> None:
+    def __init__(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        redis: Redis,
+        *,
+        prefix: str = "evt",
+        batch_size: int = 200,
+    ) -> None:
         if batch_size < 1:
             raise ValueError("Batch size must be positive")
         self.sessions, self.redis = sessions, redis
@@ -93,11 +108,15 @@ class OutboxRelay:
 
     async def step(self) -> int:
         async with self.sessions.begin() as session:
-            rows = (await session.scalars(
-                select(Event).where(Event.published.is_(False))
-                .order_by(Event.occurred_at, Event.id).limit(self.batch_size)
-                .with_for_update(skip_locked=True)
-            )).all()
+            rows = (
+                await session.scalars(
+                    select(Event)
+                    .where(Event.published.is_(False))
+                    .order_by(Event.occurred_at, Event.id)
+                    .limit(self.batch_size)
+                    .with_for_update(skip_locked=True)
+                )
+            ).all()
             for event in rows:
                 await publish_event(self.redis, event, self.prefix)
             # XADD before commit: a crash can duplicate delivery, never lose it.
@@ -107,8 +126,14 @@ class OutboxRelay:
 
 
 class DeliveryRuntime:
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], group: str,
-                 handlers: dict[str, Handler], *, retry: RetryPolicy | None = None) -> None:
+    def __init__(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        group: str,
+        handlers: dict[str, Handler],
+        *,
+        retry: RetryPolicy | None = None,
+    ) -> None:
         if not group or not handlers or not set(handlers) <= KNOWN_EVENT_TYPES:
             raise ValueError("A named group and registered event handlers are required")
         self.sessions, self.group, self.handlers = sessions, group, dict(handlers)
@@ -142,17 +167,25 @@ class DeliveryRuntime:
             if event.type not in self.handlers:
                 return "unsubscribed"
             last = await session.scalar(
-                select(Event).where(
-                    Event.type == "agent.run.failed", Event.causation_id == event_id,
+                select(Event)
+                .where(
+                    Event.type == "agent.run.failed",
+                    Event.causation_id == event_id,
                     Event.payload["delivery_runtime"].as_integer() == 1,
                     Event.payload["consumer_group"].as_string() == self.group,
-                ).order_by(Event.occurred_at.desc(), Event.id.desc()).limit(1)
+                )
+                .order_by(Event.occurred_at.desc(), Event.id.desc())
+                .limit(1)
             )
             started = await session.scalar(
-                select(Event).where(
-                    Event.type == "worker.delivery.started", Event.causation_id == event_id,
+                select(Event)
+                .where(
+                    Event.type == "worker.delivery.started",
+                    Event.causation_id == event_id,
                     Event.payload["consumer_group"].as_string() == self.group,
-                ).order_by(Event.occurred_at.desc(), Event.id.desc()).limit(1)
+                )
+                .order_by(Event.occurred_at.desc(), Event.id.desc())
+                .limit(1)
             )
             attempts = int(started.payload["attempt"]) if started else 0
             if (
@@ -172,11 +205,17 @@ class DeliveryRuntime:
             # advisory lock. A hard process death cannot erase this attempt.
             async with self.sessions.begin() as ledger:
                 await emit(
-                    ledger, type="worker.delivery.started", aggregate_type="system",
-                    actor_type="system", correlation_id=event.correlation_id,
+                    ledger,
+                    type="worker.delivery.started",
+                    aggregate_type="system",
+                    actor_type="system",
+                    correlation_id=event.correlation_id,
                     causation_id=event.id,
-                    payload={"consumer_group": self.group, "attempt": attempt,
-                             "event_id": str(event.id)},
+                    payload={
+                        "consumer_group": self.group,
+                        "attempt": attempt,
+                        "event_id": str(event.id),
+                    },
                 )
             try:
                 async with session.begin_nested():
@@ -204,34 +243,63 @@ class DeliveryRuntime:
             except Exception as exc:
                 # The savepoint removed all domain writes and the completion claim.
                 return await self._failure(
-                    session, event, attempt, type(exc).__name__, last,
+                    session,
+                    event,
+                    attempt,
+                    type(exc).__name__,
+                    last,
                     terminal=isinstance(exc, InvalidEventError),
                 )
             log.info("worker.delivery_completed", event_id=str(event_id), group=self.group)
             return "completed"
 
-    async def _failure(self, session: AsyncSession, event: Event, attempt: int,
-                       error_type: str, last: Event | None, *, terminal: bool = False) -> Outcome:
+    async def _failure(
+        self,
+        session: AsyncSession,
+        event: Event,
+        attempt: int,
+        error_type: str,
+        last: Event | None,
+        *,
+        terminal: bool = False,
+    ) -> Outcome:
         counts = dict(last.payload.get("error_counts", {})) if last else {}
         counts[error_type] = int(counts.get(error_type, 0)) + 1
-        terminal = (terminal or attempt > len(self.retry.delays)
-                    or counts[error_type] >= self.retry.repeated_error_limit)
+        terminal = (
+            terminal
+            or attempt > len(self.retry.delays)
+            or counts[error_type] >= self.retry.repeated_error_limit
+        )
         failure = await emit(
-            session, type="agent.run.failed", aggregate_type="system",
-            correlation_id=event.correlation_id, causation_id=event.id,
-            actor_type="system", payload={
-                "delivery_runtime": 1, "consumer_group": self.group,
-                "agent": self.group, "event_id": str(event.id),
-                "attempt": attempt, "error_type": error_type,
-                "error_counts": counts, "will_retry": not terminal,
+            session,
+            type="agent.run.failed",
+            aggregate_type="system",
+            correlation_id=event.correlation_id,
+            causation_id=event.id,
+            actor_type="system",
+            payload={
+                "delivery_runtime": 1,
+                "consumer_group": self.group,
+                "agent": self.group,
+                "event_id": str(event.id),
+                "attempt": attempt,
+                "error_type": error_type,
+                "error_counts": counts,
+                "will_retry": not terminal,
             },
         )
         if terminal:
             await claim_event(session, event.id, self.group)
             await record_claim_result(session, event.id, self.group, "dead_letter")
-        log.warning("worker.delivery_failed", event_id=str(event.id),
-                    group=self.group, error_type=error_type, attempt=attempt,
-                    terminal=terminal, failure_event_id=str(failure.id))
+        log.warning(
+            "worker.delivery_failed",
+            event_id=str(event.id),
+            group=self.group,
+            error_type=error_type,
+            attempt=attempt,
+            terminal=terminal,
+            failure_event_id=str(failure.id),
+        )
         return "dead" if terminal else "retry"
 
     async def quarantine(self, stream: str, message_id: str) -> None:
@@ -241,27 +309,43 @@ class DeliveryRuntime:
             if not await claim_event(session, reference, self.group):
                 return
             await emit(
-                session, type="agent.run.failed", aggregate_type="system",
-                correlation_id=reference, actor_type="system", payload={
-                    "delivery_runtime": 1, "consumer_group": self.group,
-                    "agent": self.group, "attempt": 1,
+                session,
+                type="agent.run.failed",
+                aggregate_type="system",
+                correlation_id=reference,
+                actor_type="system",
+                payload={
+                    "delivery_runtime": 1,
+                    "consumer_group": self.group,
+                    "agent": self.group,
+                    "attempt": 1,
                     "error_counts": {"InvalidReference": 1},
-                    "error_type": "InvalidReference", "will_retry": False,
-                    "invalid_reference": True, "stream": stream, "message_id": message_id,
+                    "error_type": "InvalidReference",
+                    "will_retry": False,
+                    "invalid_reference": True,
+                    "stream": stream,
+                    "message_id": message_id,
                 },
             )
             await record_claim_result(session, reference, self.group, "dead_letter")
 
-    async def reconcile(self, redis: Redis, prefix: str = "evt", limit: int = 200,
-                        *, event_ids: Sequence[UUID] | None = None) -> int:
+    async def reconcile(
+        self,
+        redis: Redis,
+        prefix: str = "evt",
+        limit: int = 200,
+        *,
+        event_ids: Sequence[UUID] | None = None,
+    ) -> int:
         """Recover published but unprocessed events after loss/trim of Redis data.
 
         Subscriptions are explicit. Unsubscribed events are not claimed, so a
         future handler can replay them from PostgreSQL rather than losing them.
         """
         async with self.sessions() as session:
-            done = exists().where(ProcessedEvent.event_id == Event.id,
-                                  ProcessedEvent.consumer_group == self.group)
+            done = exists().where(
+                ProcessedEvent.event_id == Event.id, ProcessedEvent.consumer_group == self.group
+            )
             if not await generation_is_paused(session):
                 # Paused deliveries are acknowledged while blocked; only a durable
                 # human resolution makes them eligible for reconciliation again.
@@ -269,21 +353,29 @@ class DeliveryRuntime:
                     ProcessedEvent.result.is_(None)
                     | ~ProcessedEvent.result.startswith("blocked:generation_paused:"),
                 )
-            query = select(Event).where(Event.published.is_(True),
-                                        Event.type.in_(self.handlers), ~done)
+            query = select(Event).where(
+                Event.published.is_(True), Event.type.in_(self.handlers), ~done
+            )
             if event_ids is not None:
                 query = query.where(Event.id.in_(event_ids))
-            rows = (await session.scalars(
-                query.order_by(Event.occurred_at, Event.id).limit(limit)
-            )).all()
+            rows = (
+                await session.scalars(query.order_by(Event.occurred_at, Event.id).limit(limit))
+            ).all()
             for event in rows:
                 await redis.xadd(stream_for(event.type, prefix), {"event_id": str(event.id)})
             return len(rows)
 
 
 class StreamConsumer:
-    def __init__(self, redis: Redis, runtime: DeliveryRuntime, name: str,
-                 *, prefix: str = "evt", reclaim_ms: int = 300_000) -> None:
+    def __init__(
+        self,
+        redis: Redis,
+        runtime: DeliveryRuntime,
+        name: str,
+        *,
+        prefix: str = "evt",
+        reclaim_ms: int = 300_000,
+    ) -> None:
         self.redis, self.runtime, self.name = redis, runtime, name
         self.prefix, self.reclaim_ms = prefix, reclaim_ms
         self.streams = sorted({stream_for(kind, prefix) for kind in runtime.handlers})
@@ -320,7 +412,11 @@ class StreamConsumer:
     async def step(self) -> None:
         for stream in self.streams:
             reclaimed = await self.redis.xautoclaim(
-                stream, self.runtime.group, self.name, self.reclaim_ms, count=20,
+                stream,
+                self.runtime.group,
+                self.name,
+                self.reclaim_ms,
+                count=20,
             )
             for message_id, fields in reclaimed[1]:
                 await self._deliver(stream, message_id, fields)
@@ -328,7 +424,10 @@ class StreamConsumer:
             # reclaimed separately. Always read new entries too to avoid starvation.
             for marker in ("0", ">"):
                 batches = await self.redis.xreadgroup(
-                    self.runtime.group, self.name, {stream: marker}, count=20,
+                    self.runtime.group,
+                    self.name,
+                    {stream: marker},
+                    count=20,
                 )
                 for _, messages in batches:
                     for message_id, fields in messages:

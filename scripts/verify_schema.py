@@ -78,9 +78,7 @@ DOWN_SQL = SqlFiles(
     "0009_application_preferences.down.sql",
     "0010_submission_retry_schedule.down.sql",
 )
-GRANTS_SQL = SqlFiles(
-    "0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql"
-)
+GRANTS_SQL = SqlFiles("0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql")
 
 PASS, FAIL, WARN = "PASS", "FAIL", "WARN"
 results: list[tuple[str, str, str]] = []
@@ -106,8 +104,7 @@ def model_tables() -> dict[str, set[str]]:
                 if (
                     isinstance(stmt, ast.Assign)
                     and any(
-                        isinstance(t, ast.Name) and t.id == "__tablename__"
-                        for t in stmt.targets
+                        isinstance(t, ast.Name) and t.id == "__tablename__" for t in stmt.targets
                     )
                     and isinstance(stmt.value, ast.Constant)
                 ):
@@ -171,16 +168,12 @@ def sql_tables() -> dict[str, set[str]]:
     """{table: {columns}} parsed from CREATE TABLE blocks."""
     sql = UP_SQL.read_text(encoding="utf-8")
     tables: dict[str, set[str]] = {}
-    for match in re.finditer(
-        r"^CREATE TABLE (\w+) \((.*?)^\);", sql, re.MULTILINE | re.DOTALL
-    ):
+    for match in re.finditer(r"^CREATE TABLE (\w+) \((.*?)^\);", sql, re.MULTILINE | re.DOTALL):
         name, body = match.group(1), match.group(2)
         columns: set[str] = set()
 
         # Strip comments, then split on commas that are not inside parentheses.
-        cleaned = "\n".join(
-            line for line in body.splitlines() if not line.strip().startswith("--")
-        )
+        cleaned = "\n".join(line for line in body.splitlines() if not line.strip().startswith("--"))
         statements: list[str] = []
         depth = 0
         current: list[str] = []
@@ -207,9 +200,7 @@ def sql_tables() -> dict[str, set[str]]:
                 columns.add(first)
         tables[name] = columns
     # Schema evolution may add columns after the original CREATE TABLE.
-    for table, column in re.findall(
-        r"ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w+)", sql, re.I
-    ):
+    for table, column in re.findall(r"ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w+)", sql, re.I):
         tables.setdefault(table, set()).add(column)
     return tables
 
@@ -217,9 +208,7 @@ def sql_tables() -> dict[str, set[str]]:
 def sql_enums() -> dict[str, list[str]]:
     sql = UP_SQL.read_text(encoding="utf-8")
     enums: dict[str, list[str]] = {}
-    for match in re.finditer(
-        r"CREATE TYPE (\w+) AS ENUM \((.*?)\);", sql, re.DOTALL
-    ):
+    for match in re.finditer(r"CREATE TYPE (\w+) AS ENUM \((.*?)\);", sql, re.DOTALL):
         values = re.findall(r"'([^']+)'", match.group(2))
         enums[match.group(1)] = values
     return enums
@@ -328,9 +317,7 @@ def check_fk_order() -> None:
     problems: list[str] = []
     checked = 0
 
-    for match in re.finditer(
-        r"^CREATE TABLE (\w+) \((.*?)^\);", sql, re.MULTILINE | re.DOTALL
-    ):
+    for match in re.finditer(r"^CREATE TABLE (\w+) \((.*?)^\);", sql, re.MULTILINE | re.DOTALL):
         table, body = match.group(1), match.group(2)
         for fk in re.finditer(r"REFERENCES (\w+) ", body):
             target = fk.group(1)
@@ -372,20 +359,17 @@ def check_design_constraints() -> None:
         # design's ck_attempt_* shorthand, so the ORM and the DDL agree.
         "uq_revision_attempt_per_approval": "one live attempt per approval",
         "uq_resume_version_per_application": "resume version allocation backstop",
-        "ck_resume_revision_attempts_outcome_only_on_success":
-            "a semantic negative is never a failed status",
-        "ck_resume_revision_attempts_succeeded_requires_result":
-            "a succeeded attempt has a result",
-        "ck_resume_revision_attempts_failed_requires_class":
-            "a failed attempt is classified",
-        "ck_resume_revision_attempts_open_has_no_result":
-            "an open attempt carries no result",
-        "ck_resume_revision_attempts_abandoned_named_a_human":
-            "abandonment names a human",
-        "ck_resume_revision_attempts_running_has_lease":
-            "a running attempt holds a lease",
-        "ck_resume_revision_attempts_evidence_stale_retry_coherent":
-            "retry counter and its timestamp agree",
+        "ck_resume_revision_attempts_outcome_only_on_success": (
+            "a semantic negative is never a failed status"
+        ),
+        "ck_resume_revision_attempts_succeeded_requires_result": "a succeeded attempt has a result",
+        "ck_resume_revision_attempts_failed_requires_class": "a failed attempt is classified",
+        "ck_resume_revision_attempts_open_has_no_result": "an open attempt carries no result",
+        "ck_resume_revision_attempts_abandoned_named_a_human": "abandonment names a human",
+        "ck_resume_revision_attempts_running_has_lease": "a running attempt holds a lease",
+        "ck_resume_revision_attempts_evidence_stale_retry_coherent": (
+            "retry counter and its timestamp agree"
+        ),
         # 0009 (M9). An agent-authored answer must cite at least one fact.
         "ck_application_answers_agent_requires_facts": "no uncited agent answer",
     }
@@ -413,15 +397,23 @@ def check_security_invariants() -> None:
         problems.append("no REVOKE ... FROM app_agent block")
     else:
         revoked = revoke_block.group(1)
-        for table in ("profile_facts", "profiles", "site_policies", "settings",
-                      "users", "approvals"):
+        for table in (
+            "profile_facts",
+            "profiles",
+            "site_policies",
+            "settings",
+            "users",
+            "approvals",
+        ):
             if table not in revoked:
                 problems.append(f"app_agent write access to {table} not revoked")
 
-    if re.search(r"GRANT[^;]*\bON\b[^;]*\bprofile_facts\b[^;]*TO[^;]*app_agent",
-                 grants.replace("\n", " ")):
-        granted = re.findall(r"GRANT ([A-Z, ()a-z_]+) ON ([^;]*?) TO ([^;]*?);",
-                             grants.replace("\n", " "))
+    if re.search(
+        r"GRANT[^;]*\bON\b[^;]*\bprofile_facts\b[^;]*TO[^;]*app_agent", grants.replace("\n", " ")
+    ):
+        granted = re.findall(
+            r"GRANT ([A-Z, ()a-z_]+) ON ([^;]*?) TO ([^;]*?);", grants.replace("\n", " ")
+        )
         for privileges, tables, roles in granted:
             if "profile_facts" in tables and "app_agent" in roles and "SELECT" not in privileges:
                 problems.append("app_agent has non-SELECT grant on profile_facts")
@@ -447,8 +439,10 @@ def check_security_invariants() -> None:
         problems.append("missing verified-fact immutability trigger")
 
     # Audit trail must be undeletable.
-    if "REVOKE DELETE ON events, audit_logs, application_status_history FROM PUBLIC" \
-            not in grants.replace("\n  ", " ").replace("\n", " "):
+    if (
+        "REVOKE DELETE ON events, audit_logs, application_status_history FROM PUBLIC"
+        not in grants.replace("\n  ", " ").replace("\n", " ")
+    ):
         problems.append("audit trail DELETE not revoked from PUBLIC")
 
     # Agents must not be able to create objects to work around grants.
@@ -463,7 +457,6 @@ def check_security_invariants() -> None:
         record(FAIL, "security invariants in DDL", "; ".join(problems[:6]))
     else:
         record(PASS, "security invariants in DDL", "grants + 3 triggers + append-only")
-
 
 
 def check_audit_role_containment() -> None:
@@ -489,14 +482,22 @@ def check_audit_role_containment() -> None:
     matrix: dict[str, tuple[set[str], tuple[str, ...]]] = {
         "agent_runs": (
             {"SELECT", "INSERT"},
-            ("status", "steps_completed", "input_tokens", "output_tokens",
-             "cost_usd", "prompt_version", "error_type", "error_message",
-             "duration_ms", "finished_at"),
+            (
+                "status",
+                "steps_completed",
+                "input_tokens",
+                "output_tokens",
+                "cost_usd",
+                "prompt_version",
+                "error_type",
+                "error_message",
+                "duration_ms",
+                "finished_at",
+            ),
         ),
         "agent_run_steps": (
             {"SELECT", "INSERT"},
-            ("status", "input_digest", "output", "guardrail_results",
-             "duration_ms", "finished_at"),
+            ("status", "input_digest", "output", "guardrail_results", "duration_ms", "finished_at"),
         ),
         "llm_calls": ({"SELECT", "INSERT"}, ("response_redacted",)),
         "events": ({"SELECT", "INSERT"}, ()),
@@ -526,9 +527,7 @@ def check_audit_role_containment() -> None:
         if update_cols:
             got = tuple(c.strip() for c in update_cols.group(1).split(",") if c.strip())
             if got != allowed_cols:
-                problems.append(
-                    f"{target}: UPDATE columns {got} != matrix {allowed_cols}"
-                )
+                problems.append(f"{target}: UPDATE columns {got} != matrix {allowed_cols}")
         else:
             for word in re.split(r"[,\s]+", head.strip()):
                 privilege = word.upper()
@@ -613,8 +612,11 @@ def check_timestamp_timezone_awareness() -> None:
     if problems:
         record(FAIL, "timestamps are timezone-aware", "; ".join(problems))
     else:
-        record(PASS, "timestamps are timezone-aware",
-               f"{tz_columns} TIMESTAMPTZ columns, mapped at Base")
+        record(
+            PASS,
+            "timestamps are timezone-aware",
+            f"{tz_columns} TIMESTAMPTZ columns, mapped at Base",
+        )
 
 
 def check_down_migration() -> None:
@@ -644,9 +646,7 @@ def check_migration_chain() -> None:
     revisions: dict[str, str | None] = {}
     for path in versions:
         source = path.read_text(encoding="utf-8")
-        revision_match = re.search(
-            r'^revision: str = "([^"]+)"', source, re.MULTILINE
-        )
+        revision_match = re.search(r'^revision: str = "([^"]+)"', source, re.MULTILINE)
         down_match = re.search(
             r'^down_revision: str \| None = (?:"([^"]+)"|None)', source, re.MULTILINE
         )
@@ -668,15 +668,12 @@ def check_migration_chain() -> None:
     # whether `down` was a Match or a string.
     for revision_id, parent_id in revisions.items():
         if parent_id is not None and parent_id not in revisions:
-            problems.append(
-                f"{revision_id} points at missing revision {parent_id}"
-            )
+            problems.append(f"{revision_id} points at missing revision {parent_id}")
 
     if problems:
         record(FAIL, "migration chain is linear", "; ".join(problems))
     else:
-        record(PASS, "migration chain is linear",
-               f"{len(revisions)} revisions, head={heads[0]}")
+        record(PASS, "migration chain is linear", f"{len(revisions)} revisions, head={heads[0]}")
 
 
 def main() -> int:

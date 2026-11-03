@@ -151,6 +151,7 @@ async def _setup_submitting_application(
 # Worker execution tests
 # ---------------------------------------------------------------------------
 
+
 async def test_submission_worker_success_sent(
     session,
     demo_profile,
@@ -184,9 +185,7 @@ async def test_submission_worker_success_sent(
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     # Assert application state
@@ -215,12 +214,16 @@ async def test_submission_worker_success_sent(
 
     # Assert emitted events
     events = (
-        await session.execute(
-            select(Event)
-            .where(Event.correlation_id == app.id)
-            .order_by(Event.occurred_at.asc(), Event.id.asc())
+        (
+            await session.execute(
+                select(Event)
+                .where(Event.correlation_id == app.id)
+                .order_by(Event.occurred_at.asc(), Event.id.asc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     event_by_type = {e.type: e for e in events}
     assert "submission.started" in event_by_type
     assert event_by_type["submission.started"].actor_type == "system"
@@ -261,16 +264,12 @@ async def test_submission_worker_idempotent_replay(
     )
 
     # First attempt
-    outcome1 = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome1 = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome1 == "completed"
     assert len(fake_transport.sent) == 1
 
     # Second attempt (replay of same event)
-    outcome2 = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome2 = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome2 == "completed"
     # Proves no double send:
     assert len(fake_transport.sent) == 1
@@ -314,9 +313,7 @@ async def test_submission_worker_rejection(
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     await session.refresh(app)
@@ -334,11 +331,16 @@ async def test_submission_worker_rejection(
 
     # Assert emitted events
     events = (
-        await session.execute(
-            select(Event)
-            .where(Event.correlation_id == app.id, Event.type == "submission.failed")
+        (
+            await session.execute(
+                select(Event).where(
+                    Event.correlation_id == app.id, Event.type == "submission.failed"
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(events) == 1
     assert events[0].actor_type == "system"
     assert events[0].payload["will_retry"] is False
@@ -382,9 +384,7 @@ async def test_submission_worker_ambiguous(
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     await session.refresh(app)
@@ -400,11 +400,16 @@ async def test_submission_worker_ambiguous(
     assert sub.next_attempt_after is None
 
     events = (
-        await session.execute(
-            select(Event)
-            .where(Event.correlation_id == app.id, Event.type == "submission.failed")
+        (
+            await session.execute(
+                select(Event).where(
+                    Event.correlation_id == app.id, Event.type == "submission.failed"
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(events) == 1
     assert events[0].actor_type == "system"
     assert events[0].payload["will_retry"] is False
@@ -449,9 +454,7 @@ async def test_submission_worker_transient_failure_no_auto_retry(
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     await session.refresh(app)
@@ -499,9 +502,7 @@ async def test_submission_worker_switches_disabled_at_execution(
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     # Zero emails sent
@@ -517,11 +518,16 @@ async def test_submission_worker_switches_disabled_at_execution(
     assert "disabled" in sub.failure_reason.lower()
 
     events = (
-        await session.execute(
-            select(Event)
-            .where(Event.correlation_id == app.id, Event.type == "submission.failed")
+        (
+            await session.execute(
+                select(Event).where(
+                    Event.correlation_id == app.id, Event.type == "submission.failed"
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(events) == 1
     assert events[0].actor_type == "system"
 
@@ -563,9 +569,7 @@ async def test_submission_worker_policy_expired_at_execution(
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     assert len(fake_transport.sent) == 0
@@ -580,11 +584,16 @@ async def test_submission_worker_policy_expired_at_execution(
     assert "expired" in sub.failure_reason.lower() or "disallowed" in sub.failure_reason.lower()
 
     events = (
-        await session.execute(
-            select(Event)
-            .where(Event.correlation_id == app.id, Event.type == "submission.failed")
+        (
+            await session.execute(
+                select(Event).where(
+                    Event.correlation_id == app.id, Event.type == "submission.failed"
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(events) == 1
     assert events[0].actor_type == "system"
 
@@ -626,9 +635,7 @@ async def test_submission_worker_destination_tampered_to_non_mailto_at_execution
         lambda *args, **kwargs: fake_transport,
     )
 
-    outcome = await execute_submission_attempt(
-        session, event, settings=Settings(), store=store
-    )
+    outcome = await execute_submission_attempt(session, event, settings=Settings(), store=store)
     assert outcome == "completed"
 
     assert len(fake_transport.sent) == 0

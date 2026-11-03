@@ -269,9 +269,7 @@ def _ground_years_of_experience(experiences: list[Experience]) -> DraftedAnswer 
     )
 
 
-def _ground_verified_fact(
-    question_text: str, facts: list[ProfileFact]
-) -> DraftedAnswer | None:
+def _ground_verified_fact(question_text: str, facts: list[ProfileFact]) -> DraftedAnswer | None:
     """The only path that produces `source = 'agent'`.
 
     Every candidate fact was already loaded pre-filtered to this exact
@@ -290,8 +288,7 @@ def _ground_verified_fact(
         # not a fuzzy or embedding match, because every accepted match must
         # be one a human reviewing the citation can immediately see.
         words = [
-            w for w in re.findall(r"[a-zA-Z0-9]+", text_lower)
-            if len(w) >= _MIN_KEYWORD_OVERLAP
+            w for w in re.findall(r"[a-zA-Z0-9]+", text_lower) if len(w) >= _MIN_KEYWORD_OVERLAP
         ]
         if any(word in question_lower for word in words):
             return DraftedAnswer(
@@ -575,9 +572,7 @@ async def request_application_questions(
         )
     already = await existing_questions(session, application_id)
     if already:
-        raise ApplicationStateError(
-            f"application {application_id} already has prepared questions"
-        )
+        raise ApplicationStateError(f"application {application_id} already has prepared questions")
 
     event = await record_event(
         session,
@@ -699,9 +694,7 @@ async def prepare_application(
         raise NotFoundError(f"job for application {application_id} not found")
     experiences = list(
         (
-            await session.execute(
-                select(Experience).where(Experience.profile_id == profile.id)
-            )
+            await session.execute(select(Experience).where(Experience.profile_id == profile.id))
         ).scalars()
     )
     facts = await _load_citable_facts(session, profile.id)
@@ -803,9 +796,7 @@ async def prepare_application(
     )
 
     auto_answered = sum(1 for a in created_answers if not a.requires_human)
-    human_required = sum(
-        1 for a in created_answers if a.requires_human and a.value is not None
-    )
+    human_required = sum(1 for a in created_answers if a.requires_human and a.value is not None)
     blanks = sum(1 for a in created_answers if a.value is None)
     await emit(
         session,
@@ -890,8 +881,7 @@ async def edit_answer(
     application = await _load_application(session, application_id, lock=False)
     if application.status is not ApplicationStatus.AWAITING_APPROVAL:
         raise ApplicationStateError(
-            f"answers may only be edited while awaiting_approval, not "
-            f"{application.status}"
+            f"answers may only be edited while awaiting_approval, not " f"{application.status}"
         )
 
     if answer.source != AnswerSource.HUMAN and answer.value is not None:
@@ -1008,7 +998,8 @@ def answers_snapshot_matches(
 
 def _unresolved(questions: list[ApplicationQuestion]) -> list[ApplicationQuestion]:
     return [
-        q for q in questions
+        q
+        for q in questions
         if q.answer is not None and q.answer.requires_human and q.answer.value is None
     ]
 
@@ -1076,8 +1067,7 @@ async def _decide_answers(
         },
     )
     event_type = (
-        "approval.granted" if status is ApprovalStatus.APPROVED
-        else "approval.changes_requested"
+        "approval.granted" if status is ApprovalStatus.APPROVED else "approval.changes_requested"
     )
     payload: dict[str, Any] = {
         "approval_id": str(approval.id),
@@ -1163,9 +1153,7 @@ async def request_changes_answers(
     """
     instructions = (note or "").strip()
     if not instructions:
-        raise ValidationError(
-            "requesting changes needs a note saying what should change"
-        )
+        raise ValidationError("requesting changes needs a note saying what should change")
     return await _decide_answers(
         session,
         application_id=application_id,

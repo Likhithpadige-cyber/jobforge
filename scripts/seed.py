@@ -54,9 +54,7 @@ async def seed() -> int:
 
         user_id, profile_id = uuid7(), uuid7()
         await session.execute(
-            text(
-                "INSERT INTO users (id, email, role) VALUES (:id, :email, 'owner')"
-            ),
+            text("INSERT INTO users (id, email, role) VALUES (:id, :email, 'owner')"),
             {"id": user_id, "email": DEMO_EMAIL},
         )
         await session.execute(
@@ -80,8 +78,7 @@ async def seed() -> int:
             location="Example City, EX",
             start_date=date(2024, 3, 1),
             description=(
-                "Maintained demo Linux servers. "
-                "Monitored demo workloads with a demo dashboard."
+                "Maintained demo Linux servers. " "Monitored demo workloads with a demo dashboard."
             ),
         )
         await EducationRepository(session).create_for_profile(

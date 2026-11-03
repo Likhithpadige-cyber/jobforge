@@ -115,9 +115,7 @@ def client_factory(engine):
         settings = get_settings()
 
         if user_id is not None:
-            login = await create_session(
-                redis, user_id=user_id, idle_minutes=60, absolute_hours=24
-            )
+            login = await create_session(redis, user_id=user_id, idle_minutes=60, absolute_hours=24)
             cookies[settings.session_cookie_name] = login.id
             cookies[settings.csrf_cookie_name] = login.csrf_token
             if csrf:
@@ -136,6 +134,7 @@ def client_factory(engine):
 # ---------------------------------------------------------------------------
 # Authorization & Validation boundaries
 # ---------------------------------------------------------------------------
+
 
 async def test_unauthenticated_submit_fails(client_factory) -> None:
     client = await client_factory(None)
@@ -210,6 +209,7 @@ async def test_submit_other_users_application_404(
 # ---------------------------------------------------------------------------
 # Preconditions via API
 # ---------------------------------------------------------------------------
+
 
 async def test_submit_not_ready_status_409(
     client_factory, session, demo_application, demo_user
@@ -364,10 +364,10 @@ async def test_submit_job_without_mailto_url_422(
     assert "mailto:" in res.json()["detail"].lower()
 
 
-
 # ---------------------------------------------------------------------------
 # Successful Submit Acceptance (202 Accepted)
 # ---------------------------------------------------------------------------
+
 
 async def test_submit_successful_acceptance_and_replay_409(
     client_factory,

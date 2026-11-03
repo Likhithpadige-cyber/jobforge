@@ -183,9 +183,7 @@ def prepare_request(
         # field that reaches a prompt.
         payload["revision"] = {
             "prior_resume_version": revision["prior_resume_version"],
-            "reviewer_instructions": prompt_text(
-                str(revision["reviewer_instructions"])
-            ),
+            "reviewer_instructions": prompt_text(str(revision["reviewer_instructions"])),
             "prior_claims": [
                 {
                     "section": str(claim["section"]),
@@ -284,8 +282,11 @@ async def select_content(
             raise ValueError("C3 selection requires an explicit inference audit writer")
         writer = DomainInferenceAudit(session)
     stage = await writer.begin_stage(
-        agent="resume_optimizer", pipeline="tailoring", step_name="B1",
-        aggregate_type="job", aggregate_id=context.job["id"],
+        agent="resume_optimizer",
+        pipeline="tailoring",
+        step_name="B1",
+        aggregate_type="job",
+        aggregate_id=context.job["id"],
         correlation_id=context.job["id"],
     )
     guardrail: dict[str, Any] = {}
@@ -297,16 +298,23 @@ async def select_content(
         # Do not store excerpts, which may contain PII from attacker input.
         guardrail = {k: v for k, v in findings.as_payload().items() if k != "excerpts"}
         await writer.record_request(
-            stage, prompt_version=request.prompt_version, input_digest=request.digest,
+            stage,
+            prompt_version=request.prompt_version,
+            input_digest=request.digest,
             guardrail_results=guardrail,
         )
         if findings.findings:
             await writer.record_guardrail(
-                stage, guardrail_results=guardrail,
+                stage,
+                guardrail_results=guardrail,
                 event=EventEnvelope(
-                    type="guardrail.violation.detected", aggregate_type="job",
-                    aggregate_id=context.job["id"], correlation_id=context.job["id"],
-                    actor_type="agent", actor_id="resume_optimizer", payload=guardrail,
+                    type="guardrail.violation.detected",
+                    aggregate_type="job",
+                    aggregate_id=context.job["id"],
+                    correlation_id=context.job["id"],
+                    actor_type="agent",
+                    actor_id="resume_optimizer",
+                    payload=guardrail,
                 ),
             )
         for attempt in range(2):
@@ -321,9 +329,13 @@ async def select_content(
                     raise ModelOutputError("B1 schema repair has no recorded response") from None
                 raise
             call = await writer.record_call(
-                stage, model=request.model, input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens, cost_usd=response.cost_usd,
-                prompt_hash=request.digest, stop_reason=response.stop_reason,
+                stage,
+                model=request.model,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                cost_usd=response.cost_usd,
+                prompt_hash=request.digest,
+                stop_reason=response.stop_reason,
             )
             if writer.spent(stage) > client.max_cost:
                 raise CostLimitError("B1 exceeded its run budget")
@@ -354,11 +366,16 @@ async def select_content(
                 continue
             safe_output = {"selections": [item.model_dump() for item in result.selections]}
             await writer.record_call_output(stage, call, response_redacted=canonical(safe_output))
-            await writer.record_step_output(stage, output={
-                **safe_output,
-                "evaluation_id": str(context.evaluation_id),
-                "gap_requirement_indices": [gap.requirement_index for gap in result.material_gaps],
-            })
+            await writer.record_step_output(
+                stage,
+                output={
+                    **safe_output,
+                    "evaluation_id": str(context.evaluation_id),
+                    "gap_requirement_indices": [
+                        gap.requirement_index for gap in result.material_gaps
+                    ],
+                },
+            )
             client.record(request, response.model_copy(update={"body": canonical(safe_output)}))
             succeeded = True
             return result
@@ -385,11 +402,16 @@ async def select_content(
             }
             try:
                 await writer.record_guardrail(
-                    stage, guardrail_results={**guardrail, "failure": violation},
+                    stage,
+                    guardrail_results={**guardrail, "failure": violation},
                     event=EventEnvelope(
-                        type="guardrail.violation.detected", aggregate_type="job",
-                        aggregate_id=context.job["id"], correlation_id=context.job["id"],
-                        actor_type="agent", actor_id="resume_optimizer", payload=violation,
+                        type="guardrail.violation.detected",
+                        aggregate_type="job",
+                        aggregate_id=context.job["id"],
+                        correlation_id=context.job["id"],
+                        actor_type="agent",
+                        actor_id="resume_optimizer",
+                        payload=violation,
                     ),
                 )
             except Exception:
@@ -402,7 +424,8 @@ async def select_content(
         if not evidence_failed:
             try:
                 await writer.finish_stage(
-                    stage, status="succeeded" if succeeded else "failed",
+                    stage,
+                    status="succeeded" if succeeded else "failed",
                     steps_completed=1 if succeeded else 0,
                     duration_ms=int((monotonic() - started) * 1000),
                     error_type=type(primary).__name__ if primary is not None else None,

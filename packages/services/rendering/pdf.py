@@ -30,8 +30,8 @@ from packages.services.rendering.protocol import RendererUnavailableError
 PDF_CONTENT_TYPE = "application/pdf"
 
 # --- fixed page geometry, in points -----------------------------------------
-_PAGE_WIDTH, _PAGE_HEIGHT = 612.0, 792.0   # US Letter
-_MARGIN = 54.0                              # 0.75in
+_PAGE_WIDTH, _PAGE_HEIGHT = 612.0, 792.0  # US Letter
+_MARGIN = 54.0  # 0.75in
 _BODY_FONT, _BODY_SIZE = "Helvetica", 10.0
 _HEAD_FONT, _HEAD_SIZE = "Helvetica-Bold", 12.0
 _LEADING = 13.0
@@ -75,17 +75,13 @@ class PdfResumeRenderer:
             from reportlab.pdfbase.pdfmetrics import stringWidth
             from reportlab.pdfgen import canvas
         except ImportError as exc:
-            raise RendererUnavailableError(
-                "PDF rendering requires ReportLab"
-            ) from exc
+            raise RendererUnavailableError("PDF rendering requires ReportLab") from exc
 
         buffer = io.BytesIO()
         # invariant=1 is what makes this reproducible: it pins /CreationDate,
         # /ModDate and the /ID array, which are otherwise the clock and a
         # random value.
-        pdf = canvas.Canvas(
-            buffer, pagesize=(_PAGE_WIDTH, _PAGE_HEIGHT), invariant=1
-        )
+        pdf = canvas.Canvas(buffer, pagesize=(_PAGE_WIDTH, _PAGE_HEIGHT), invariant=1)
         pdf.setTitle("")
         pdf.setAuthor("JobForge")
         pdf.setSubject("")

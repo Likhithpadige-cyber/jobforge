@@ -35,9 +35,7 @@ from datetime import UTC, datetime
 from packages.services.rendering.document import ResumeDocument
 from packages.services.rendering.protocol import RendererUnavailableError
 
-DOCX_CONTENT_TYPE = (
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-)
+DOCX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 #: Fixed stamp for every ZIP entry and for the core properties. 1980-01-01 is
 #: the earliest a ZIP can represent, and it is obviously not an authoring
@@ -61,9 +59,7 @@ def _normalise(raw: bytes) -> bytes:
     """
     source = io.BytesIO(raw)
     out = io.BytesIO()
-    with zipfile.ZipFile(source) as zin, zipfile.ZipFile(
-        out, "w", zipfile.ZIP_DEFLATED
-    ) as zout:
+    with zipfile.ZipFile(source) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
             stamped = zipfile.ZipInfo(item.filename, date_time=DETERMINISTIC_ZIP_TIMESTAMP)
             stamped.compress_type = item.compress_type
@@ -105,9 +101,7 @@ class DocxResumeRenderer:
         try:
             import docx
         except ImportError as exc:
-            raise RendererUnavailableError(
-                "DOCX rendering requires python-docx"
-            ) from exc
+            raise RendererUnavailableError("DOCX rendering requires python-docx") from exc
 
         doc = docx.Document()
 

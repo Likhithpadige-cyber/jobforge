@@ -116,9 +116,7 @@ DEMO_FACTS = [
 
 
 async def _existing_demo_job(session) -> Job | None:
-    return (
-        await session.execute(select(Job).where(Job.url == DEMO_JOB_URL))
-    ).scalar_one_or_none()
+    return (await session.execute(select(Job).where(Job.url == DEMO_JOB_URL))).scalar_one_or_none()
 
 
 async def _demo_profile(session) -> tuple[UUID, UUID] | None:
@@ -207,9 +205,7 @@ async def _base_resume(session, profile_id: UUID) -> Resume:
     base = (
         (
             await session.execute(
-                select(Resume).where(
-                    Resume.profile_id == profile_id, Resume.kind == "base"
-                )
+                select(Resume).where(Resume.profile_id == profile_id, Resume.kind == "base")
             )
         )
         .scalars()
@@ -333,8 +329,7 @@ def _drafts(facts: dict[str, ProfileFact]) -> tuple[dict, dict]:
                 "docker",
             ),
             bullet(
-                "Administered Linux systems and automated routine work with "
-                "shell scripting.",
+                "Administered Linux systems and automated routine work with " "shell scripting.",
                 "linux",
             ),
         ]
@@ -343,8 +338,7 @@ def _drafts(facts: dict[str, ProfileFact]) -> tuple[dict, dict]:
         "sentences": [
             {
                 "text": (
-                    "Cloud engineer with hands-on AWS infrastructure and "
-                    "Terraform experience."
+                    "Cloud engineer with hands-on AWS infrastructure and " "Terraform experience."
                 ),
                 "fact_ids": [str(facts["terraform"].id)],
                 "numerals_used": [],
@@ -465,9 +459,7 @@ async def seed() -> int:
         )
         await session.flush()
 
-        context = await load_tailoring_context(
-            session, profile_id=profile_id, job_id=job.id
-        )
+        context = await load_tailoring_context(session, profile_id=profile_id, job_id=job.id)
         selection = _selection(facts)
 
         # Run the demo drafts through the real B2 and B3 validators. No model
@@ -476,12 +468,8 @@ async def seed() -> int:
         # figure not present in a cited fact fails the seed here rather than
         # appearing in the studio as an unsupported claim.
         b2, b3 = _drafts(facts)
-        drafting = validate_drafting(
-            canonical(b2), context, selection, prompt_version="demo-b2"
-        )
-        summary = validate_summary(
-            canonical(b3), context, selection, prompt_version="demo-b3"
-        )
+        drafting = validate_drafting(canonical(b2), context, selection, prompt_version="demo-b2")
+        summary = validate_summary(canonical(b3), context, selection, prompt_version="demo-b3")
         bullets, sentences = drafting.bullets, summary.sentences
         verified = _verdicts(bullets, sentences, selection, context)
 
@@ -503,9 +491,7 @@ async def seed() -> int:
         print(f"  job           : Cloud Engineer at {DEMO_COMPANY} (Dallas, TX)")
         print(f"  application   : {application.id} -> {result.to_status}")
         print(f"  resume        : v{result.version} ({result.verification_status})")
-        print(
-            f"  claims        : {result.verified_count}/{result.claim_count} supported"
-        )
+        print(f"  claims        : {result.verified_count}/{result.claim_count} supported")
         print(f"  events        : {', '.join(result.emitted)}")
         print()
         print(f"  open http://localhost:3000/resume-studio/{application.id}")

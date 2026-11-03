@@ -54,9 +54,7 @@ sources_router = APIRouter(
 )
 async def import_jobs(payload: ImportRequest, session: DbSession) -> Any:
     postings = (
-        parse_csv(payload.content)
-        if payload.format == "csv"
-        else parse_json(payload.content)
+        parse_csv(payload.content) if payload.format == "csv" else parse_json(payload.content)
     )
     pipeline = IngestionPipeline(session)
     report = await pipeline.ingest_batch(

@@ -123,13 +123,10 @@ def test_every_route_is_classified() -> None:
     """
     prefix = get_settings().api_prefix
     unclassified = [
-        (m, p)
-        for m, p in ALL_ROUTES
-        if p not in PUBLIC_PATHS and not p.startswith(prefix)
+        (m, p) for m, p in ALL_ROUTES if p not in PUBLIC_PATHS and not p.startswith(prefix)
     ]
     assert unclassified == [], (
-        "routes outside the API prefix that are not listed as public: "
-        f"{unclassified}"
+        "routes outside the API prefix that are not listed as public: " f"{unclassified}"
     )
 
 
@@ -157,15 +154,13 @@ async def test_protected_routes_reject_anonymous(app_client, method, path) -> No
     here would mean the body was parsed before anyone checked who was asking.
     """
     response = await app_client.request(method, _concrete(path))
-    assert response.status_code == 401, (
-        f"{method} {path} returned {response.status_code} to an anonymous caller"
-    )
+    assert (
+        response.status_code == 401
+    ), f"{method} {path} returned {response.status_code} to an anonymous caller"
 
 
 @pytest.mark.parametrize("method,path", PUBLIC, ids=[_id(r) for r in PUBLIC])
-async def test_public_routes_do_not_require_authentication(
-    app_client, method, path
-) -> None:
+async def test_public_routes_do_not_require_authentication(app_client, method, path) -> None:
     """The public surface stays reachable without a session.
 
     Status is deliberately not pinned: /api/v1/health answers 503 when its
@@ -210,9 +205,7 @@ async def test_anonymous_access_does_not_reveal_whether_a_job_exists(
     [(m, p) for m, p in PROTECTED if m in _SAFE_METHODS],
     ids=[_id(r) for r in PROTECTED if r[0] in _SAFE_METHODS],
 )
-async def test_authenticated_session_passes_the_gate(
-    db_app_client, method, path
-) -> None:
+async def test_authenticated_session_passes_the_gate(db_app_client, method, path) -> None:
     """A signed-in caller is never refused by authentication.
 
     What happens after the gate is the endpoint's own business: a random UUID
@@ -227,8 +220,7 @@ async def test_authenticated_session_passes_the_gate(
         # gate let it through, which is what this test is about.
         return
     assert response.status_code not in (401, 403), (
-        f"{method} {path} refused an authenticated session with "
-        f"{response.status_code}"
+        f"{method} {path} refused an authenticated session with " f"{response.status_code}"
     )
 
 
@@ -238,9 +230,7 @@ async def test_authenticated_session_passes_the_gate(
     PROTECTED_MUTATIONS,
     ids=[_id(r) for r in PROTECTED_MUTATIONS],
 )
-async def test_protected_mutations_require_csrf(
-    db_app_client, method, path
-) -> None:
+async def test_protected_mutations_require_csrf(db_app_client, method, path) -> None:
     """A valid session alone is not enough to change state.
 
     The cookies stay; only the echoed header is removed. That is exactly the
@@ -250,8 +240,7 @@ async def test_protected_mutations_require_csrf(
     db_app_client.headers.pop(CSRF_HEADER, None)
     response = await db_app_client.request(method, _concrete(path))
     assert response.status_code == 403, (
-        f"{method} {path} accepted a session without a CSRF token "
-        f"({response.status_code})"
+        f"{method} {path} accepted a session without a CSRF token " f"({response.status_code})"
     )
 
 
@@ -389,9 +378,7 @@ OWNER_AND_REVIEWER = frozenset(
 )
 
 OWNER_ONLY_MUTATIONS = [r for r in sorted(OWNER_ONLY) if r[0] not in _SAFE_METHODS]
-REVIEWER_ALLOWED_MUTATIONS = [
-    r for r in sorted(OWNER_AND_REVIEWER) if r[0] not in _SAFE_METHODS
-]
+REVIEWER_ALLOWED_MUTATIONS = [r for r in sorted(OWNER_AND_REVIEWER) if r[0] not in _SAFE_METHODS]
 
 #: The problem-document `type` each refusal carries. Both are 403, and the
 #: difference is the whole point: a client that cannot tell them apart will
@@ -412,9 +399,7 @@ def test_every_protected_route_has_a_role_policy() -> None:
     protected = set(PROTECTED)
 
     unclassified = sorted(protected - classified)
-    assert unclassified == [], (
-        f"protected routes with no role policy: {unclassified}"
-    )
+    assert unclassified == [], f"protected routes with no role policy: {unclassified}"
 
     stale = sorted(classified - protected)
     assert stale == [], f"role policy names routes that are not registered: {stale}"
@@ -426,9 +411,7 @@ def test_every_protected_route_has_a_role_policy() -> None:
 def test_no_public_route_carries_a_role_policy() -> None:
     """Public means public. A role policy on an unauthenticated route would
     be unenforceable and misleading."""
-    overlap = sorted(
-        r for r in (OWNER_ONLY | OWNER_AND_REVIEWER) if r[1] in PUBLIC_PATHS
-    )
+    overlap = sorted(r for r in (OWNER_ONLY | OWNER_AND_REVIEWER) if r[1] in PUBLIC_PATHS)
     assert overlap == [], overlap
 
 
@@ -436,9 +419,7 @@ def test_no_public_route_carries_a_role_policy() -> None:
 @pytest.mark.parametrize(
     "method,path", sorted(OWNER_ONLY), ids=[_id(r) for r in sorted(OWNER_ONLY)]
 )
-async def test_reviewer_is_refused_on_owner_only_routes(
-    api_sessions, method, path
-) -> None:
+async def test_reviewer_is_refused_on_owner_only_routes(api_sessions, method, path) -> None:
     """403 with the authorization problem type, not 401 and not 404.
 
     The path parameter is a random UUID that certainly does not exist. A 404
@@ -447,9 +428,9 @@ async def test_reviewer_is_refused_on_owner_only_routes(
     """
     reviewer = await api_sessions("reviewer")
     response = await reviewer.request(method, _concrete(path))
-    assert response.status_code == 403, (
-        f"reviewer got {response.status_code} on owner-only {method} {path}"
-    )
+    assert (
+        response.status_code == 403
+    ), f"reviewer got {response.status_code} on owner-only {method} {path}"
     assert response.json()["type"] == ROLE_TYPE, response.json()
 
 
@@ -458,9 +439,7 @@ async def test_reviewer_is_refused_on_owner_only_routes(
     sorted(OWNER_AND_REVIEWER),
     ids=[_id(r) for r in sorted(OWNER_AND_REVIEWER)],
 )
-async def test_reviewer_passes_the_gate_on_permitted_routes(
-    api_sessions, method, path
-) -> None:
+async def test_reviewer_passes_the_gate_on_permitted_routes(api_sessions, method, path) -> None:
     """A reviewer is never refused by authorization on a permitted route.
 
     What the endpoint then does is its own business - a random UUID yields
@@ -475,9 +454,9 @@ async def test_reviewer_passes_the_gate_on_permitted_routes(
         return  # the handler ran and raised on missing data: the gate passed
     assert response.status_code != 401, f"{method} {path} refused a reviewer session"
     if response.status_code == 403:
-        assert response.json()["type"] != ROLE_TYPE, (
-            f"reviewer was refused by role on permitted {method} {path}"
-        )
+        assert (
+            response.json()["type"] != ROLE_TYPE
+        ), f"reviewer was refused by role on permitted {method} {path}"
 
 
 # --------------------------------------------------------------------- owner
@@ -493,9 +472,7 @@ async def test_owner_is_never_refused_by_role(api_sessions, method, path) -> Non
         return
     assert response.status_code != 401
     if response.status_code == 403:
-        assert response.json()["type"] != ROLE_TYPE, (
-            f"owner was refused by role on {method} {path}"
-        )
+        assert response.json()["type"] != ROLE_TYPE, f"owner was refused by role on {method} {path}"
 
 
 # ---------------------------------------------------------------------- CSRF
@@ -518,9 +495,7 @@ async def test_csrf_is_enforced_for_the_owner(api_sessions, method, path) -> Non
     REVIEWER_ALLOWED_MUTATIONS,
     ids=[_id(r) for r in REVIEWER_ALLOWED_MUTATIONS],
 )
-async def test_csrf_is_enforced_for_the_reviewer(
-    api_sessions, method, path
-) -> None:
+async def test_csrf_is_enforced_for_the_reviewer(api_sessions, method, path) -> None:
     """A reviewer's permitted mutations are still CSRF-protected.
 
     This is the pair that proves the two checks are independent: the same

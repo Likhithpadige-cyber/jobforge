@@ -1,4 +1,5 @@
 """M5 ingestion/outbox/worker evaluation, using real PostgreSQL and Redis."""
+
 from uuid import uuid4
 
 import pytest
@@ -40,42 +41,74 @@ async def candidate(engine, committed_job):
         user = User(email=f"m5-{uuid4().hex}@example.invalid", role="owner")
         db.add(user)
         await db.flush()
-        profile = Profile(user_id=user.id, full_name="Synthetic M5 Candidate",
-                          target_roles=["Cloud Engineer"], location_country="US")
+        profile = Profile(
+            user_id=user.id,
+            full_name="Synthetic M5 Candidate",
+            target_roles=["Cloud Engineer"],
+            location_country="US",
+        )
         db.add(profile)
         await db.flush()
-        db.add(ProfileFact(
-            profile_id=profile.id, fact_type=FactType.SKILL, text="AWS and Terraform",
-            source_table="profiles", source_id=profile.id, status=FactStatus.VERIFIED,
-            verified_by=user.id, verified_at=utc_now(), structured={},
-        ))
-        db.add(ProfileFact(
-            profile_id=profile.id, fact_type=FactType.PREFERENCE, text="Explicit preferences",
-            source_table="profiles", source_id=profile.id, status=FactStatus.VERIFIED,
-            verified_by=user.id, verified_at=utc_now(),
-            structured={"max_seniority": "senior", "accepts_remote": True},
-        ))
+        db.add(
+            ProfileFact(
+                profile_id=profile.id,
+                fact_type=FactType.SKILL,
+                text="AWS and Terraform",
+                source_table="profiles",
+                source_id=profile.id,
+                status=FactStatus.VERIFIED,
+                verified_by=user.id,
+                verified_at=utc_now(),
+                structured={},
+            )
+        )
+        db.add(
+            ProfileFact(
+                profile_id=profile.id,
+                fact_type=FactType.PREFERENCE,
+                text="Explicit preferences",
+                source_table="profiles",
+                source_id=profile.id,
+                status=FactStatus.VERIFIED,
+                verified_by=user.id,
+                verified_at=utc_now(),
+                structured={"max_seniority": "senior", "accepts_remote": True},
+            )
+        )
         job = await db.get(Job, committed_job)
         job.description_raw = "Requirements\n- Experience with AWS\n- Experience with Terraform"
         job.normalized_title = "Cloud Engineer"
         job.seniority = "mid"
         job.is_remote = True
         job.location_country = "US"
-        event = await emit(db, type="job.normalized", aggregate_type="job",
-                           aggregate_id=job.id, correlation_id=job.id, actor_type="system",
-                           payload={"job_id": str(job.id)})
+        event = await emit(
+            db,
+            type="job.normalized",
+            aggregate_type="job",
+            aggregate_id=job.id,
+            correlation_id=job.id,
+            actor_type="system",
+            payload={"job_id": str(job.id)},
+        )
     return sessions, profile.id, committed_job, event.id
 
 
 def runtime(candidate, sessions=None):
-    return DeliveryRuntime(sessions or candidate[0], f"test.m5.{uuid4().hex}", {
-        "job.normalized": evaluation_handler(candidate[1], Thresholds()),
-    }, retry=RetryPolicy(delays=(0, 0)))
+    return DeliveryRuntime(
+        sessions or candidate[0],
+        f"test.m5.{uuid4().hex}",
+        {
+            "job.normalized": evaluation_handler(candidate[1], Thresholds()),
+        },
+        retry=RetryPolicy(delays=(0, 0)),
+    )
 
 
 @pytest.mark.parametrize("scenario", ["match", "empty", "missing_alignment", "missing_fact"])
 async def test_real_delivery_is_idempotent_and_never_calls_provider(
-    candidate, monkeypatch, scenario,
+    candidate,
+    monkeypatch,
+    scenario,
 ):
     sessions, _, job_id, event_id = candidate
     calls = []
@@ -97,9 +130,15 @@ async def test_real_delivery_is_idempotent_and_never_calls_provider(
     assert await consumer.process(event_id) == "completed"
     assert await consumer.process(event_id) == "duplicate"
     async with sessions() as db:
-        rows = list((await db.scalars(select(JobEvaluation).where(
-            JobEvaluation.job_id == job_id,
-        ))).all())
+        rows = list(
+            (
+                await db.scalars(
+                    select(JobEvaluation).where(
+                        JobEvaluation.job_id == job_id,
+                    )
+                )
+            ).all()
+        )
         assert len(rows) == 1
         job = await db.get(Job, job_id)
         row = rows[0]
@@ -113,13 +152,21 @@ async def test_real_delivery_is_idempotent_and_never_calls_provider(
             assert row.score is row.recommendation is None
             assert job.status == JobStatus.EVALUATED
             assert row.score_breakdown["insufficient_reasons"]
-        assert await db.scalar(select(func.count()).select_from(Event).where(
-            Event.causation_id == event_id, Event.type == "job.evaluated")) == 1
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(Event)
+                .where(Event.causation_id == event_id, Event.type == "job.evaluated")
+            )
+            == 1
+        )
     assert not calls
 
 
 async def test_agent_role_can_evaluate_and_redis_redelivery_stays_idempotent(
-    candidate, agent_engine, bus,
+    candidate,
+    agent_engine,
+    bus,
 ):
     sessions = async_sessionmaker(agent_engine, expire_on_commit=False)
     worker = runtime(candidate, sessions)
@@ -131,23 +178,36 @@ async def test_agent_role_can_evaluate_and_redis_redelivery_stays_idempotent(
     await consumer.step()
     assert await worker.process(candidate[3]) == "duplicate"
     async with sessions() as db:
-        evaluation = await db.scalar(select(JobEvaluation).where(
-            JobEvaluation.job_id == candidate[2],
-        ))
+        evaluation = await db.scalar(
+            select(JobEvaluation).where(
+                JobEvaluation.job_id == candidate[2],
+            )
+        )
         assert evaluation.assessment_status == "assessed"
 
 
 async def test_missing_candidate_is_observable_and_retryable(candidate):
     sessions, _, job_id, event_id = candidate
-    worker = DeliveryRuntime(sessions, f"test.m5.{uuid4().hex}", {
-        "job.normalized": evaluation_handler(uuid4(), Thresholds()),
-    })
+    worker = DeliveryRuntime(
+        sessions,
+        f"test.m5.{uuid4().hex}",
+        {
+            "job.normalized": evaluation_handler(uuid4(), Thresholds()),
+        },
+    )
     assert await worker.process(event_id) == "retry"
     async with sessions() as db:
-        assert await db.scalar(select(func.count()).select_from(JobEvaluation).where(
-            JobEvaluation.job_id == job_id)) == 0
-        failure = await db.scalar(select(Event).where(
-            Event.causation_id == event_id, Event.type == "agent.run.failed"))
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(JobEvaluation)
+                .where(JobEvaluation.job_id == job_id)
+            )
+            == 0
+        )
+        failure = await db.scalar(
+            select(Event).where(Event.causation_id == event_id, Event.type == "agent.run.failed")
+        )
         assert failure.payload["will_retry"] is True
         assert (await db.get(Job, job_id)).status == JobStatus.NORMALIZED
 
@@ -156,13 +216,25 @@ async def test_distinct_normalized_events_do_not_duplicate_a_completed_evaluatio
     worker = runtime(candidate)
     assert await worker.process(candidate[3]) == "completed"
     async with candidate[0].begin() as db:
-        second = await emit(db, type="job.normalized", aggregate_type="job",
-                            aggregate_id=candidate[2], correlation_id=candidate[2],
-                            actor_type="system", payload={})
+        second = await emit(
+            db,
+            type="job.normalized",
+            aggregate_type="job",
+            aggregate_id=candidate[2],
+            correlation_id=candidate[2],
+            actor_type="system",
+            payload={},
+        )
     assert await worker.process(second.id) == "completed"
     async with candidate[0]() as db:
-        assert await db.scalar(select(func.count()).select_from(JobEvaluation).where(
-            JobEvaluation.job_id == candidate[2])) == 1
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(JobEvaluation)
+                .where(JobEvaluation.job_id == candidate[2])
+            )
+            == 1
+        )
 
 
 async def test_ingestion_emits_once_and_reaches_evaluation(session, permitted_source, demo_profile):
@@ -171,16 +243,27 @@ async def test_ingestion_emits_once_and_reaches_evaluation(session, permitted_so
     report = await pipeline.ingest_batch(permitted_source["slug"], [posting])
     job = await session.scalar(select(Job).where(Job.source_id == permitted_source["id"]))
     assert report.created == 1
-    events = list((await session.scalars(select(Event).where(
-        Event.aggregate_id == job.id, Event.type == "job.normalized"))).all())
+    events = list(
+        (
+            await session.scalars(
+                select(Event).where(Event.aggregate_id == job.id, Event.type == "job.normalized")
+            )
+        ).all()
+    )
     assert len(events) == 1
     await evaluation_handler(demo_profile, Thresholds())(session, events[0])
     evaluation = await session.scalar(select(JobEvaluation).where(JobEvaluation.job_id == job.id))
     assert evaluation.assessment_status == "insufficient_evidence"
     assert job.status == JobStatus.EVALUATED
     await pipeline.ingest_batch(permitted_source["slug"], [posting])
-    assert await session.scalar(select(func.count()).select_from(Event).where(
-        Event.aggregate_id == job.id, Event.type == "job.normalized")) == 1
+    assert (
+        await session.scalar(
+            select(func.count())
+            .select_from(Event)
+            .where(Event.aggregate_id == job.id, Event.type == "job.normalized")
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize("unresolved", [False, True])
@@ -206,8 +289,11 @@ async def test_supported_partial_match_and_explicit_preferences_can_discard(cand
         job = await db.get(Job, candidate[2])
         job.seniority = "lead"
         job.description_raw = "Requirements\n- 5 years of AWS experience\n- 5 years of Terraform"
-        facts = list((await db.scalars(select(ProfileFact).where(
-            ProfileFact.profile_id == candidate[1]))).all())
+        facts = list(
+            (
+                await db.scalars(select(ProfileFact).where(ProfileFact.profile_id == candidate[1]))
+            ).all()
+        )
         # Follow the real human edit lifecycle; verified substance is immutable.
         for fact in facts:
             fact.status = FactStatus.DRAFT
@@ -240,9 +326,12 @@ async def test_material_unknowns_remain_unresolved(candidate, change):
         elif change == "geography":
             job.location_country = None
         else:
-            fact = await db.scalar(select(ProfileFact).where(
-                ProfileFact.profile_id == candidate[1], ProfileFact.fact_type == FactType.SKILL,
-            ))
+            fact = await db.scalar(
+                select(ProfileFact).where(
+                    ProfileFact.profile_id == candidate[1],
+                    ProfileFact.fact_type == FactType.SKILL,
+                )
+            )
             if change == "unverified":
                 fact.status = FactStatus.DRAFT
             else:

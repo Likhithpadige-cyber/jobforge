@@ -76,9 +76,7 @@ async def emit(
     return await record_event(session, envelope)
 
 
-async def already_processed(
-    session: AsyncSession, event_id: UUID, consumer_group: str
-) -> bool:
+async def already_processed(session: AsyncSession, event_id: UUID, consumer_group: str) -> bool:
     """Read-only check: has this consumer group already handled this event?
 
     **Do not use this for idempotency.** A SELECT followed by an INSERT is a
@@ -96,9 +94,7 @@ async def already_processed(
     return (await session.execute(stmt)).scalar_one_or_none() is not None
 
 
-async def claim_event(
-    session: AsyncSession, event_id: UUID, consumer_group: str
-) -> bool:
+async def claim_event(session: AsyncSession, event_id: UUID, consumer_group: str) -> bool:
     """Atomically claim `(event_id, consumer_group)`. Returns True if claimed.
 
     EVENTS.md §4.1: the consumer inserts first and decides from the insert.

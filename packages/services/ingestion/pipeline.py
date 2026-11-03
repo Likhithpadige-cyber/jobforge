@@ -86,10 +86,11 @@ class IngestionPipeline:
         if not verdict.permitted:
             log.warning(
                 "ingestion.policy.blocked",
-                domain=domain, reason=str(verdict.reason), source=source.slug,
+                domain=domain,
+                reason=str(verdict.reason),
+                source=source.slug,
             )
-            raise PolicyBlockedError(verdict.detail, domain=domain,
-                                     reason=str(verdict.reason))
+            raise PolicyBlockedError(verdict.detail, domain=domain, reason=str(verdict.reason))
 
     # ---------------------------------------------------------- one item
     async def ingest_one(
@@ -112,7 +113,8 @@ class IngestionPipeline:
 
         if is_stale(normalized.posted_at, max_age_days):
             return IngestOutcome(
-                raw.url, "rejected",
+                raw.url,
+                "rejected",
                 reason=f"posting older than {max_age_days} days",
                 warnings=normalized.warnings,
             )
@@ -126,21 +128,22 @@ class IngestionPipeline:
             )
             if not verdict.permitted:
                 return IngestOutcome(
-                    raw.url, "rejected",
+                    raw.url,
+                    "rejected",
                     reason=f"posting domain {posting_domain} is not permitted: "
-                           f"{verdict.reason}",
+                    f"{verdict.reason}",
                     warnings=normalized.warnings,
                 )
 
         # Same source + same external id = the same posting seen again.
         if normalized.external_id:
-            existing = await self.jobs.get_by_source_external_id(
-                source.id, normalized.external_id
-            )
+            existing = await self.jobs.get_by_source_external_id(source.id, normalized.external_id)
             if existing is not None:
                 await self.jobs.touch_seen(existing)
                 return IngestOutcome(
-                    raw.url, "updated", job_id=existing.id,
+                    raw.url,
+                    "updated",
+                    job_id=existing.id,
                     reason="already seen from this source",
                     warnings=normalized.warnings,
                 )
@@ -169,7 +172,9 @@ class IngestionPipeline:
         if match is not None:
             await self.jobs.mark_duplicate(job, match.canonical_id, match.note)
             return IngestOutcome(
-                raw.url, "duplicate", job_id=job.id,
+                raw.url,
+                "duplicate",
+                job_id=job.id,
                 canonical_id=match.canonical_id,
                 reason=f"{match.reason}: {match.note}",
                 warnings=normalized.warnings,
@@ -178,13 +183,16 @@ class IngestionPipeline:
         job.status = JobStatus.NORMALIZED
         await self.session.flush()
         await emit(
-            self.session, type="job.normalized", aggregate_type="job", aggregate_id=job.id,
-            correlation_id=job.id, actor_type="system", actor_id="ingestion",
+            self.session,
+            type="job.normalized",
+            aggregate_type="job",
+            aggregate_id=job.id,
+            correlation_id=job.id,
+            actor_type="system",
+            actor_id="ingestion",
             payload={"job_id": str(job.id)},
         )
-        return IngestOutcome(
-            raw.url, "created", job_id=job.id, warnings=normalized.warnings
-        )
+        return IngestOutcome(raw.url, "created", job_id=job.id, warnings=normalized.warnings)
 
     async def _persist(
         self, source: Source, normalized: NormalizedJob, company_id: UUID | None
@@ -247,7 +255,10 @@ class IngestionPipeline:
 
         log.info(
             "ingestion.batch.complete",
-            source=source_slug, total=report.total, created=report.created,
-            duplicates=report.duplicates, rejected=report.rejected,
+            source=source_slug,
+            total=report.total,
+            created=report.created,
+            duplicates=report.duplicates,
+            rejected=report.rejected,
         )
         return report

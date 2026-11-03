@@ -19,8 +19,18 @@ def _process(event: dict[str, object]) -> dict[str, object]:
 
 @pytest.mark.parametrize(
     "key",
-    ["password", "api_key", "anthropic_api_key", "phone", "email", "address",
-     "work_authorization", "session_secret", "authorization", "totp_secret_enc"],
+    [
+        "password",
+        "api_key",
+        "anthropic_api_key",
+        "phone",
+        "email",
+        "address",
+        "work_authorization",
+        "session_secret",
+        "authorization",
+        "totp_secret_enc",
+    ],
 )
 def test_sensitive_keys_are_redacted(key: str) -> None:
     result = _process({"event": "test", key: "sensitive-value"})

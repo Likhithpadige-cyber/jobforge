@@ -81,7 +81,7 @@ def test_the_filename_has_no_branch_that_could_read_a_profile() -> None:
 @pytest.mark.parametrize(
     "hostile",
     [
-        '../../etc/passwd',
+        "../../etc/passwd",
         'name"; filename="other.docx',
         "name\r\nX-Injected: 1",
         "name\nSet-Cookie: a=b",

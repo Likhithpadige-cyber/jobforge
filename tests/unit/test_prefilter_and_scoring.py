@@ -46,8 +46,14 @@ def run(**overrides):  # type: ignore[no-untyped-def]
 # ------------------------------------------------------------- pre-filter
 @pytest.mark.parametrize(
     "title",
-    ["cloud engineer", "aws cloud engineer", "devops engineer",
-     "infrastructure engineer", "site reliability engineer", "platform engineer"],
+    [
+        "cloud engineer",
+        "aws cloud engineer",
+        "devops engineer",
+        "infrastructure engineer",
+        "site reliability engineer",
+        "platform engineer",
+    ],
 )
 def test_targeted_titles_are_accepted(title: str) -> None:
     assert run(normalized_title=title).accepted is True
@@ -55,9 +61,15 @@ def test_targeted_titles_are_accepted(title: str) -> None:
 
 @pytest.mark.parametrize(
     "title",
-    ["machine learning engineer", "data scientist", "help desk technician",
-     "sales engineer", "engineering manager", "frontend engineer",
-     "solutions architect"],
+    [
+        "machine learning engineer",
+        "data scientist",
+        "help desk technician",
+        "sales engineer",
+        "engineering manager",
+        "frontend engineer",
+        "solutions architect",
+    ],
 )
 def test_adjacent_but_wrong_roles_are_rejected(title: str) -> None:
     result = run(normalized_title=title)
@@ -95,8 +107,7 @@ def test_onsite_in_an_allowed_state_is_accepted() -> None:
 
 
 def test_onsite_elsewhere_is_rejected() -> None:
-    assert run(is_remote=False, location_state="CA").reason is \
-        RejectReason.LOCATION_UNSUITABLE
+    assert run(is_remote=False, location_state="CA").reason is RejectReason.LOCATION_UNSUITABLE
 
 
 def test_blocklisted_company_is_rejected_first() -> None:
@@ -157,12 +168,8 @@ def test_transferable_is_still_reported_as_a_gap() -> None:
 
 
 def test_required_outweighs_preferred() -> None:
-    required_only = compute_score(
-        [req(MatchStatus.MET), req(MatchStatus.NOT_MET, required=False)]
-    )
-    preferred_only = compute_score(
-        [req(MatchStatus.NOT_MET), req(MatchStatus.MET, required=False)]
-    )
+    required_only = compute_score([req(MatchStatus.MET), req(MatchStatus.NOT_MET, required=False)])
+    preferred_only = compute_score([req(MatchStatus.NOT_MET), req(MatchStatus.MET, required=False)])
     assert required_only.score > preferred_only.score
 
 
@@ -182,8 +189,11 @@ def test_score_is_bounded() -> None:
 def test_score_is_reproducible() -> None:
     """Arithmetic, not a model judgement: the same input always scores the
     same. This is what stops a prompt injection moving the number."""
-    matrix = [req(MatchStatus.MET), req(MatchStatus.PARTIALLY_MET),
-              req(MatchStatus.NOT_MET, required=False)]
+    matrix = [
+        req(MatchStatus.MET),
+        req(MatchStatus.PARTIALLY_MET),
+        req(MatchStatus.NOT_MET, required=False),
+    ]
     scores = {compute_score(matrix).score for _ in range(50)}
     assert len(scores) == 1
 
@@ -228,9 +238,7 @@ def test_no_llm_import_in_this_module() -> None:
     import ast
     from pathlib import Path
 
-    source = Path(__file__).resolve().parents[2] / (
-        "packages/agents/resume_optimizer/prefilter.py"
-    )
+    source = Path(__file__).resolve().parents[2] / ("packages/agents/resume_optimizer/prefilter.py")
     tree = ast.parse(source.read_text())
     imports = set()
     for node in ast.walk(tree):

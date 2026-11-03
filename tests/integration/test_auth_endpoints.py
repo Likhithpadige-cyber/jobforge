@@ -69,18 +69,14 @@ async def enrolled(session, demo_user):  # type: ignore[no-untyped-def]
     """The demo user with a password and an enrolled TOTP secret."""
     cfg = settings_for()
     secret = generate_secret()
-    user = (
-        await session.execute(select(User).where(User.id == demo_user))
-    ).scalar_one()
+    user = (await session.execute(select(User).where(User.id == demo_user))).scalar_one()
     user.password_hash = hash_password(PASSWORD)
     user.totp_secret_enc = encrypt_totp_secret(secret, cfg.totp_encryption_key)
     await session.flush()
     return user, secret, cfg
 
 
-def request_with(
-    headers: dict[str, str] | None = None, method: str = "POST"
-) -> Request:
+def request_with(headers: dict[str, str] | None = None, method: str = "POST") -> Request:
     raw = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
     return Request({"type": "http", "method": method, "headers": raw, "path": "/"})
 
@@ -93,7 +89,8 @@ async def test_login_with_both_factors_succeeds(session, enrolled) -> None:
     redis, response = FakeRedis(), Response()
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        request_with(), response,
+        request_with(),
+        response,
         session,
         redis,
         cfg,
@@ -108,7 +105,8 @@ async def test_login_sets_httponly_strict_session_cookie(session, enrolled) -> N
     response = Response()
     await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        request_with(), response,
+        request_with(),
+        response,
         session,
         FakeRedis(),
         cfg,
@@ -132,10 +130,9 @@ async def test_secure_flag_follows_the_environment(session, enrolled) -> None:
     for cfg, expect_secure in ((local, False), (prod, True)):
         response = Response()
         await login(
-            LoginRequest(
-                email=user.email, password=PASSWORD, totp_code=code_for(secret)
-            ),
-            request_with(), response,
+            LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
+            request_with(),
+            response,
             session,
             FakeRedis(),
             cfg,
@@ -175,7 +172,8 @@ async def test_unknown_email_is_rejected_identically(session, enrolled) -> None:
                 password=PASSWORD,
                 totp_code=code_for(secret),
             ),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             cfg,
@@ -186,14 +184,13 @@ async def test_unknown_email_is_rejected_identically(session, enrolled) -> None:
 async def test_user_without_credentials_cannot_sign_in(session, demo_user) -> None:
     """A seeded user who never ran the setup command has no way in."""
     cfg = settings_for()
-    user = (
-        await session.execute(select(User).where(User.id == demo_user))
-    ).scalar_one()
+    user = (await session.execute(select(User).where(User.id == demo_user))).scalar_one()
     assert user.password_hash is None
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="123456"),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             cfg,
@@ -204,7 +201,8 @@ async def test_login_never_returns_secrets(session, enrolled) -> None:
     user, secret, cfg = enrolled
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        request_with(), Response(),
+        request_with(),
+        Response(),
         session,
         FakeRedis(),
         cfg,
@@ -227,7 +225,8 @@ async def test_local_login_succeeds_without_a_code(session, enrolled) -> None:
 
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD),
-        request_with(), Response(),
+        request_with(),
+        Response(),
         session,
         redis,
         local,
@@ -244,7 +243,8 @@ async def test_local_login_still_rejects_a_wrong_password(session, enrolled) -> 
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password="wrong-password"),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             local,
@@ -259,7 +259,8 @@ async def test_local_still_verifies_a_code_that_is_supplied(session, enrolled) -
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="000000"),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             local,
@@ -275,15 +276,14 @@ async def test_local_session_and_csrf_are_unchanged(session, enrolled) -> None:
 
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD),
-        request_with(), response,
+        request_with(),
+        response,
         session,
         redis,
         local,
     )
     cookie = next(
-        c
-        for c in response.headers.getlist("set-cookie")
-        if c.startswith(local.session_cookie_name)
+        c for c in response.headers.getlist("set-cookie") if c.startswith(local.session_cookie_name)
     )
     assert "HttpOnly" in cookie
     assert "samesite=strict" in cookie.lower()
@@ -292,9 +292,7 @@ async def test_local_session_and_csrf_are_unchanged(session, enrolled) -> None:
     # The cookie's opaque id must address a real server-side session whose
     # CSRF token matches the one handed to the client.
     session_id = cookie.split("=", 1)[1].split(";", 1)[0]
-    live = await load_session(
-        redis, session_id, idle_minutes=local.session_idle_timeout_minutes
-    )
+    live = await load_session(redis, session_id, idle_minutes=local.session_idle_timeout_minutes)
     assert live is not None
     assert live.user_id == user.id
     assert csrf_matches(live, result.csrf_token)
@@ -308,7 +306,8 @@ async def test_production_requires_a_code(session, enrolled) -> None:
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             prod,
@@ -321,7 +320,8 @@ async def test_production_accepts_a_valid_code(session, enrolled) -> None:
     prod.totp_encryption_key = cfg.totp_encryption_key
     result = await login(
         LoginRequest(email=user.email, password=PASSWORD, totp_code=code_for(secret)),
-        request_with(), Response(),
+        request_with(),
+        Response(),
         session,
         FakeRedis(),
         prod,
@@ -336,7 +336,8 @@ async def test_production_rejects_an_invalid_code(session, enrolled) -> None:
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="000000"),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             prod,
@@ -346,15 +347,14 @@ async def test_production_rejects_an_invalid_code(session, enrolled) -> None:
 async def test_production_rejects_an_unenrolled_user(session, demo_user) -> None:
     """No stored secret means no way to satisfy a mandatory second factor."""
     prod = settings_for("production")
-    user = (
-        await session.execute(select(User).where(User.id == demo_user))
-    ).scalar_one()
+    user = (await session.execute(select(User).where(User.id == demo_user))).scalar_one()
     user.password_hash = hash_password(PASSWORD)
     await session.flush()
     with pytest.raises(NotAuthenticatedError):
         await login(
             LoginRequest(email=user.email, password=PASSWORD, totp_code="000000"),
-            request_with(), Response(),
+            request_with(),
+            Response(),
             session,
             FakeRedis(),
             prod,
@@ -422,9 +422,7 @@ async def test_me_omits_every_secret(session, enrolled) -> None:
     assert "password_hash" not in body and "totp_secret_enc" not in body
 
 
-async def test_session_for_a_deleted_user_is_not_authenticated(
-    session, enrolled
-) -> None:
+async def test_session_for_a_deleted_user_is_not_authenticated(session, enrolled) -> None:
     user, _secret, cfg = enrolled
     redis = FakeRedis()
     live = await create_session(
@@ -474,9 +472,7 @@ async def test_valid_csrf_token_is_accepted(session, enrolled) -> None:
         idle_minutes=cfg.session_idle_timeout_minutes,
         absolute_hours=cfg.session_absolute_timeout_hours,
     )
-    assert (
-        await require_csrf(request_with({"X-CSRF-Token": live.csrf_token}), live)
-    ).id == live.id
+    assert (await require_csrf(request_with({"X-CSRF-Token": live.csrf_token}), live)).id == live.id
 
 
 async def test_reads_do_not_require_csrf(session, enrolled) -> None:

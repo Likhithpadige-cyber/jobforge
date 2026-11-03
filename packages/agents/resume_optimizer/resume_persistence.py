@@ -205,9 +205,7 @@ async def persist_resume(
     #    serializes concurrent attempts while the next version is chosen.
     application = (
         await session.execute(
-            select(Application)
-            .where(Application.id == application_id)
-            .with_for_update()
+            select(Application).where(Application.id == application_id).with_for_update()
         )
     ).scalar_one_or_none()
     if application is None:
@@ -265,11 +263,7 @@ async def persist_resume(
 
     # 4. The status move goes through the state machine, which writes the
     #    history row and `application.status.changed` itself.
-    target = (
-        ApplicationStatus.RESUME_READY
-        if passed
-        else ApplicationStatus.VERIFICATION_FAILED
-    )
+    target = ApplicationStatus.RESUME_READY if passed else ApplicationStatus.VERIFICATION_FAILED
     await transition_application(
         session,
         application,

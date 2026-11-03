@@ -38,12 +38,20 @@ SECTION_HEADINGS: tuple[tuple[re.Pattern[str], Necessity | None], ...] = (
     (re.compile(r"^\s*(minimum|basic|required|must[\s-]?have)s?\b.*", re.I), Necessity.REQUIRED),
     (re.compile(r"^\s*(requirements?|qualifications?)\b.*", re.I), Necessity.REQUIRED),
     (re.compile(r"^\s*(what you.{0,10}ll need|who you are)\b.*", re.I), Necessity.REQUIRED),
-    (re.compile(r"^\s*(preferred|desired|nice[\s-]?to[\s-]?have|bonus|plus)\b.*", re.I),
-     Necessity.PREFERRED),
+    (
+        re.compile(r"^\s*(preferred|desired|nice[\s-]?to[\s-]?have|bonus|plus)\b.*", re.I),
+        Necessity.PREFERRED,
+    ),
     (re.compile(r"^\s*(responsibilities|what you.{0,10}ll do|the role|duties)\b.*", re.I), None),
     # Sections that contain no requirements at all.
-    (re.compile(r"^\s*(benefits?|perks?|compensation|about (us|the company)|"
-                r"equal opportunity|eeo|how to apply)\b.*", re.I), None),
+    (
+        re.compile(
+            r"^\s*(benefits?|perks?|compensation|about (us|the company)|"
+            r"equal opportunity|eeo|how to apply)\b.*",
+            re.I,
+        ),
+        None,
+    ),
 )
 
 NON_REQUIREMENT_SECTIONS = re.compile(
@@ -212,9 +220,7 @@ def _is_heading(line: str) -> bool:
         return False
     if BULLET.match(line):
         return False
-    return line.rstrip().endswith(":") or (
-        stripped.isupper() and len(stripped.split()) <= 6
-    )
+    return line.rstrip().endswith(":") or (stripped.isupper() and len(stripped.split()) <= 6)
 
 
 def extract_requirements(description: str | None) -> ExtractionResult:
@@ -250,9 +256,7 @@ def extract_requirements(description: str | None) -> ExtractionResult:
             # as an unmet gap, penalising the candidate for not having already
             # done the job they are applying for. An explicit inline "must
             # have" still promotes it.
-            section_default = (
-                Necessity.PREFERRED if in_responsibility else Necessity.REQUIRED
-            )
+            section_default = Necessity.PREFERRED if in_responsibility else Necessity.REQUIRED
             if not in_responsibility:
                 for pattern, necessity in SECTION_HEADINGS:
                     if pattern.match(section_name):
@@ -295,9 +299,7 @@ def extract_requirements(description: str | None) -> ExtractionResult:
     return result
 
 
-def _confidence(
-    requirements: list[Requirement], bullets_seen: int, description: str
-) -> float:
+def _confidence(requirements: list[Requirement], bullets_seen: int, description: str) -> float:
     """How much to trust this parse, in [0, 1].
 
     Low confidence is not a failure - it is the signal that A1 should defer

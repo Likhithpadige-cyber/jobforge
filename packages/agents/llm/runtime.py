@@ -77,15 +77,13 @@ class Prices:
 
     def __post_init__(self) -> None:
         if any(
-            not p.is_finite() or p < 0
-            for p in (self.input_per_million, self.output_per_million)
+            not p.is_finite() or p < 0 for p in (self.input_per_million, self.output_per_million)
         ):
             raise ValidationError("Invalid model prices")
 
     def cost(self, input_tokens: int, output_tokens: int) -> Decimal:
         return (
-            input_tokens * self.input_per_million
-            + output_tokens * self.output_per_million
+            input_tokens * self.input_per_million + output_tokens * self.output_per_million
         ) / Decimal(1_000_000)
 
 
@@ -174,9 +172,7 @@ class StructuredClient:
         # never allow residual PII to reach an injected or real transport.
         assert_prompt_safe(request.system, request.user, canonical(request.schema))
         if request.model != self.model:
-            raise ModelCallError(
-                "Request model does not match configured tailoring model"
-            )
+            raise ModelCallError("Request model does not match configured tailoring model")
         if spent >= self.max_cost:
             raise CostLimitError("Run budget exhausted")
         if self.mode == LLMMode.REPLAY:
@@ -189,9 +185,7 @@ class StructuredClient:
             except (SchemaError, ValueError):
                 raise ModelOutputError("Malformed replay cassette") from None
         if self.prices is None or self.prices.model != request.model:
-            raise ModelCallError(
-                "Explicit prices for the configured model are required"
-            )
+            raise ModelCallError("Explicit prices for the configured model are required")
         # UTF-8 bytes are a conservative input-token estimate; reserve output
         # ceiling too. Fail before contacting the provider when budget is short.
         upper_input = len(canonical(request.__dict__).encode()) + 4096
@@ -246,6 +240,4 @@ class StructuredClient:
         """Cache validated selections or a prose-free schema-failure marker."""
         if self.mode == LLMMode.RECORD:
             self.cassette_dir.mkdir(parents=True, exist_ok=True)
-            (self.cassette_dir / f"{request.digest}.json").write_text(
-                response.model_dump_json()
-            )
+            (self.cassette_dir / f"{request.digest}.json").write_text(response.model_dump_json())

@@ -163,16 +163,18 @@ async def compute_readiness(
     layer even if this guard were ever bypassed.
     """
     if await _existing_submission(session, application.id) is not None:
-        log.info(
-            "submission_readiness.already_computed", application_id=str(application.id)
-        )
+        log.info("submission_readiness.already_computed", application_id=str(application.id))
         return
 
     await transition_application(
-        session, application, ApplicationStatus.SUBMISSION_READY,
-        actor_type="agent", actor_id="job_application",
+        session,
+        application,
+        ApplicationStatus.SUBMISSION_READY,
+        actor_type="agent",
+        actor_id="job_application",
         reason="resume, cover letter, and answers package (if any) all approved",
-        correlation_id=application.id, causation_id=causation_id,
+        correlation_id=application.id,
+        causation_id=causation_id,
     )
 
     verdict, snapshot, policy_row, domain = await _policy_verdict(session, application)
@@ -182,27 +184,40 @@ async def compute_readiness(
             verdict.reason.value if isinstance(verdict.reason, BlockReason) else "blocked"
         )
         await transition_application(
-            session, application, ApplicationStatus.POLICY_BLOCKED,
-            actor_type="agent", actor_id="job_application",
+            session,
+            application,
+            ApplicationStatus.POLICY_BLOCKED,
+            actor_type="agent",
+            actor_id="job_application",
             reason=f"submission policy blocks {domain}: {blocked_reason}",
-            correlation_id=application.id, causation_id=causation_id,
+            correlation_id=application.id,
+            causation_id=causation_id,
         )
         await emit(
-            session, type="policy.blocked", aggregate_type="submission",
-            aggregate_id=application.id, correlation_id=application.id,
-            causation_id=causation_id, actor_type="system",
+            session,
+            type="policy.blocked",
+            aggregate_type="submission",
+            aggregate_id=application.id,
+            correlation_id=application.id,
+            causation_id=causation_id,
+            actor_type="system",
             payload={
-                "domain": domain, "action": "submit",
+                "domain": domain,
+                "action": "submit",
                 "policy_id": str(policy_row.id) if policy_row is not None else None,
                 "reason": blocked_reason,
             },
         )
     elif verdict.decision is PolicyDecision.REQUIRES_HUMAN:
         await transition_application(
-            session, application, ApplicationStatus.MANUAL_HANDOFF,
-            actor_type="agent", actor_id="job_application",
+            session,
+            application,
+            ApplicationStatus.MANUAL_HANDOFF,
+            actor_type="agent",
+            actor_id="job_application",
             reason=f"{domain} requires a human to submit",
-            correlation_id=application.id, causation_id=causation_id,
+            correlation_id=application.id,
+            causation_id=causation_id,
         )
     # ALLOWED: no further transition. M10 implements no dispatcher for any
     # channel, so the application stays at submission_ready - see the module
@@ -225,8 +240,11 @@ async def compute_readiness(
     packet_artifact_id: UUID | None = None
     try:
         artifact = await _generate_packet(
-            session, application=application, store=store,
-            method=str(snapshot.submission_method), blocked_reason=blocked_reason,
+            session,
+            application=application,
+            store=store,
+            method=str(snapshot.submission_method),
+            blocked_reason=blocked_reason,
         )
         packet_artifact_id = artifact.id
     except (ResumeNotRenderedError, NoCoverLetterError) as exc:
@@ -241,16 +259,22 @@ async def compute_readiness(
         # exists - it does not retry on read.
         log.warning(
             "submission_readiness.packet_deferred",
-            application_id=str(application.id), error=type(exc).__name__,
+            application_id=str(application.id),
+            error=type(exc).__name__,
         )
     if packet_artifact_id is not None:
         submission.packet_artifact_id = packet_artifact_id
         await session.flush()
 
     await emit(
-        session, type="application.ready", aggregate_type="application",
-        aggregate_id=application.id, correlation_id=application.id,
-        causation_id=causation_id, actor_type="agent", actor_id="job_application",
+        session,
+        type="application.ready",
+        aggregate_type="application",
+        aggregate_id=application.id,
+        correlation_id=application.id,
+        causation_id=causation_id,
+        actor_type="agent",
+        actor_id="job_application",
         payload={
             "application_id": str(application.id),
             "submission_method": str(snapshot.submission_method),
@@ -294,9 +318,7 @@ async def check_readiness_on_approval(
     if not await _readiness_satisfied(session, application):
         return "incomplete"
 
-    await compute_readiness(
-        session, application=application, store=store, causation_id=event.id
-    )
+    await compute_readiness(session, application=application, store=store, causation_id=event.id)
     return "completed"
 
 
@@ -331,8 +353,11 @@ async def retry_packet_generation(
 
     try:
         artifact = await _generate_packet(
-            session, application=application, store=store,
-            method=str(submission.method), blocked_reason=submission.blocked_reason,
+            session,
+            application=application,
+            store=store,
+            method=str(submission.method),
+            blocked_reason=submission.blocked_reason,
         )
     except (ResumeNotRenderedError, NoCoverLetterError) as exc:
         # Still not ready - a different resume version's render, or the
@@ -340,7 +365,8 @@ async def retry_packet_generation(
         # resume.rendered delivery.
         log.info(
             "submission_readiness.packet_retry_still_pending",
-            application_id=str(application_id), error=type(exc).__name__,
+            application_id=str(application_id),
+            error=type(exc).__name__,
         )
         return "still-pending"
 
@@ -348,6 +374,7 @@ async def retry_packet_generation(
     await session.flush()
     log.info(
         "submission_readiness.packet_retry_succeeded",
-        application_id=str(application_id), artifact_id=str(artifact.id),
+        application_id=str(application_id),
+        artifact_id=str(artifact.id),
     )
     return "completed"

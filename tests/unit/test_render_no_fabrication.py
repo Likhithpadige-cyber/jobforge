@@ -136,9 +136,7 @@ RENDERERS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "factory,extract,name", RENDERERS, ids=[r[2] for r in RENDERERS]
-)
+@pytest.mark.parametrize("factory,extract,name", RENDERERS, ids=[r[2] for r in RENDERERS])
 def test_no_word_appears_that_was_not_approved_or_allowlisted(
     factory: object, extract: object, name: str
 ) -> None:
@@ -164,16 +162,12 @@ def test_no_word_appears_that_was_not_approved_or_allowlisted(
     approved = approved_words()
     chrome = {word.lower() for word in chrome_words()}
     unexplained = {
-        token
-        for token in produced
-        if token not in approved and token.lower() not in chrome
+        token for token in produced if token not in approved and token.lower() not in chrome
     }
     assert unexplained == set(), f"{name} produced unapproved tokens: {unexplained}"
 
 
-@pytest.mark.parametrize(
-    "factory,extract,name", RENDERERS, ids=[r[2] for r in RENDERERS]
-)
+@pytest.mark.parametrize("factory,extract,name", RENDERERS, ids=[r[2] for r in RENDERERS])
 def test_numerals_are_neither_rounded_nor_invented(
     factory: object, extract: object, name: str
 ) -> None:
@@ -190,17 +184,12 @@ def test_numerals_are_neither_rounded_nor_invented(
             approved_numbers |= set(re.findall(r"\d+", line))
     produced_numbers = set(re.findall(r"\d+", text))
     assert produced_numbers <= approved_numbers, (
-        f"{name} produced numbers nobody approved: "
-        f"{produced_numbers - approved_numbers}"
+        f"{name} produced numbers nobody approved: " f"{produced_numbers - approved_numbers}"
     )
 
 
-@pytest.mark.parametrize(
-    "factory,extract,name", RENDERERS, ids=[r[2] for r in RENDERERS]
-)
-def test_an_empty_section_stays_empty(
-    factory: object, extract: object, name: str
-) -> None:
+@pytest.mark.parametrize("factory,extract,name", RENDERERS, ids=[r[2] for r in RENDERERS])
+def test_an_empty_section_stays_empty(factory: object, extract: object, name: str) -> None:
     """A renderer must not fill a gap with a plausible placeholder."""
     renderer = factory(TEMPLATE_VERSION)  # type: ignore[operator]
     assert renderer.available() and renderer.implemented, (

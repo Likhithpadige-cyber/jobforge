@@ -61,9 +61,14 @@ def test_advisory_keys_are_stable_and_group_specific():
     assert lock_key(event_id, "cg.optimizer") != lock_key(event_id, "cg.monitor")
 
 
-@pytest.mark.parametrize("options", [
-    {"delays": (-1,)}, {"repeated_error_limit": 0}, {"handler_timeout": 0},
-])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"delays": (-1,)},
+        {"repeated_error_limit": 0},
+        {"handler_timeout": 0},
+    ],
+)
 def test_retry_configuration_rejects_invalid_bounds(options):
     with pytest.raises(ValueError):
         RetryPolicy(**options)

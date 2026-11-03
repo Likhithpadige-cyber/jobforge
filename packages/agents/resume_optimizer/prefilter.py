@@ -64,8 +64,10 @@ EXCLUDED_ROLE_PATTERNS: tuple[str, ...] = (
 
 #: Requirements that cannot be met and are not negotiable.
 HARD_BLOCKER_PATTERNS: tuple[tuple[str, RejectReason], ...] = (
-    (r"\b(active\s+)?(ts/sci|top\s+secret|security\s+clearance|polygraph)\b",
-     RejectReason.CLEARANCE_REQUIRED),
+    (
+        r"\b(active\s+)?(ts/sci|top\s+secret|security\s+clearance|polygraph)\b",
+        RejectReason.CLEARANCE_REQUIRED,
+    ),
 )
 
 SENIORITY_ORDER = {"junior": 0, "mid": 1, "senior": 2, "lead": 3, "unknown": 1}
@@ -103,23 +105,30 @@ def prefilter(
 ) -> PrefilterResult:
     """Cheap rejection before any model call. Pure."""
     if company_blocklisted:
-        return PrefilterResult(False, RejectReason.COMPANY_BLOCKLISTED,
-                               "company is blocklisted")
+        return PrefilterResult(False, RejectReason.COMPANY_BLOCKLISTED, "company is blocklisted")
 
     haystack = normalized_title.lower()
     for pattern in EXCLUDED_ROLE_PATTERNS:
         if re.search(pattern, haystack):
-            return PrefilterResult(False, RejectReason.TITLE_NOT_TARGETED,
-                                   f"title matches an excluded role family: {pattern}")
+            return PrefilterResult(
+                False,
+                RejectReason.TITLE_NOT_TARGETED,
+                f"title matches an excluded role family: {pattern}",
+            )
 
     if not any(re.search(pattern, haystack) for pattern in TARGET_ROLE_PATTERNS):
-        return PrefilterResult(False, RejectReason.TITLE_NOT_TARGETED,
-                               f"title {normalized_title!r} is not a targeted role")
+        return PrefilterResult(
+            False,
+            RejectReason.TITLE_NOT_TARGETED,
+            f"title {normalized_title!r} is not a targeted role",
+        )
 
     if SENIORITY_ORDER.get(seniority, 1) > SENIORITY_ORDER[constraints.max_seniority]:
-        return PrefilterResult(False, RejectReason.SENIORITY_TOO_HIGH,
-                               f"{seniority} exceeds the stated ceiling "
-                               f"({constraints.max_seniority})")
+        return PrefilterResult(
+            False,
+            RejectReason.SENIORITY_TOO_HIGH,
+            f"{seniority} exceeds the stated ceiling " f"({constraints.max_seniority})",
+        )
 
     # Clearance requirements appear in the body, not the title.
     body = (description or "")[:4000].lower()
@@ -132,17 +141,18 @@ def prefilter(
     # allowed state would override what the human actually said.
     if is_hybrid and not constraints.accepts_hybrid:
         return PrefilterResult(
-            False, RejectReason.LOCATION_UNSUITABLE,
+            False,
+            RejectReason.LOCATION_UNSUITABLE,
             "hybrid role, and hybrid is not accepted",
         )
 
-    location_ok = (
-        (is_remote and constraints.accepts_remote)
-        or (location_state is not None and location_state in constraints.allowed_states)
+    location_ok = (is_remote and constraints.accepts_remote) or (
+        location_state is not None and location_state in constraints.allowed_states
     )
     if not location_ok:
         return PrefilterResult(
-            False, RejectReason.LOCATION_UNSUITABLE,
+            False,
+            RejectReason.LOCATION_UNSUITABLE,
             f"remote={is_remote} hybrid={is_hybrid} state={location_state}",
         )
 
@@ -153,9 +163,11 @@ def prefilter(
         and salary_max is not None
         and salary_max < constraints.min_salary
     ):
-        return PrefilterResult(False, RejectReason.SALARY_BELOW_FLOOR,
-                               f"stated maximum {salary_max} is below the floor "
-                               f"{constraints.min_salary}")
+        return PrefilterResult(
+            False,
+            RejectReason.SALARY_BELOW_FLOOR,
+            f"stated maximum {salary_max} is below the floor " f"{constraints.min_salary}",
+        )
 
     return PrefilterResult(True)
 

@@ -55,9 +55,7 @@ class ProfileFact(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     )
     fact_type: Mapped[FactType] = mapped_column(fact_type_enum, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    structured: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    structured: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     source_table: Mapped[str] = mapped_column(Text, nullable=False)
     source_id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), nullable=False)
     status: Mapped[FactStatus] = mapped_column(
@@ -82,9 +80,7 @@ class ProfileFact(TimestampMixin, UUIDPrimaryKeyMixin, Base):
 
     __table_args__ = (
         CheckConstraint(
-            "source_table IN ("
-            + ", ".join(f"'{name}'" for name in FACT_SOURCE_TABLES)
-            + ")",
+            "source_table IN (" + ", ".join(f"'{name}'" for name in FACT_SOURCE_TABLES) + ")",
             name="source_table_allowed",
         ),
         # A verified fact must record who verified it and when. Without this,
@@ -112,8 +108,12 @@ class ProfileFact(TimestampMixin, UUIDPrimaryKeyMixin, Base):
             postgresql_using="hnsw",
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
-        Index("idx_facts_text_trgm", "text", postgresql_using="gin",
-              postgresql_ops={"text": "gin_trgm_ops"}),
+        Index(
+            "idx_facts_text_trgm",
+            "text",
+            postgresql_using="gin",
+            postgresql_ops={"text": "gin_trgm_ops"},
+        ),
         # DEVIATION D-2 (see docs/DATABASE_IMPLEMENTATION.md): the design's
         # UNIQUE(source_table, source_id, text) is hashed on `text` because a
         # btree index entry is limited to ~2704 bytes and fact text is free-form.
@@ -153,9 +153,7 @@ class FactEvidence(UUIDPrimaryKeyMixin, Base):
     added_by: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
     )
-    created_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 
     fact: Mapped[ProfileFact] = relationship(back_populates="evidence")
     artifact: Mapped[Artifact | None] = relationship()

@@ -23,25 +23,24 @@ class IllegalTransitionError(ValueError):
 #: The graph from ARCHITECTURE.md §7.1, transcribed exactly.
 ALLOWED_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     JobStatus.DISCOVERED: frozenset(
-        {JobStatus.NORMALIZED, JobStatus.DUPLICATE, JobStatus.DISCARDED,
-         JobStatus.EXPIRED}
+        {JobStatus.NORMALIZED, JobStatus.DUPLICATE, JobStatus.DISCARDED, JobStatus.EXPIRED}
     ),
     JobStatus.NORMALIZED: frozenset(
-        {JobStatus.EVALUATED, JobStatus.DISCARDED, JobStatus.DUPLICATE,
-         JobStatus.EXPIRED}
+        {JobStatus.EVALUATED, JobStatus.DISCARDED, JobStatus.DUPLICATE, JobStatus.EXPIRED}
     ),
     JobStatus.EVALUATED: frozenset(
-        {JobStatus.SHORTLISTED, JobStatus.DISCARDED, JobStatus.EXPIRED,
-         # Re-evaluation against a newer profile version is legitimate.
-         JobStatus.EVALUATED}
+        {
+            JobStatus.SHORTLISTED,
+            JobStatus.DISCARDED,
+            JobStatus.EXPIRED,
+            # Re-evaluation against a newer profile version is legitimate.
+            JobStatus.EVALUATED,
+        }
     ),
     JobStatus.SHORTLISTED: frozenset(
-        {JobStatus.QUEUED, JobStatus.DISCARDED, JobStatus.EXPIRED,
-         JobStatus.EVALUATED}
+        {JobStatus.QUEUED, JobStatus.DISCARDED, JobStatus.EXPIRED, JobStatus.EVALUATED}
     ),
-    JobStatus.QUEUED: frozenset(
-        {JobStatus.CLAIMED, JobStatus.DISCARDED, JobStatus.EXPIRED}
-    ),
+    JobStatus.QUEUED: frozenset({JobStatus.CLAIMED, JobStatus.DISCARDED, JobStatus.EXPIRED}),
     JobStatus.CLAIMED: frozenset({JobStatus.APPLIED, JobStatus.DISCARDED}),
     # `discarded` is terminal but ARCHITECTURE.md §7.1 notes "manual
     # re-shortlist allowed", so a human may bring it back.

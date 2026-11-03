@@ -71,9 +71,7 @@ def ready_case() -> tuple[list[FakeClaim], dict[str, Any]]:
 
 def test_a_clean_verified_resume_is_ready() -> None:
     claims, content = ready_case()
-    result = evaluate_readiness(
-        verification_status="passed", claims=claims, content=content
-    )
+    result = evaluate_readiness(verification_status="passed", claims=claims, content=content)
     assert result.ready
     assert result.reason is None
 
@@ -84,9 +82,7 @@ def test_a_clean_verified_resume_is_ready() -> None:
 @pytest.mark.parametrize("status", ["pending", "failed"])
 def test_only_a_passed_verification_is_reviewable(status: str) -> None:
     claims, content = ready_case()
-    result = evaluate_readiness(
-        verification_status=status, claims=claims, content=content
-    )
+    result = evaluate_readiness(verification_status=status, claims=claims, content=content)
     assert not result.ready
     assert status in (result.reason or "")
 
@@ -111,9 +107,7 @@ def test_any_non_supported_verdict_blocks_review(verdict: ClaimVerdict) -> None:
     """
     claims, content = ready_case()
     claims[1].verdict = verdict
-    result = evaluate_readiness(
-        verification_status="passed", claims=claims, content=content
-    )
+    result = evaluate_readiness(verification_status="passed", claims=claims, content=content)
     assert not result.ready
     assert str(verdict) in (result.reason or "")
 
@@ -121,9 +115,7 @@ def test_any_non_supported_verdict_blocks_review(verdict: ClaimVerdict) -> None:
 def test_a_claim_without_a_verification_timestamp_blocks_review() -> None:
     claims, content = ready_case()
     claims[0].verified_at = None
-    result = evaluate_readiness(
-        verification_status="passed", claims=claims, content=content
-    )
+    result = evaluate_readiness(verification_status="passed", claims=claims, content=content)
     assert not result.ready
     assert "verification timestamp" in (result.reason or "")
 
@@ -132,9 +124,7 @@ def test_a_rendered_line_with_no_claim_blocks_review() -> None:
     """Coverage, forwards: text nobody verified must not slip through."""
     claims, content = ready_case()
     content["experience"]["1"] = {"text": "Unverified addition.", "order": 1}
-    result = evaluate_readiness(
-        verification_status="passed", claims=claims, content=content
-    )
+    result = evaluate_readiness(verification_status="passed", claims=claims, content=content)
     assert not result.ready
     assert "/experience/1" in (result.reason or "")
 
@@ -143,18 +133,14 @@ def test_a_claim_with_no_rendered_line_blocks_review() -> None:
     """Coverage, backwards: a verdict about text that is gone is stale."""
     claims, content = ready_case()
     claims.append(FakeClaim(path="/experience/9"))
-    result = evaluate_readiness(
-        verification_status="passed", claims=claims, content=content
-    )
+    result = evaluate_readiness(verification_status="passed", claims=claims, content=content)
     assert not result.ready
     assert "/experience/9" in (result.reason or "")
 
 
 def test_content_paths_ignores_malformed_sections() -> None:
     """A section stored as something other than an object is not a path."""
-    assert content_paths({"summary": {"0": {}}, "junk": "not-a-section"}) == {
-        "/summary/0"
-    }
+    assert content_paths({"summary": {"0": {}}, "junk": "not-a-section"}) == {"/summary/0"}
 
 
 # --- staleness --------------------------------------------------------------
@@ -163,12 +149,14 @@ def test_content_paths_ignores_malformed_sections() -> None:
 def test_snapshot_matches_only_on_id_and_version_together() -> None:
     resume = FakeResume(version=2)
     assert snapshot_matches(
-        {"resume_id": str(RESUME_ID), "resume_version": 2}, resume  # type: ignore[arg-type]
+        {"resume_id": str(RESUME_ID), "resume_version": 2},
+        resume,  # type: ignore[arg-type]
     )
     # Right resume, wrong version: this is exactly the regeneration case the
     # binding exists to catch.
     assert not snapshot_matches(
-        {"resume_id": str(RESUME_ID), "resume_version": 1}, resume  # type: ignore[arg-type]
+        {"resume_id": str(RESUME_ID), "resume_version": 1},
+        resume,  # type: ignore[arg-type]
     )
     # Right version number, different resume.
     assert not snapshot_matches(

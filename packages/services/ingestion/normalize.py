@@ -44,33 +44,100 @@ TITLE_NOISE = (
 
 #: Suffixes stripped when normalizing a company name for dedupe.
 COMPANY_SUFFIXES = (
-    "inc", "inc.", "incorporated", "llc", "l.l.c.", "ltd", "ltd.", "limited",
-    "corp", "corp.", "corporation", "co", "co.", "company", "plc", "gmbh",
-    "sa", "s.a.", "nv", "n.v.", "ab", "as", "oy", "pty", "pvt", "private",
-    "holdings", "group", "technologies", "technology", "labs",
+    "inc",
+    "inc.",
+    "incorporated",
+    "llc",
+    "l.l.c.",
+    "ltd",
+    "ltd.",
+    "limited",
+    "corp",
+    "corp.",
+    "corporation",
+    "co",
+    "co.",
+    "company",
+    "plc",
+    "gmbh",
+    "sa",
+    "s.a.",
+    "nv",
+    "n.v.",
+    "ab",
+    "as",
+    "oy",
+    "pty",
+    "pvt",
+    "private",
+    "holdings",
+    "group",
+    "technologies",
+    "technology",
+    "labs",
 )
 
 REMOTE_PATTERNS = (
-    r"\bfully\s+remote\b", r"\b100%\s+remote\b", r"\bremote\b",
-    r"\bwork\s+from\s+home\b", r"\bwfh\b", r"\bdistributed\b",
+    r"\bfully\s+remote\b",
+    r"\b100%\s+remote\b",
+    r"\bremote\b",
+    r"\bwork\s+from\s+home\b",
+    r"\bwfh\b",
+    r"\bdistributed\b",
 )
 HYBRID_PATTERNS = (r"\bhybrid\b", r"\b\d\s*days?\s+(?:in[\s-]?office|onsite|on[\s-]?site)\b")
 
 US_STATES = {
-    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
-    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
-    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
-    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
-    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
-    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN",
-    "mississippi": "MS", "missouri": "MO", "montana": "MT", "nebraska": "NE",
-    "nevada": "NV", "new hampshire": "NH", "new jersey": "NJ",
-    "new mexico": "NM", "new york": "NY", "north carolina": "NC",
-    "north dakota": "ND", "ohio": "OH", "oklahoma": "OK", "oregon": "OR",
-    "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
-    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
-    "vermont": "VT", "virginia": "VA", "washington": "WA",
-    "west virginia": "WV", "wisconsin": "WI", "wyoming": "WY",
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
     "district of columbia": "DC",
 }
 STATE_CODES = set(US_STATES.values())
@@ -126,8 +193,12 @@ def clean_text(value: str | None) -> str | None:
     value = re.sub(r"</p>", "\n\n", value, flags=re.IGNORECASE)
     value = re.sub(r"<[^>]+>", " ", value)
     value = (
-        value.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
-        .replace("&nbsp;", " ").replace("&#39;", "'").replace("&quot;", '"')
+        value.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&nbsp;", " ")
+        .replace("&#39;", "'")
+        .replace("&quot;", '"')
     )
     value = re.sub(r"[ \t]+", " ", value)
     value = re.sub(r"\n{3,}", "\n\n", value)
@@ -288,10 +359,17 @@ def parse_salary(text: str | None) -> ParsedSalary:
     if period_match:
         raw_period = period_match.group("period").lower()
         period = {
-            "hour": "hourly", "hourly": "hourly", "hr": "hourly",
-            "year": "yearly", "yearly": "yearly", "annum": "yearly", "annual": "yearly",
-            "month": "monthly", "monthly": "monthly",
-            "day": "daily", "daily": "daily",
+            "hour": "hourly",
+            "hourly": "hourly",
+            "hr": "hourly",
+            "year": "yearly",
+            "yearly": "yearly",
+            "annum": "yearly",
+            "annual": "yearly",
+            "month": "monthly",
+            "monthly": "monthly",
+            "day": "daily",
+            "daily": "daily",
         }[raw_period]
     elif high <= 500:
         period = "hourly"
@@ -386,8 +464,13 @@ def normalize_job(
     salary = parse_salary(salary_text or description_clean)
 
     if location and not any(
-        (parsed_location.city, parsed_location.state, parsed_location.country,
-         parsed_location.is_remote, parsed_location.is_hybrid)
+        (
+            parsed_location.city,
+            parsed_location.state,
+            parsed_location.country,
+            parsed_location.is_remote,
+            parsed_location.is_hybrid,
+        )
     ):
         warnings.append(f"could not parse location: {location!r}")
     if salary_text and salary.minimum is None:

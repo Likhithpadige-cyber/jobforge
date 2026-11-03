@@ -102,9 +102,7 @@ class RevisionAttemptRepository(BaseRepository[ResumeRevisionAttempt]):
         )
         attempt = await self.live_for_approval(request.approval_id)
         if attempt is None:  # pragma: no cover - the insert just guaranteed one
-            raise ConflictError(
-                f"no live revision attempt for approval {request.approval_id}"
-            )
+            raise ConflictError(f"no live revision attempt for approval {request.approval_id}")
         self._assert_source_matches(attempt, request, instructions_digest)
         return attempt
 
@@ -213,9 +211,7 @@ class RevisionAttemptRepository(BaseRepository[ResumeRevisionAttempt]):
         ).one_or_none()
         return None if row is None else int(row[1])
 
-    async def renew(
-        self, attempt_id: UUID, *, owner: str, epoch: int, lease_seconds: int
-    ) -> bool:
+    async def renew(self, attempt_id: UUID, *, owner: str, epoch: int, lease_seconds: int) -> bool:
         """Extend the lease without touching epoch, count or status (D.5).
 
         Provided because it is part of the repository's contract and the

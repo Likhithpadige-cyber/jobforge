@@ -487,8 +487,11 @@ class FirstDraftInferenceAudit(DomainInferenceAudit):
     """
 
     def __init__(self, *, event_id: UUID, application_id: UUID, profile_id: UUID) -> None:
-        self._execution = {"event_id": str(event_id), "application_id": str(application_id),
-                           "profile_id": str(profile_id)}
+        self._execution = {
+            "event_id": str(event_id),
+            "application_id": str(application_id),
+            "profile_id": str(profile_id),
+        }
         self._ledger = _SpendLedger()
         self._failed = False
 
@@ -511,9 +514,7 @@ class FirstDraftInferenceAudit(DomainInferenceAudit):
             self._failed = True
             if not isinstance(exc, Exception):
                 raise
-            raise InferenceAuditUnavailableError(
-                f"first-draft audit {operation} failed"
-            ) from exc
+            raise InferenceAuditUnavailableError(f"first-draft audit {operation} failed") from exc
 
 
 class CoverLetterInferenceAudit(DomainInferenceAudit):
@@ -529,8 +530,11 @@ class CoverLetterInferenceAudit(DomainInferenceAudit):
     """
 
     def __init__(self, *, event_id: UUID, application_id: UUID, profile_id: UUID) -> None:
-        self._execution = {"event_id": str(event_id), "application_id": str(application_id),
-                           "profile_id": str(profile_id)}
+        self._execution = {
+            "event_id": str(event_id),
+            "application_id": str(application_id),
+            "profile_id": str(profile_id),
+        }
         self._ledger = _SpendLedger()
         self._failed = False
 
@@ -553,6 +557,4 @@ class CoverLetterInferenceAudit(DomainInferenceAudit):
             self._failed = True
             if not isinstance(exc, Exception):
                 raise
-            raise InferenceAuditUnavailableError(
-                f"cover-letter audit {operation} failed"
-            ) from exc
+            raise InferenceAuditUnavailableError(f"cover-letter audit {operation} failed") from exc

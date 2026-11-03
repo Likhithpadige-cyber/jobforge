@@ -70,9 +70,18 @@ def test_defaults_are_populated() -> None:
 def test_as_row_covers_every_events_column() -> None:
     row = envelope().as_row()
     expected = {
-        "id", "type", "version", "aggregate_type", "aggregate_id",
-        "correlation_id", "causation_id", "actor_type", "actor_id",
-        "trace_id", "payload", "occurred_at",
+        "id",
+        "type",
+        "version",
+        "aggregate_type",
+        "aggregate_id",
+        "correlation_id",
+        "causation_id",
+        "actor_type",
+        "actor_id",
+        "trace_id",
+        "payload",
+        "occurred_at",
     }
     assert set(row) == expected
     assert "published" not in row, "publication state is the relay's business"
@@ -82,5 +91,8 @@ def test_delivery_versions_preserve_v1_and_only_allow_rendered_v2():
     assert set(SUPPORTED_EVENT_VERSIONS) == KNOWN_EVENT_TYPES
     assert all(1 in versions for versions in SUPPORTED_EVENT_VERSIONS.values())
     assert SUPPORTED_EVENT_VERSIONS["resume.rendered"] == frozenset({1, 2})
-    assert all(versions == frozenset({1}) for name, versions in SUPPORTED_EVENT_VERSIONS.items()
-               if name != "resume.rendered")
+    assert all(
+        versions == frozenset({1})
+        for name, versions in SUPPORTED_EVENT_VERSIONS.items()
+        if name != "resume.rendered"
+    )

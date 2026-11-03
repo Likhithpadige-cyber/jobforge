@@ -49,9 +49,7 @@ async def _row(session, attempt_id):  # type: ignore[no-untyped-def]
 # =====================================================================
 # T2 - acquisition and fencing
 # =====================================================================
-async def test_acquire_takes_the_lease_and_increments_once(
-    session, revision_attempt
-) -> None:
+async def test_acquire_takes_the_lease_and_increments_once(session, revision_attempt) -> None:
     repo = await _repo(session)
     leased = await repo.acquire(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
@@ -65,9 +63,7 @@ async def test_acquire_takes_the_lease_and_increments_once(
     assert leased == epoch
 
 
-async def test_a_second_worker_cannot_take_a_live_lease(
-    session, revision_attempt
-) -> None:
+async def test_a_second_worker_cannot_take_a_live_lease(session, revision_attempt) -> None:
     """The predicate is the lock: no read-then-write, so both cannot win."""
     repo = await _repo(session)
     assert await repo.acquire(
@@ -106,13 +102,13 @@ async def test_an_expired_lease_is_taken_over_and_the_epoch_advances(
     assert leased == epoch
 
 
-async def test_the_ceiling_refuses_a_further_acquisition(
-    session, revision_attempt
-) -> None:
+async def test_the_ceiling_refuses_a_further_acquisition(session, revision_attempt) -> None:
     repo = await _repo(session)
     for i in range(MAX_ATTEMPTS):
         assert await repo.acquire(
-            revision_attempt["id"], owner=f"w{i}", lease_seconds=TTL,
+            revision_attempt["id"],
+            owner=f"w{i}",
+            lease_seconds=TTL,
             max_attempts=MAX_ATTEMPTS,
         )
         await session.execute(
@@ -132,9 +128,7 @@ async def test_the_ceiling_refuses_a_further_acquisition(
     assert count == MAX_ATTEMPTS
 
 
-async def test_a_fenced_out_worker_writes_nothing(
-    session, revision_attempt, demo_resume
-) -> None:
+async def test_a_fenced_out_worker_writes_nothing(session, revision_attempt, demo_resume) -> None:
     """The invariant the whole epoch mechanism exists for.
 
     w1 is taken over mid-flight. Every subsequent statement it issues carries
@@ -156,37 +150,38 @@ async def test_a_fenced_out_worker_writes_nothing(
     )
 
     assert not await repo.succeed(
-        revision_attempt["id"], owner="w1", epoch=1,
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=1,
-            failure_class=RevisionFailureClass.MODEL_TIMEOUT, detail="stale",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=1,
+            failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+            detail="stale",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         is None
     )
-    assert not await repo.renew(
-        revision_attempt["id"], owner="w1", epoch=1, lease_seconds=TTL
-    )
+    assert not await repo.renew(revision_attempt["id"], owner="w1", epoch=1, lease_seconds=TTL)
     status, owner, epoch, *_ = await _row(session, revision_attempt["id"])
     assert (status, owner, epoch) == ("running", "w2", 2)
 
 
-async def test_renew_extends_without_moving_epoch_or_count(
-    session, revision_attempt
-) -> None:
+async def test_renew_extends_without_moving_epoch_or_count(session, revision_attempt) -> None:
     """D.5. Nothing schedules this yet - generation is in-process - but the
     contract is real and the fence depends on it not advancing anything."""
     repo = await _repo(session)
     await repo.acquire(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
-    assert await repo.renew(
-        revision_attempt["id"], owner="w1", epoch=1, lease_seconds=TTL * 2
-    )
+    assert await repo.renew(revision_attempt["id"], owner="w1", epoch=1, lease_seconds=TTL * 2)
     status, owner, epoch, count, *_ = await _row(session, revision_attempt["id"])
     assert (status, owner, epoch, count) == ("running", "w1", 1, 1)
 
@@ -200,8 +195,11 @@ async def test_success_links_the_result(session, revision_attempt, demo_resume) 
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     assert await repo.succeed(
-        revision_attempt["id"], owner="w1", epoch=1,
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     row = (
@@ -231,8 +229,11 @@ async def test_a_failed_verification_is_a_succeeded_attempt(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     assert await repo.succeed(
-        revision_attempt["id"], owner="w1", epoch=1,
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.FAILED_VERIFICATION,
     )
     status, *_ = await _row(session, revision_attempt["id"])
@@ -250,15 +251,17 @@ async def test_a_retryable_failure_returns_the_attempt_to_accepted(
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=1,
-            failure_class=RevisionFailureClass.MODEL_TIMEOUT, detail="timeout",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=1,
+            failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+            detail="timeout",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "accepted"
     )
-    status, owner, _, count, stale, exhausted, _ = await _row(
-        session, revision_attempt["id"]
-    )
+    status, owner, _, count, stale, exhausted, _ = await _row(session, revision_attempt["id"])
     assert (status, owner, count, stale, exhausted) == ("accepted", None, 1, 0, False)
 
 
@@ -269,9 +272,13 @@ async def test_a_terminal_failure_stays_failed(session, revision_attempt) -> Non
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=1,
-            failure_class=RevisionFailureClass.BUDGET_EXCEEDED, detail="over budget",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=1,
+            failure_class=RevisionFailureClass.BUDGET_EXCEEDED,
+            detail="over budget",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "failed"
     )
@@ -294,9 +301,13 @@ async def test_the_evidence_stale_budget_is_consumed_exactly_once(
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=1,
-            failure_class=RevisionFailureClass.EVIDENCE_STALE, detail="moved",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=1,
+            failure_class=RevisionFailureClass.EVIDENCE_STALE,
+            detail="moved",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "accepted"
     )
@@ -308,9 +319,13 @@ async def test_the_evidence_stale_budget_is_consumed_exactly_once(
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w2", epoch=2,
-            failure_class=RevisionFailureClass.EVIDENCE_STALE, detail="moved again",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w2",
+            epoch=2,
+            failure_class=RevisionFailureClass.EVIDENCE_STALE,
+            detail="moved again",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "failed"
     )
@@ -318,9 +333,7 @@ async def test_the_evidence_stale_budget_is_consumed_exactly_once(
     assert (status, count, stale) == ("failed", 2, 1)
 
 
-async def test_the_epoch_acquire_returns_is_the_one_that_fences(
-    session, revision_attempt
-) -> None:
+async def test_the_epoch_acquire_returns_is_the_one_that_fences(session, revision_attempt) -> None:
     """The round trip, end to end, with no hand-written epoch anywhere.
 
     Every other test in this file passes `epoch=1` as a literal, which is
@@ -336,9 +349,13 @@ async def test_the_epoch_acquire_returns_is_the_one_that_fences(
     assert first is not None
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=first,
-            failure_class=RevisionFailureClass.PERSISTENCE_FAILED, detail="boom",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=first,
+            failure_class=RevisionFailureClass.PERSISTENCE_FAILED,
+            detail="boom",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "accepted"
     )
@@ -350,9 +367,13 @@ async def test_the_epoch_acquire_returns_is_the_one_that_fences(
     assert second is not None and second != first
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w2", epoch=second,
-            failure_class=RevisionFailureClass.MODEL_TIMEOUT, detail="slow",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w2",
+            epoch=second,
+            failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+            detail="slow",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "accepted"
     )
@@ -362,9 +383,13 @@ async def test_the_epoch_acquire_returns_is_the_one_that_fences(
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=first,
-            failure_class=RevisionFailureClass.MODEL_TIMEOUT, detail="stale owner",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=first,
+            failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+            detail="stale owner",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         is None
     )
@@ -379,9 +404,13 @@ async def test_recovery_is_marked_once(session, revision_attempt) -> None:
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     await repo.fail(
-        revision_attempt["id"], owner="w1", epoch=1,
-        failure_class=RevisionFailureClass.LEASE_LOST, detail="lost",
-        max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        failure_class=RevisionFailureClass.LEASE_LOST,
+        detail="lost",
+        max_attempts=MAX_ATTEMPTS,
+        evidence_stale_budget=BUDGET,
     )
     assert await repo.mark_recovered(revision_attempt["id"])
     assert not await repo.mark_recovered(revision_attempt["id"])
@@ -389,9 +418,7 @@ async def test_recovery_is_marked_once(session, revision_attempt) -> None:
     assert recovered is not None
 
 
-async def test_an_accepted_attempt_is_never_stamped_recovered(
-    session, revision_attempt
-) -> None:
+async def test_an_accepted_attempt_is_never_stamped_recovered(session, revision_attempt) -> None:
     """`recovered_at` is failed-only, and stays failed-only.
 
     This is the Batch 1 contract and nothing below widens it. The application
@@ -406,17 +433,13 @@ async def test_an_accepted_attempt_is_never_stamped_recovered(
 # ---------------------------------------------------------------------
 # T5 - does this attempt still hold the application?
 # ---------------------------------------------------------------------
-async def test_a_never_run_attempt_holds_no_application(
-    session, revision_attempt
-) -> None:
+async def test_a_never_run_attempt_holds_no_application(session, revision_attempt) -> None:
     """`accepted` with no recorded failure never took the application."""
     repo = await _repo(session)
     assert await repo.recovery_state(revision_attempt["id"]) == ("accepted", False)
 
 
-async def test_a_live_worker_is_never_recovered_out_from_under(
-    session, revision_attempt
-) -> None:
+async def test_a_live_worker_is_never_recovered_out_from_under(session, revision_attempt) -> None:
     """The guard that matters most here.
 
     A `running` attempt with a live lease has a worker inside T3 right now.
@@ -446,17 +469,19 @@ async def test_a_retryable_failure_releases_the_application_without_a_stamp(
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=1,
-            failure_class=RevisionFailureClass.PERSISTENCE_FAILED, detail="boom",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=1,
+            failure_class=RevisionFailureClass.PERSISTENCE_FAILED,
+            detail="boom",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "accepted"
     )
     assert await repo.recovery_state(revision_attempt["id"]) == ("accepted", True)
 
-    status, owner, _, count, _, _, recovered = await _row(
-        session, revision_attempt["id"]
-    )
+    status, owner, _, count, _, _, recovered = await _row(session, revision_attempt["id"])
     assert (status, owner, count, recovered) == ("accepted", None, 1, None)
     assert not await repo.mark_recovered(revision_attempt["id"])
 
@@ -478,9 +503,13 @@ async def test_a_terminal_failure_releases_the_application_and_is_stamped(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     await repo.fail(
-        revision_attempt["id"], owner="w1", epoch=1,
-        failure_class=RevisionFailureClass.BUDGET_EXCEEDED, detail="over budget",
-        max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        failure_class=RevisionFailureClass.BUDGET_EXCEEDED,
+        detail="over budget",
+        max_attempts=MAX_ATTEMPTS,
+        evidence_stale_budget=BUDGET,
     )
     assert await repo.recovery_state(revision_attempt["id"]) == ("failed", True)
     assert await repo.mark_recovered(revision_attempt["id"])
@@ -500,8 +529,11 @@ async def test_a_succeeded_attempt_holds_no_application(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     assert await repo.succeed(
-        revision_attempt["id"], owner="w1", epoch=1,
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     assert await repo.recovery_state(revision_attempt["id"]) == ("succeeded", False)
@@ -526,9 +558,13 @@ async def test_case_1_retryable_failure_with_budget_stays_nonterminal(
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w1", epoch=1,
-            failure_class=RevisionFailureClass.MODEL_TIMEOUT, detail="timeout",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w1",
+            epoch=1,
+            failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+            detail="timeout",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "accepted"
     )
@@ -541,33 +577,41 @@ async def test_case_1_retryable_failure_with_budget_stays_nonterminal(
     assert (status, owner, epoch, count) == ("running", "w2", 2, 2)
 
 
-async def test_case_2_exhausted_budget_becomes_terminal_failed(
-    session, revision_attempt
-) -> None:
+async def test_case_2_exhausted_budget_becomes_terminal_failed(session, revision_attempt) -> None:
     """(2) Budget spent => `failed`, and `failed` is the end of the line."""
     repo = await _repo(session)
     await repo.acquire(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     await repo.fail(
-        revision_attempt["id"], owner="w1", epoch=1,
-        failure_class=RevisionFailureClass.EVIDENCE_STALE, detail="moved",
-        max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        failure_class=RevisionFailureClass.EVIDENCE_STALE,
+        detail="moved",
+        max_attempts=MAX_ATTEMPTS,
+        evidence_stale_budget=BUDGET,
     )
     await repo.acquire(
         revision_attempt["id"], owner="w2", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     assert (
         await repo.fail(
-            revision_attempt["id"], owner="w2", epoch=2,
-            failure_class=RevisionFailureClass.EVIDENCE_STALE, detail="moved again",
-            max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+            revision_attempt["id"],
+            owner="w2",
+            epoch=2,
+            failure_class=RevisionFailureClass.EVIDENCE_STALE,
+            detail="moved again",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
         )
         == "failed"
     )
     assert (
         await repo.acquire(
-            revision_attempt["id"], owner="w3", lease_seconds=TTL,
+            revision_attempt["id"],
+            owner="w3",
+            lease_seconds=TTL,
             max_attempts=MAX_ATTEMPTS,
         )
         is None
@@ -589,14 +633,20 @@ async def test_case_3_a_terminal_failed_attempt_is_never_reacquired(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     await repo.fail(
-        revision_attempt["id"], owner="w1", epoch=1,
-        failure_class=RevisionFailureClass.BUDGET_EXCEEDED, detail="over",
-        max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        failure_class=RevisionFailureClass.BUDGET_EXCEEDED,
+        detail="over",
+        max_attempts=MAX_ATTEMPTS,
+        evidence_stale_budget=BUDGET,
     )
     for _ in range(2):
         assert (
             await repo.acquire(
-                revision_attempt["id"], owner="w2", lease_seconds=TTL,
+                revision_attempt["id"],
+                owner="w2",
+                lease_seconds=TTL,
                 max_attempts=MAX_ATTEMPTS,
             )
             is None
@@ -628,7 +678,9 @@ async def test_case_4_reconciles_a_result_committed_before_t4(
     """
     repo = await _repo(session)
     await repo.acquire(
-        revision_attempt["id"], owner="dead", lease_seconds=TTL,
+        revision_attempt["id"],
+        owner="dead",
+        lease_seconds=TTL,
         max_attempts=MAX_ATTEMPTS,
     )
     await session.execute(
@@ -639,8 +691,10 @@ async def test_case_4_reconciles_a_result_committed_before_t4(
         {"id": revision_attempt["id"]},
     )
     assert await repo.reconcile_succeeded(
-        revision_attempt["id"], owner="reconciler",
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="reconciler",
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     status, _, _, count, *_ = await _row(session, revision_attempt["id"])
@@ -657,12 +711,16 @@ async def test_case_4b_reconciliation_respects_a_live_lease(
     """
     repo = await _repo(session)
     await repo.acquire(
-        revision_attempt["id"], owner="alive", lease_seconds=TTL,
+        revision_attempt["id"],
+        owner="alive",
+        lease_seconds=TTL,
         max_attempts=MAX_ATTEMPTS,
     )
     assert not await repo.reconcile_succeeded(
-        revision_attempt["id"], owner="reconciler",
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="reconciler",
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     status, owner, *_ = await _row(session, revision_attempt["id"])
@@ -683,16 +741,22 @@ async def test_case_4c_reconciles_from_accepted_without_a_forbidden_jump(
         revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
     )
     await repo.fail(
-        revision_attempt["id"], owner="w1", epoch=1,
-        failure_class=RevisionFailureClass.MODEL_TIMEOUT, detail="died after T3",
-        max_attempts=MAX_ATTEMPTS, evidence_stale_budget=BUDGET,
+        revision_attempt["id"],
+        owner="w1",
+        epoch=1,
+        failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+        detail="died after T3",
+        max_attempts=MAX_ATTEMPTS,
+        evidence_stale_budget=BUDGET,
     )
     status, *_ = await _row(session, revision_attempt["id"])
     assert status == "accepted"
 
     assert await repo.reconcile_succeeded(
-        revision_attempt["id"], owner="reconciler",
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="reconciler",
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     status, _, _, count, *_ = await _row(session, revision_attempt["id"])
@@ -723,7 +787,9 @@ async def test_case_5_reconciliation_creates_no_second_version(
 
     before = await _versions()
     await repo.acquire(
-        revision_attempt["id"], owner="dead", lease_seconds=TTL,
+        revision_attempt["id"],
+        owner="dead",
+        lease_seconds=TTL,
         max_attempts=MAX_ATTEMPTS,
     )
     await session.execute(
@@ -734,8 +800,10 @@ async def test_case_5_reconciliation_creates_no_second_version(
         {"id": revision_attempt["id"]},
     )
     await repo.reconcile_succeeded(
-        revision_attempt["id"], owner="reconciler",
-        result_resume_id=demo_resume, result_version=2,
+        revision_attempt["id"],
+        owner="reconciler",
+        result_resume_id=demo_resume,
+        result_version=2,
         outcome=RevisionOutcome.PASSED,
     )
     assert await _versions() == before

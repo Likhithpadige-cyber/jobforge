@@ -118,28 +118,32 @@ def evaluate_ingestion(
 
     if not policy.exists:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.NO_POLICY,
+            PolicyDecision.BLOCKED,
+            BlockReason.NO_POLICY,
             f"no site_policies row for {policy.domain!r}; unknown domains are blocked",
             policy,
         )
 
     if not source_enabled:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.SOURCE_DISABLED,
+            PolicyDecision.BLOCKED,
+            BlockReason.SOURCE_DISABLED,
             "source is disabled; enable it only after a ToS review",
             policy,
         )
 
     if policy.ingestion_method is IngestionMethod.BLOCKED:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.METHOD_BLOCKED,
+            PolicyDecision.BLOCKED,
+            BlockReason.METHOD_BLOCKED,
             f"ingestion is blocked for {policy.domain}",
             policy,
         )
 
     if requested_method != policy.ingestion_method:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.METHOD_BLOCKED,
+            PolicyDecision.BLOCKED,
+            BlockReason.METHOD_BLOCKED,
             f"{policy.domain} permits {policy.ingestion_method}, not {requested_method}",
             policy,
         )
@@ -149,26 +153,30 @@ def evaluate_ingestion(
     if requested_method in AUTOMATED_METHODS:
         if not policy.automation_allowed:
             return PolicyVerdict(
-                PolicyDecision.BLOCKED, BlockReason.AUTOMATION_FORBIDDEN,
+                PolicyDecision.BLOCKED,
+                BlockReason.AUTOMATION_FORBIDDEN,
                 f"{policy.domain} does not permit automated access",
                 policy,
             )
         if policy.requires_login:
             return PolicyVerdict(
-                PolicyDecision.BLOCKED, BlockReason.LOGIN_REQUIRED,
+                PolicyDecision.BLOCKED,
+                BlockReason.LOGIN_REQUIRED,
                 f"{policy.domain} requires authentication; automated login is never used",
                 policy,
             )
         if policy.next_review_due and policy.next_review_due < today:
             # Terms change. A stale review is not a review.
             return PolicyVerdict(
-                PolicyDecision.BLOCKED, BlockReason.REVIEW_EXPIRED,
+                PolicyDecision.BLOCKED,
+                BlockReason.REVIEW_EXPIRED,
                 f"ToS review for {policy.domain} expired on {policy.next_review_due}",
                 policy,
             )
 
     return PolicyVerdict(
-        PolicyDecision.ALLOWED, None,
+        PolicyDecision.ALLOWED,
+        None,
         f"{requested_method} permitted for {policy.domain}",
         policy,
     )
@@ -206,33 +214,45 @@ def evaluate_submission(policy: PolicySnapshot, *, today: date | None = None) ->
     today = today or utc_today()
     if not policy.exists:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.NO_POLICY,
-            f"no policy for {policy.domain!r}; submission blocked", policy,
+            PolicyDecision.BLOCKED,
+            BlockReason.NO_POLICY,
+            f"no policy for {policy.domain!r}; submission blocked",
+            policy,
         )
     if policy.submission_method is SubmissionMethod.BLOCKED:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.METHOD_BLOCKED,
-            f"submission is blocked for {policy.domain}", policy,
+            PolicyDecision.BLOCKED,
+            BlockReason.METHOD_BLOCKED,
+            f"submission is blocked for {policy.domain}",
+            policy,
         )
     if policy.submission_method is SubmissionMethod.HUMAN_HANDOFF:
         return PolicyVerdict(
-            PolicyDecision.REQUIRES_HUMAN, None,
-            f"{policy.domain} requires a human to submit", policy,
+            PolicyDecision.REQUIRES_HUMAN,
+            None,
+            f"{policy.domain} requires a human to submit",
+            policy,
         )
     # From here the method is EMAIL or OFFICIAL_API - an automated external
     # action - so a stale review can no longer authorise it.
     if policy.next_review_due and policy.next_review_due < today:
         return PolicyVerdict(
-            PolicyDecision.REQUIRES_HUMAN, None,
+            PolicyDecision.REQUIRES_HUMAN,
+            None,
             f"ToS review for {policy.domain} expired on {policy.next_review_due}; "
-            "reverting to human handoff until it is re-reviewed", policy,
+            "reverting to human handoff until it is re-reviewed",
+            policy,
         )
     if policy.submission_method is SubmissionMethod.OFFICIAL_API and not policy.automation_allowed:
         return PolicyVerdict(
-            PolicyDecision.BLOCKED, BlockReason.AUTOMATION_FORBIDDEN,
-            f"{policy.domain} API submission requires automation_allowed", policy,
+            PolicyDecision.BLOCKED,
+            BlockReason.AUTOMATION_FORBIDDEN,
+            f"{policy.domain} API submission requires automation_allowed",
+            policy,
         )
     return PolicyVerdict(
-        PolicyDecision.ALLOWED, None,
-        f"{policy.submission_method} permitted for {policy.domain}", policy,
+        PolicyDecision.ALLOWED,
+        None,
+        f"{policy.submission_method} permitted for {policy.domain}",
+        policy,
     )

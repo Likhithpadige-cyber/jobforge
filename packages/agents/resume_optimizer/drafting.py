@@ -123,9 +123,7 @@ def _flatten_numeric_values(value: Any) -> set[float]:
     return values
 
 
-def _numeral_pool(
-    facts_by_id: dict[str, TailoringFact], fact_ids: list[str]
-) -> set[float]:
+def _numeral_pool(facts_by_id: dict[str, TailoringFact], fact_ids: list[str]) -> set[float]:
     pool: set[float] = set()
     for fid in fact_ids:
         fact = facts_by_id.get(fid)
@@ -134,17 +132,13 @@ def _numeral_pool(
     return pool
 
 
-def prepare_request(
-    context: TailoringContext, selection: SelectionResult, model: str
-) -> Request:
+def prepare_request(context: TailoringContext, selection: SelectionResult, model: str) -> Request:
     """Build the B2 request from only the facts B1 already approved.
 
     No job description or other untrusted text is included: B2 needs none,
     since B1 already fixed which facts, in what order, with what emphasis.
     """
-    facts_by_id = {
-        str(f.id): f for f in context.facts if f.status == FactStatus.VERIFIED
-    }
+    facts_by_id = {str(f.id): f for f in context.facts if f.status == FactStatus.VERIFIED}
     ordered = sorted(selection.selections, key=lambda item: item.order)
     approved = [
         {
@@ -218,11 +212,7 @@ def validate_drafting(
         ) from None
 
     approved = {item.fact_id: item for item in selection.selections}
-    verified = {
-        str(fact.id): fact
-        for fact in context.facts
-        if fact.status == FactStatus.VERIFIED
-    }
+    verified = {str(fact.id): fact for fact in context.facts if fact.status == FactStatus.VERIFIED}
 
     for bullet in output.bullets:
         sections: set[str] = set()
@@ -233,9 +223,7 @@ def validate_drafting(
                 )
             sections.add(approved[fid].section)
         if len(sections) > 1:
-            raise MixedSectionError(
-                "A single bullet may not combine facts from different sections"
-            )
+            raise MixedSectionError("A single bullet may not combine facts from different sections")
 
         # G2-equivalent on the output side, checked before the numeral guard:
         # a numeral inside unredacted private data (e.g. a street number)
@@ -250,9 +238,7 @@ def validate_drafting(
             try:
                 value = _numeral_value(token)
             except ValueError:
-                raise NumeralGuardError(
-                    "A reported numeral is not a valid number"
-                ) from None
+                raise NumeralGuardError("A reported numeral is not a valid number") from None
             if value not in pool:
                 raise NumeralGuardError(
                     "A numeral in generated text is absent from every cited fact's structured data"

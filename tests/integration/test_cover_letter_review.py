@@ -57,9 +57,7 @@ pytestmark = [
 
 async def _actor(session, demo_application) -> User:
     return (
-        await session.execute(
-            select(User).where(User.id == demo_application["user_id"])
-        )
+        await session.execute(select(User).where(User.id == demo_application["user_id"]))
     ).scalar_one()
 
 
@@ -74,9 +72,7 @@ async def _ready_for_review(session, demo_profile, demo_job, demo_application, f
     )
     await session.flush()
     actor = await _actor(session, demo_application)
-    await resume_review.enter_review(
-        session, application_id=demo_application["id"], actor=actor
-    )
+    await resume_review.enter_review(session, application_id=demo_application["id"], actor=actor)
     await session.flush()
 
 
@@ -145,9 +141,7 @@ async def _write_cassettes(
         verify_req = b5.prepare_request(paragraph["text"], cited, client.model)
         (client.cassette_dir / f"{verify_req.digest}.json").write_text(
             Response(
-                body=canonical(
-                    {"verdict": verdict, "explanation": "Matches the cited fact."}
-                ),
+                body=canonical({"verdict": verdict, "explanation": "Matches the cited fact."}),
                 input_tokens=40,
                 output_tokens=20,
                 cost_usd=Decimal("0.0005"),
@@ -158,20 +152,39 @@ async def _write_cassettes(
 
 
 async def _generate_cover_letter(
-    session, *, application_id, demo_profile, demo_job, tmp_path, fact_id,
-    event_id, note=None, text_suffix="", verdicts=None,
+    session,
+    *,
+    application_id,
+    demo_profile,
+    demo_job,
+    tmp_path,
+    fact_id,
+    event_id,
+    note=None,
+    text_suffix="",
+    verdicts=None,
 ):
     """Simulates the worker consuming one `cover_letter.generation.requested`
     event - the real `generate_cover_letter` pipeline, replayed offline."""
     client = service.CoverLetterClient(Settings(), cassette_dir=tmp_path)
     await _write_cassettes(
-        session, client=client, application_id=application_id,
-        demo_profile=demo_profile, demo_job=demo_job, tmp_path=tmp_path,
-        fact_id=fact_id, note=note, text_suffix=text_suffix, verdicts=verdicts,
+        session,
+        client=client,
+        application_id=application_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=fact_id,
+        note=note,
+        text_suffix=text_suffix,
+        verdicts=verdicts,
     )
     return await service.generate_cover_letter(
-        session, application_id=application_id, event_id=event_id,
-        client=client, note=note,
+        session,
+        application_id=application_id,
+        event_id=event_id,
+        client=client,
+        note=note,
     )
 
 
@@ -242,8 +255,13 @@ async def test_a_grounded_cover_letter_passes_and_opens_review(
     await _ready_for_review(session, demo_profile, demo_job, demo_application, facts)
 
     cover_letter = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
 
     assert cover_letter.verification_status == "passed"
@@ -251,9 +269,7 @@ async def test_a_grounded_cover_letter_passes_and_opens_review(
     claims = list(
         (
             await session.execute(
-                select(CoverLetterClaim).where(
-                    CoverLetterClaim.cover_letter_id == cover_letter.id
-                )
+                select(CoverLetterClaim).where(CoverLetterClaim.cover_letter_id == cover_letter.id)
             )
         )
         .scalars()
@@ -280,8 +296,13 @@ async def test_unsupported_claim_fails_verification_and_opens_no_review(
     await _ready_for_review(session, demo_profile, demo_job, demo_application, facts)
 
     cover_letter = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
         verdicts=["unsupported", "supported", "supported"],
     )
 
@@ -297,12 +318,22 @@ async def test_generation_event_replay_produces_no_duplicate_version(
     await _ready_for_review(session, demo_profile, demo_job, demo_application, facts)
 
     first = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
     second = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
 
     assert second.id == first.id
@@ -324,8 +355,13 @@ async def test_v1_request_changes_v2_prior_version_preserved(
     actor = await _actor(session, demo_application)
 
     v1 = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
     v1_content_before = dict(v1.content)
 
@@ -336,9 +372,15 @@ async def test_v1_request_changes_v2_prior_version_preserved(
     assert (await service.cover_letter_review_state(session, app_id)).can_request_changes is False
 
     v2 = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=101),
-        note="Mention the years explicitly.", text_suffix=" Precisely three years.",
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=101),
+        note="Mention the years explicitly.",
+        text_suffix=" Precisely three years.",
     )
 
     # Prior version preserved, unmutated.
@@ -376,15 +418,25 @@ async def test_approve_v2_after_rework(
     actor = await _actor(session, demo_application)
 
     await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
     await service.request_changes_cover_letter(
         session, application_id=app_id, actor=actor, note="Tighten the opening."
     )
     v2 = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=101),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=101),
         note="Tighten the opening.",
     )
 
@@ -407,8 +459,13 @@ async def test_approve_is_idempotent(
     await _ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
 
     first = await service.approve_cover_letter(session, application_id=app_id, actor=actor)
@@ -452,8 +509,13 @@ async def test_request_changes_without_a_note_is_refused(
     await _ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
 
     with pytest.raises(service.MissingNoteError):
@@ -472,9 +534,15 @@ async def test_rework_limit_is_enforced(
 
     for i in range(service.MAX_REWORK_CYCLES):
         await _generate_cover_letter(
-            session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-            tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100 + i),
-            note=(f"round {i}" if i else None), text_suffix=" Revised again.",
+            session,
+            application_id=app_id,
+            demo_profile=demo_profile,
+            demo_job=demo_job,
+            tmp_path=tmp_path,
+            fact_id=str(facts[0].id),
+            event_id=UUID(int=100 + i),
+            note=(f"round {i}" if i else None),
+            text_suffix=" Revised again.",
         )
         await service.request_changes_cover_letter(
             session, application_id=app_id, actor=actor, note=f"round {i}"
@@ -497,8 +565,13 @@ async def test_current_version_resolution(
     assert await service.latest_cover_letter(session, app_id) is None
 
     v1 = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=100),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=100),
     )
     assert (await service.latest_cover_letter(session, app_id)).id == v1.id
 
@@ -506,8 +579,13 @@ async def test_current_version_resolution(
         session, application_id=app_id, actor=actor, note="Adjust tone."
     )
     v2 = await _generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=101),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=101),
         note="Adjust tone.",
     )
     latest = await service.latest_cover_letter(session, app_id)

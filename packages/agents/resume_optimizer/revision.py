@@ -146,9 +146,7 @@ class InstructionScreen:
         return {
             "factual_demand_kinds": sorted(set(self.factual_demands)),
             "numerals_in_note": list(self.numerals),
-            "injection": {
-                k: v for k, v in self.scan.as_payload().items() if k != "excerpts"
-            },
+            "injection": {k: v for k, v in self.scan.as_payload().items() if k != "excerpts"},
         }
 
 
@@ -162,9 +160,7 @@ def screen_instructions(note: str) -> InstructionScreen:
     """
     findings = scan(note)
     text = findings.text
-    demands = tuple(
-        name for name, pattern in FACTUAL_DEMAND_PATTERNS if pattern.search(text)
-    )
+    demands = tuple(name for name, pattern in FACTUAL_DEMAND_PATTERNS if pattern.search(text))
     return InstructionScreen(
         instructions=text,
         factual_demands=demands,
@@ -255,8 +251,7 @@ def assert_revisable(application: Application) -> None:
     """
     if application.status is not ApplicationStatus.CHANGES_REQUESTED:
         raise RevisionNotAvailableError(
-            "a revision can only be produced from changes_requested, not "
-            f"{application.status}"
+            "a revision can only be produced from changes_requested, not " f"{application.status}"
         )
 
 

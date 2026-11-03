@@ -77,16 +77,12 @@ class SummaryResult:
     prompt_version: str
 
 
-def prepare_request(
-    context: TailoringContext, selection: SelectionResult, model: str
-) -> Request:
+def prepare_request(context: TailoringContext, selection: SelectionResult, model: str) -> Request:
     """Build the B3 request from only the facts B1 already approved, plus
     the job's already-normalized title/seniority - never raw JD text, and
     never any fact outside B1's selection.
     """
-    facts_by_id = {
-        str(f.id): f for f in context.facts if f.status == FactStatus.VERIFIED
-    }
+    facts_by_id = {str(f.id): f for f in context.facts if f.status == FactStatus.VERIFIED}
     ordered = sorted(selection.selections, key=lambda item: item.order)
     approved = [
         {
@@ -164,11 +160,7 @@ def validate_summary(
         ) from None
 
     approved = {item.fact_id: item for item in selection.selections}
-    verified = {
-        str(fact.id): fact
-        for fact in context.facts
-        if fact.status == FactStatus.VERIFIED
-    }
+    verified = {str(fact.id): fact for fact in context.facts if fact.status == FactStatus.VERIFIED}
 
     for sentence in output.sentences:
         for fid in sentence.fact_ids:
@@ -188,9 +180,7 @@ def validate_summary(
             try:
                 value = _numeral_value(token)
             except ValueError:
-                raise NumeralGuardError(
-                    "A reported numeral is not a valid number"
-                ) from None
+                raise NumeralGuardError("A reported numeral is not a valid number") from None
             if value not in pool:
                 raise NumeralGuardError(
                     "A numeral in generated text is absent from every cited fact's structured data"

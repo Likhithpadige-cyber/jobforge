@@ -124,9 +124,7 @@ def facts_for(ref, context):
 def verified_claim(ref, context, verdict=ClaimVerdict.SUPPORTED, explanation="ok"):
     return bind(
         ref,
-        VerificationResult(
-            verdict=verdict, explanation=explanation, prompt_version="v"
-        ),
+        VerificationResult(verdict=verdict, explanation=explanation, prompt_version="v"),
         facts_for(ref, context),
     )
 

@@ -42,9 +42,7 @@ CONTENT = {
 
 
 def document(content: dict | None = None) -> ResumeDocument:
-    return build_document(
-        resume_id=RESUME_ID, resume_version=2, content=content or CONTENT
-    )
+    return build_document(resume_id=RESUME_ID, resume_version=2, content=content or CONTENT)
 
 
 def rendered(content: dict | None = None) -> bytes:
@@ -148,8 +146,7 @@ def test_a_long_document_paginates_deterministically() -> None:
 
     many = {
         "experience": {
-            str(i): {"text": f"Synthetic achievement number {i}.", "order": i}
-            for i in range(120)
+            str(i): {"text": f"Synthetic achievement number {i}.", "order": i} for i in range(120)
         }
     }
     first, second = rendered(many), rendered(many)

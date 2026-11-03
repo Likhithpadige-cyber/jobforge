@@ -61,9 +61,7 @@ class SitePolicy(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     submission_method: Mapped[SubmissionMethod] = mapped_column(
         submission_method_enum, nullable=False, server_default="human_handoff"
     )
-    max_requests_per_hour: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="10"
-    )
+    max_requests_per_hour: Mapped[int] = mapped_column(Integer, nullable=False, server_default="10")
     robots_respected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     requires_login: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     tos_url: Mapped[str | None] = mapped_column(Text)
@@ -154,9 +152,7 @@ class Job(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     salary_period: Mapped[str | None] = mapped_column(String(16))
     description_raw: Mapped[str | None] = mapped_column(Text)
     description_hash: Mapped[str | None] = mapped_column(String(64))
-    requirements: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    requirements: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     posted_at: Mapped[datetime | None]
     expires_at: Mapped[datetime | None]
     first_seen_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
@@ -186,8 +182,9 @@ class Job(TimestampMixin, UUIDPrimaryKeyMixin, Base):
             "salary_min IS NULL OR salary_max IS NULL OR salary_max >= salary_min",
             name="salary_range_ordered",
         ),
-        CheckConstraint("duplicate_of_id IS NULL OR duplicate_of_id <> id",
-                        name="not_own_duplicate"),
+        CheckConstraint(
+            "duplicate_of_id IS NULL OR duplicate_of_id <> id", name="not_own_duplicate"
+        ),
         CheckConstraint(
             "status <> 'duplicate' OR duplicate_of_id IS NOT NULL",
             name="duplicate_has_canonical",
@@ -247,9 +244,7 @@ class JobEvaluation(UUIDPrimaryKeyMixin, Base):
         PGUUID(as_uuid=True), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
     )
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    assessment_status: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default="assessed"
-    )
+    assessment_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="assessed")
     score: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     recommendation: Mapped[Recommendation | None] = mapped_column(recommendation_enum)
     match_matrix: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)

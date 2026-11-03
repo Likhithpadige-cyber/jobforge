@@ -176,16 +176,21 @@ async def persist_evaluation(
             "count": sum(
                 # MatchMatrix.as_dict serializes requirements as an array;
                 # the generic JSON mapping erases that element type.
-                1 for row in cast(list[object], match_matrix.get("requirements", []))
+                1
+                for row in cast(list[object], match_matrix.get("requirements", []))
                 if isinstance(row, dict) and row.get("status") in ("met", "partially_met")
             )
         },
         missing_requirements={"count": len(breakdown.gaps) if breakdown else 0},
         gaps=list(breakdown.gaps) if breakdown else [],
         rationale=rationale,
-        score_breakdown=(breakdown.as_dict() if breakdown else {
-            "insufficient_reasons": list(insufficient_reasons or []),
-        }),
+        score_breakdown=(
+            breakdown.as_dict()
+            if breakdown
+            else {
+                "insufficient_reasons": list(insufficient_reasons or []),
+            }
+        ),
         agent_run_id=agent_run_id,
         model=model,
         prompt_version=prompt_version,
@@ -351,7 +356,5 @@ async def persist_evaluation_once(
         return None
 
     result = await persist_evaluation(session, **kwargs)  # type: ignore[arg-type]
-    await record_claim_result(
-        session, triggering_event_id, consumer_group, str(result.to_status)
-    )
+    await record_claim_result(session, triggering_event_id, consumer_group, str(result.to_status))
     return result

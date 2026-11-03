@@ -4,6 +4,7 @@ Deterministic and entirely offline, like `workers/render.py`: no model, no
 provider budget. Extraction, classification and grounding are pattern and
 database matches, never inference.
 """
+
 from workers.runtime import main
 
 if __name__ == "__main__":

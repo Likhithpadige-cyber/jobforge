@@ -197,8 +197,10 @@ async def test_a_foreign_profiles_fact_is_never_cited(
             "'verified', :verified_by, now(), now(), now())"
         ),
         {
-            "id": foreign_fact_id, "profile_id": other_profile_id,
-            "source_id": other_experience_id, "verified_by": other_user_id,
+            "id": foreign_fact_id,
+            "profile_id": other_profile_id,
+            "source_id": other_experience_id,
+            "verified_by": other_user_id,
         },
     )
     await session.flush()
@@ -207,8 +209,10 @@ async def test_a_foreign_profiles_fact_is_never_cited(
         session,
         application_id=app_id,
         questions=[
-            RawQuestion(question_text="Have you worked as an Other Engineer at Other Corp?",
-                       input_type="boolean")
+            RawQuestion(
+                question_text="Have you worked as an Other Engineer at Other Corp?",
+                input_type="boolean",
+            )
         ],
     )
     questions = await _questions(session, app_id)
@@ -251,8 +255,10 @@ async def test_a_deleted_fact_is_never_cited(
         session,
         application_id=app_id,
         questions=[
-            RawQuestion(question_text="Have you worked as a Demo Engineer at Example Cloud Corp?",
-                       input_type="boolean")
+            RawQuestion(
+                question_text="Have you worked as a Demo Engineer at Example Cloud Corp?",
+                input_type="boolean",
+            )
         ],
     )
     questions = await _questions(session, app_id)
@@ -404,7 +410,8 @@ async def test_reworked_resume_with_stale_prior_questions_is_refused_not_mixed(
     await _ready(session, demo_profile, demo_job, demo_application, inputs)
     app_id = demo_application["id"]
     await prepare_application(
-        session, application_id=app_id,
+        session,
+        application_id=app_id,
         questions=[RawQuestion(question_text="What is your email address?", input_type="text")],
     )
     application = await session.get(Application, app_id)
@@ -418,7 +425,8 @@ async def test_reworked_resume_with_stale_prior_questions_is_refused_not_mixed(
 
     with pytest.raises(ApplicationStateError, match="already has 1 prepared"):
         await prepare_application(
-            session, application_id=app_id,
+            session,
+            application_id=app_id,
             questions=[RawQuestion(question_text="What is your phone number?", input_type="text")],
         )
 
@@ -477,9 +485,14 @@ async def test_human_edit_preserves_the_agent_proposal(
     await _ready(session, demo_profile, demo_job, demo_application, inputs)
     app_id = demo_application["id"]
     await prepare_application(
-        session, application_id=app_id,
-        questions=[RawQuestion(question_text="Have you worked as a Demo Engineer at "
-                               "Example Cloud Corp?", input_type="boolean")],
+        session,
+        application_id=app_id,
+        questions=[
+            RawQuestion(
+                question_text="Have you worked as a Demo Engineer at " "Example Cloud Corp?",
+                input_type="boolean",
+            )
+        ],
     )
     questions = await _questions(session, app_id)
     answer_id = questions[0].answer.id
@@ -493,7 +506,10 @@ async def test_human_edit_preserves_the_agent_proposal(
     await session.flush()
 
     edited = await edit_answer(
-        session, application_id=app_id, answer_id=answer_id, actor=actor,
+        session,
+        application_id=app_id,
+        answer_id=answer_id,
+        actor=actor,
         value="A human-provided correction.",
     )
     assert edited.source is AnswerSource.HUMAN
@@ -508,7 +524,8 @@ async def test_approve_refuses_while_a_required_answer_is_unresolved(
     await _ready(session, demo_profile, demo_job, demo_application, inputs)
     app_id = demo_application["id"]
     await prepare_application(
-        session, application_id=app_id,
+        session,
+        application_id=app_id,
         questions=[RawQuestion(question_text="What is your favorite color?", input_type="text")],
     )
     application = await session.get(Application, app_id)
@@ -528,7 +545,8 @@ async def test_approve_succeeds_once_every_required_answer_is_resolved(
     await _ready(session, demo_profile, demo_job, demo_application, inputs)
     app_id = demo_application["id"]
     await prepare_application(
-        session, application_id=app_id,
+        session,
+        application_id=app_id,
         questions=[RawQuestion(question_text="What is your favorite color?", input_type="text")],
     )
     application = await session.get(Application, app_id)
@@ -539,8 +557,11 @@ async def test_approve_succeeds_once_every_required_answer_is_resolved(
     actor = await _actor(session, demo_application)
     questions = await _questions(session, app_id)
     await edit_answer(
-        session, application_id=app_id, answer_id=questions[0].answer.id,
-        actor=actor, value="Blue.",
+        session,
+        application_id=app_id,
+        answer_id=questions[0].answer.id,
+        actor=actor,
+        value="Blue.",
     )
     await session.flush()
 
@@ -566,9 +587,14 @@ async def test_approve_revalidates_cited_facts_immediately_before_the_snapshot(
     await _ready(session, demo_profile, demo_job, demo_application, inputs)
     app_id = demo_application["id"]
     await prepare_application(
-        session, application_id=app_id,
-        questions=[RawQuestion(question_text="Have you worked as a Demo Engineer at "
-                               "Example Cloud Corp?", input_type="boolean")],
+        session,
+        application_id=app_id,
+        questions=[
+            RawQuestion(
+                question_text="Have you worked as a Demo Engineer at " "Example Cloud Corp?",
+                input_type="boolean",
+            )
+        ],
     )
     application = await session.get(Application, app_id)
     await transition_application(
@@ -593,7 +619,8 @@ async def test_request_changes_does_not_move_application_status(
     await _ready(session, demo_profile, demo_job, demo_application, inputs)
     app_id = demo_application["id"]
     await prepare_application(
-        session, application_id=app_id,
+        session,
+        application_id=app_id,
         questions=[RawQuestion(question_text="What is your favorite color?", input_type="text")],
     )
     application = await session.get(Application, app_id)
@@ -604,8 +631,11 @@ async def test_request_changes_does_not_move_application_status(
     actor = await _actor(session, demo_application)
     questions = await _questions(session, app_id)
     await edit_answer(
-        session, application_id=app_id, answer_id=questions[0].answer.id,
-        actor=actor, value="Green.",
+        session,
+        application_id=app_id,
+        answer_id=questions[0].answer.id,
+        actor=actor,
+        value="Green.",
     )
     await session.flush()
 

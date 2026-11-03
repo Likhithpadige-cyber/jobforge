@@ -81,8 +81,8 @@ def test_every_allowlisted_type_is_namespaced() -> None:
     "bogus",
     [
         "revision.attempt.typo",
-        "revision.attempt.recovery_faild",   # one transposed letter
-        "application.status.changed",        # a real type, but not ours
+        "revision.attempt.recovery_faild",  # one transposed letter
+        "application.status.changed",  # a real type, but not ours
         "",
     ],
 )
@@ -114,9 +114,10 @@ async def test_try_record_returns_none_when_the_audit_engine_is_absent() -> None
     """The whole audit-outage policy in one assertion: a secondary audit
     failure must never replace the primary exception, so the failure paths
     that call this get None rather than a raise."""
-    assert await AuditBoundary().try_record(
-        "revision.attempt.recovery_failed", context=context()
-    ) is None
+    assert (
+        await AuditBoundary().try_record("revision.attempt.recovery_failed", context=context())
+        is None
+    )
 
 
 def test_context_carries_only_primitives() -> None:

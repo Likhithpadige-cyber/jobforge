@@ -212,8 +212,11 @@ def test_derived_takes_the_outer_span_not_a_sum_of_overlapping_roles() -> None:
         _experience(date(2021, 1, 1), date(2023, 1, 1)),
     ]
     drafted = draft_answer(
-        "years of experience", QuestionClass.DERIVED,
-        profile=_profile(), experiences=experiences, facts=[],
+        "years of experience",
+        QuestionClass.DERIVED,
+        profile=_profile(),
+        experiences=experiences,
+        facts=[],
     )
     assert drafted.value is not None
     assert Decimal(drafted.value) == Decimal("3.0")
@@ -221,8 +224,11 @@ def test_derived_takes_the_outer_span_not_a_sum_of_overlapping_roles() -> None:
 
 def test_derived_blanks_with_no_experience_rows() -> None:
     drafted = draft_answer(
-        "years of experience", QuestionClass.DERIVED,
-        profile=_profile(), experiences=[], facts=[],
+        "years of experience",
+        QuestionClass.DERIVED,
+        profile=_profile(),
+        experiences=[],
+        facts=[],
     )
     assert drafted.source is AnswerSource.BLANK
     assert drafted.requires_human is True
@@ -245,7 +251,9 @@ def test_uncertain_promotes_to_agent_on_a_confident_fact_match() -> None:
     drafted = draft_answer(
         "Do you hold an AWS Certified Solutions Architect credential?",
         QuestionClass.UNCERTAIN,
-        profile=_profile(), experiences=[], facts=[fact],
+        profile=_profile(),
+        experiences=[],
+        facts=[fact],
     )
     assert drafted.source is AnswerSource.AGENT
     assert drafted.fact_ids == [fact.id]
@@ -257,7 +265,9 @@ def test_unanswerable_stays_blank_with_no_matching_fact() -> None:
     drafted = draft_answer(
         "Do you hold a CISSP certification?",
         QuestionClass.UNANSWERABLE,
-        profile=_profile(), experiences=[], facts=[_fact("PMP Certified")],
+        profile=_profile(),
+        experiences=[],
+        facts=[_fact("PMP Certified")],
     )
     assert drafted.source is AnswerSource.BLANK
     assert drafted.fact_ids == []
@@ -271,7 +281,9 @@ def test_agent_answer_only_ever_cites_facts_it_was_given() -> None:
     drafted = draft_answer(
         "Do you hold an AWS Certified Solutions Architect credential?",
         QuestionClass.UNCERTAIN,
-        profile=_profile(), experiences=[], facts=[own_fact],
+        profile=_profile(),
+        experiences=[],
+        facts=[own_fact],
     )
     assert drafted.fact_ids == [own_fact.id]
 
@@ -289,9 +301,7 @@ def test_explicit_accepted_type_may_advance() -> None:
     assert drafted.fact_ids == []
 
 
-@pytest.mark.parametrize(
-    "job_type", ["contract", "part_time", "internship", "temporary"]
-)
+@pytest.mark.parametrize("job_type", ["contract", "part_time", "internship", "temporary"])
 def test_explicit_unaccepted_type_does_not_auto_advance(job_type: str) -> None:
     drafted = draft_employment_type_answer(
         job_employment_type=job_type, accepted_employment_types=["full_time"]

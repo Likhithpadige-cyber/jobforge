@@ -25,9 +25,7 @@ pytestmark = pytest.mark.integration
 
 async def test_b1_to_b3_boundary(session, demo_profile, demo_job, inputs, tmp_path):
     _base, _evaluation, facts = inputs
-    context = await load_tailoring_context(
-        session, profile_id=demo_profile, job_id=demo_job
-    )
+    context = await load_tailoring_context(session, profile_id=demo_profile, job_id=demo_job)
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
 
     # B1: approve only the first verified fact.
@@ -78,9 +76,7 @@ async def test_b1_to_b3_boundary(session, demo_profile, demo_job, inputs, tmp_pa
         stop_reason="tool_use",
     )
     (tmp_path / f"{b3_request.digest}.json").write_text(b3_response.model_dump_json())
-    result = await draft_summary(
-        session, context=context, selection=selection, client=client
-    )
+    result = await draft_summary(session, context=context, selection=selection, client=client)
     assert len(result.sentences) == 2
     assert (await session.execute(select(Resume.id))).all() == resume_count
 
@@ -92,20 +88,14 @@ async def test_b1_to_b3_boundary(session, demo_profile, demo_job, inputs, tmp_pa
         )
     ).scalar_one()
     step = (
-        await session.execute(
-            select(AgentRunStep).where(AgentRunStep.run_id == b3_run.id)
-        )
+        await session.execute(select(AgentRunStep).where(AgentRunStep.run_id == b3_run.id))
     ).scalar_one()
     assert step.step_name == "B3" and b3_run.status == "succeeded"
 
 
-async def test_b3_rejects_fact_b1_never_approved(
-    session, demo_profile, demo_job, inputs, tmp_path
-):
+async def test_b3_rejects_fact_b1_never_approved(session, demo_profile, demo_job, inputs, tmp_path):
     _base, _evaluation, facts = inputs
-    context = await load_tailoring_context(
-        session, profile_id=demo_profile, job_id=demo_job
-    )
+    context = await load_tailoring_context(session, profile_id=demo_profile, job_id=demo_job)
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
 
     from packages.agents.resume_optimizer.selection import Selection, SelectionResult
@@ -148,9 +138,7 @@ async def test_b3_rejects_fact_b1_never_approved(
     )
     (tmp_path / f"{b3_request.digest}.json").write_text(b3_response.model_dump_json())
     with pytest.raises(UnapprovedFactError):
-        await draft_summary(
-            session, context=context, selection=selection, client=client
-        )
+        await draft_summary(session, context=context, selection=selection, client=client)
     events = (
         (
             await session.execute(
@@ -163,7 +151,4 @@ async def test_b3_rejects_fact_b1_never_approved(
         .scalars()
         .all()
     )
-    assert any(
-        e.payload.get("step") == "B3" and e.payload["kind"] == "fabrication"
-        for e in events
-    )
+    assert any(e.payload.get("step") == "B3" and e.payload["kind"] == "fabrication" for e in events)

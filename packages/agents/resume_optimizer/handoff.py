@@ -295,9 +295,7 @@ def validate_coverage(
         )
     uncovered = expected_keys - set(by_key)
     if uncovered:
-        raise HandoffError(
-            f"Generated claim has no verification result: {sorted(uncovered)}"
-        )
+        raise HandoffError(f"Generated claim has no verification result: {sorted(uncovered)}")
 
     for ref in expected:
         item = by_key[ref.key]
@@ -307,9 +305,7 @@ def validate_coverage(
         # a reordering of the same citations is not a change, but an added,
         # removed or substituted fact still is.
         if sorted(item.claim.fact_ids) != sorted(ref.fact_ids):
-            raise HandoffError(
-                f"Cited fact_ids changed after verification at {ref.path}"
-            )
+            raise HandoffError(f"Cited fact_ids changed after verification at {ref.path}")
         if item.verdict is ClaimVerdict.NOT_CHECKED:
             raise HandoffError(f"Claim at {ref.path} was never verified")
 

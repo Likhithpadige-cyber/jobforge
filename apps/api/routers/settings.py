@@ -36,7 +36,9 @@ async def get_submission_enabled(session: DbSession) -> dict[str, bool]:
 
 @router.put("/settings/submission-enabled", dependencies=[Depends(require_owner)])
 async def put_submission_enabled(
-    payload: SubmissionEnabledInput, session: DbSession, owner: RequireOwner,
+    payload: SubmissionEnabledInput,
+    session: DbSession,
+    owner: RequireOwner,
     _csrf: CsrfProtected,
 ) -> dict[str, bool]:
     enabled = await set_submission_dispatch_enabled(session, payload.enabled, actor=owner)

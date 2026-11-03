@@ -102,9 +102,7 @@ async def test_publication_state_is_still_writable(session, stored_event) -> Non
     assert published is True
 
 
-async def test_multi_column_tamper_is_rejected_and_lists_all_columns(
-    session, stored_event
-) -> None:
+async def test_multi_column_tamper_is_rejected_and_lists_all_columns(session, stored_event) -> None:
     with pytest.raises(ANY_DB_ERROR) as exc:
         await session.execute(
             text(
@@ -137,9 +135,7 @@ async def test_tamper_disguised_as_a_publish_is_rejected(session, stored_event) 
 
 async def test_delete_is_rejected(session, stored_event) -> None:
     with pytest.raises(ANY_DB_ERROR) as exc:
-        await session.execute(
-            text("DELETE FROM events WHERE id = :id"), {"id": stored_event}
-        )
+        await session.execute(text("DELETE FROM events WHERE id = :id"), {"id": stored_event})
         await session.flush()
     assert "append-only" in str(exc.value)
     await session.rollback()
@@ -153,10 +149,7 @@ async def test_trigger_covers_columns_the_test_does_not_know_about(session) -> N
     """
     source = (
         await session.execute(
-            text(
-                "SELECT prosrc FROM pg_proc WHERE proname = "
-                "'jobforge_events_publish_only'"
-            )
+            text("SELECT prosrc FROM pg_proc WHERE proname = " "'jobforge_events_publish_only'")
         )
     ).scalar_one()
     assert "to_jsonb(OLD)" in source, (

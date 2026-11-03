@@ -93,15 +93,23 @@ async def _approve_everything(
     actor = await _actor(session, demo_application)
 
     cover_letter = await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=900),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=900),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
 
     resume = await resume_review.latest_tailored_resume(session, app_id)
     await resume_review.approve(session, application_id=app_id, actor=actor)
     await render_resume(
-        session, store=store, renderers=production_renderers(), resume_id=resume.id,
+        session,
+        store=store,
+        renderers=production_renderers(),
+        resume_id=resume.id,
     )
     await session.flush()
     return resume, cover_letter, actor
@@ -129,7 +137,9 @@ async def _allow_via_email(session):
     `automation_allowed`, unlike `official_api`)."""
     session.add(
         SitePolicy(
-            id=uuid7(), domain=DOMAIN, submission_method=SubmissionMethod.EMAIL,
+            id=uuid7(),
+            domain=DOMAIN,
+            submission_method=SubmissionMethod.EMAIL,
             automation_allowed=False,
         )
     )
@@ -139,7 +149,9 @@ async def _allow_via_email(session):
 async def _require_human(session):
     session.add(
         SitePolicy(
-            id=uuid7(), domain=DOMAIN, submission_method=SubmissionMethod.HUMAN_HANDOFF,
+            id=uuid7(),
+            domain=DOMAIN,
+            submission_method=SubmissionMethod.HUMAN_HANDOFF,
         )
     )
     await session.flush()
@@ -148,7 +160,9 @@ async def _require_human(session):
 async def _block_explicitly(session):
     session.add(
         SitePolicy(
-            id=uuid7(), domain=DOMAIN, submission_method=SubmissionMethod.BLOCKED,
+            id=uuid7(),
+            domain=DOMAIN,
+            submission_method=SubmissionMethod.BLOCKED,
         )
     )
     await session.flush()
@@ -176,8 +190,13 @@ async def test_incomplete_approval_set_never_reaches_approved(
     await clr._ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=900),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=900),
     )
     # Cover letter generated but not yet approved; approve only the resume.
     await resume_review.approve(session, application_id=app_id, actor=actor)
@@ -200,8 +219,13 @@ async def test_zero_question_readiness_needs_no_answers_approval(
     app_id = demo_application["id"]
     await _allow_via_email(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     assert (
         await session.execute(
@@ -250,16 +274,27 @@ async def test_stale_cover_letter_approval_cannot_satisfy_readiness(
     actor = await _actor(session, demo_application)
 
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=900),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=900),
     )
     await cl_service.request_changes_cover_letter(
         session, application_id=app_id, actor=actor, note="Mention more detail."
     )
     cover_letter = await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=901),
-        note="Mention more detail.", text_suffix=" More detail.",
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=901),
+        note="Mention more detail.",
+        text_suffix=" More detail.",
     )
     assert cover_letter.version == 2
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
@@ -279,7 +314,8 @@ async def test_stale_cover_letter_approval_cannot_satisfy_readiness(
     approval = (
         await session.execute(
             select(Approval).where(
-                Approval.application_id == app_id, Approval.kind == ApprovalKind.COVER_LETTER,
+                Approval.application_id == app_id,
+                Approval.kind == ApprovalKind.COVER_LETTER,
                 Approval.status == ApprovalStatus.APPROVED,
             )
         )
@@ -307,8 +343,13 @@ async def test_stale_resume_approval_cannot_satisfy_readiness(
     await clr._ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=900),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=900),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
 
@@ -332,7 +373,8 @@ async def test_stale_resume_approval_cannot_satisfy_readiness(
         )
     ).scalar_one()
     approval.subject_snapshot = {
-        **approval.subject_snapshot, "resume_version": resume.version + 1,
+        **approval.subject_snapshot,
+        "resume_version": resume.version + 1,
     }
     await session.flush()
 
@@ -359,7 +401,8 @@ async def test_stale_answers_snapshot_cannot_complete_review(
 
     await c1._generate(session, demo_profile, demo_job, app_id, facts)
     await apps_service.prepare_application(
-        session, application_id=app_id,
+        session,
+        application_id=app_id,
         questions=[
             apps_service.RawQuestion(question_text="What city do you live in?", input_type="text"),
         ],
@@ -368,8 +411,13 @@ async def test_stale_answers_snapshot_cannot_complete_review(
     actor = await _actor(session, demo_application)
     await resume_review.enter_review(session, application_id=app_id, actor=actor)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=900),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=900),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
     await apps_service.approve_answers(session, application_id=app_id, actor=actor)
@@ -378,8 +426,11 @@ async def test_stale_answers_snapshot_cannot_complete_review(
     # - so the ANSWERS approval already granted now describes stale content.
     questions = await apps_service.existing_questions(session, app_id)
     await apps_service.edit_answer(
-        session, application_id=app_id, answer_id=questions[0].answer.id,
-        actor=actor, value="A different city entirely",
+        session,
+        application_id=app_id,
+        answer_id=questions[0].answer.id,
+        actor=actor,
+        value="A different city entirely",
     )
 
     # RESUME is the last of the three original decisions, but with ANSWERS
@@ -416,8 +467,13 @@ async def test_allowed_stays_at_submission_ready(
     app_id = demo_application["id"]
     await _allow_via_email(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     outcome = await _trigger_readiness(session, app_id, store=store)
     assert outcome == "completed"
@@ -437,23 +493,33 @@ async def test_allowed_stays_at_submission_ready(
     assert submission.blocked_reason is None
     assert submission.policy_id is not None
 
-    ready_events = list((
+    ready_events = list(
+        (
             await session.execute(
                 select(Event).where(
                     Event.type == "application.ready", Event.correlation_id == app_id
                 )
             )
-        ).scalars())
+        ).scalars()
+    )
     assert len(ready_events) == 1
     assert ready_events[0].payload["submission_method"] == "email"
     assert ready_events[0].payload["target_domain"] == DOMAIN
 
     assert (
         await session.execute(
-            select(Event).where(Event.type.in_(
-                ["submission.requested", "submission.started", "submission.succeeded",
-                 "submission.failed", "submission.handoff.required"]
-            ), Event.correlation_id == app_id)
+            select(Event).where(
+                Event.type.in_(
+                    [
+                        "submission.requested",
+                        "submission.started",
+                        "submission.succeeded",
+                        "submission.failed",
+                        "submission.handoff.required",
+                    ]
+                ),
+                Event.correlation_id == app_id,
+            )
         )
     ).first() is None
 
@@ -465,21 +531,28 @@ async def test_requires_human_reaches_manual_handoff(
     app_id = demo_application["id"]
     await _require_human(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     outcome = await _trigger_readiness(session, app_id, store=store)
     assert outcome == "completed"
     application = await _get_application(session, app_id)
     assert application.status is ApplicationStatus.MANUAL_HANDOFF
 
-    changed = list((
+    changed = list(
+        (
             await session.execute(
                 select(Event).where(
                     Event.type == "application.status.changed", Event.correlation_id == app_id
                 )
             )
-        ).scalars())
+        ).scalars()
+    )
     to_statuses = [e.payload["to_status"] for e in changed]
     assert "submission_ready" in to_statuses
     assert "manual_handoff" in to_statuses
@@ -492,8 +565,13 @@ async def test_blocked_reaches_policy_blocked(
     app_id = demo_application["id"]
     await _block_explicitly(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     outcome = await _trigger_readiness(session, app_id, store=store)
     assert outcome == "completed"
@@ -505,11 +583,13 @@ async def test_blocked_reaches_policy_blocked(
     ).scalar_one()
     assert submission.blocked_reason == "ingestion_method_blocked"  # METHOD_BLOCKED
 
-    blocked_events = list((
+    blocked_events = list(
+        (
             await session.execute(
                 select(Event).where(Event.type == "policy.blocked", Event.correlation_id == app_id)
             )
-        ).scalars())
+        ).scalars()
+    )
     assert len(blocked_events) == 1
     assert blocked_events[0].payload["action"] == "submit"
     assert blocked_events[0].payload["domain"] == DOMAIN
@@ -523,8 +603,13 @@ async def test_missing_policy_fails_safe_to_blocked(
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     outcome = await _trigger_readiness(session, app_id, store=store)
     assert outcome == "completed"
@@ -549,15 +634,22 @@ async def test_replayed_approval_granted_after_readiness_is_a_safe_noop(
     app_id = demo_application["id"]
     await _allow_via_email(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     first = await _trigger_readiness(session, app_id, store=store)
     assert first == "completed"
 
     submissions_before = (
-        await session.execute(select(Submission).where(Submission.application_id == app_id))
-    ).scalars().all()
+        (await session.execute(select(Submission).where(Submission.application_id == app_id)))
+        .scalars()
+        .all()
+    )
     events_before = len(
         (
             await session.execute(
@@ -565,15 +657,19 @@ async def test_replayed_approval_granted_after_readiness_is_a_safe_noop(
                     Event.type == "application.ready", Event.correlation_id == app_id
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
     second = await _trigger_readiness(session, app_id, store=store)
     assert second == "not-approved"
 
     submissions_after = (
-        await session.execute(select(Submission).where(Submission.application_id == app_id))
-    ).scalars().all()
+        (await session.execute(select(Submission).where(Submission.application_id == app_id)))
+        .scalars()
+        .all()
+    )
     events_after = len(
         (
             await session.execute(
@@ -581,7 +677,9 @@ async def test_replayed_approval_granted_after_readiness_is_a_safe_noop(
                     Event.type == "application.ready", Event.correlation_id == app_id
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     assert len(submissions_after) == len(submissions_before) == 1
     assert events_after == events_before == 1
@@ -597,16 +695,23 @@ async def test_submission_record_uniqueness(
     app_id = demo_application["id"]
     await _allow_via_email(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     application = await _get_application(session, app_id)
     await sr.compute_readiness(session, application=application, store=store)
     await sr.compute_readiness(session, application=application, store=store)
 
     rows = (
-        await session.execute(select(Submission).where(Submission.application_id == app_id))
-    ).scalars().all()
+        (await session.execute(select(Submission).where(Submission.application_id == app_id)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
@@ -622,8 +727,13 @@ async def test_packet_generation_is_deterministic_and_bound_to_current_versions(
     app_id = demo_application["id"]
     await _allow_via_email(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     outcome = await _trigger_readiness(session, app_id, store=store)
     assert outcome == "completed"
@@ -642,16 +752,24 @@ async def test_packet_generation_is_deterministic_and_bound_to_current_versions(
 
     # Replay with unchanged source material reuses the same artifact.
     again = await generate_handoff_packet(
-        session, application=application, store=store, method="email", blocked_reason=None,
+        session,
+        application=application,
+        store=store,
+        method="email",
+        blocked_reason=None,
     )
     assert again.id == packet.id
     packet_rows = (
-        await session.execute(
-            select(Artifact).where(
-                Artifact.application_id == app_id, Artifact.kind == "handoff_packet"
+        (
+            await session.execute(
+                select(Artifact).where(
+                    Artifact.application_id == app_id, Artifact.kind == "handoff_packet"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(packet_rows) == 1
 
     import io
@@ -660,7 +778,11 @@ async def test_packet_generation_is_deterministic_and_bound_to_current_versions(
     data = await store.get(packet.storage_key)
     names = set(zipfile.ZipFile(io.BytesIO(data)).namelist())
     assert names == {
-        "00-CHECKLIST.txt", "resume.pdf", "cover_letter.txt", "answers.txt", "job.json",
+        "00-CHECKLIST.txt",
+        "resume.pdf",
+        "cover_letter.txt",
+        "answers.txt",
+        "job.json",
     }
 
 
@@ -675,8 +797,13 @@ async def test_packet_generation_without_a_rendered_resume_is_refused(
     await clr._ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=900),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=900),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
     await resume_review.approve(session, application_id=app_id, actor=actor)
@@ -697,7 +824,11 @@ async def test_packet_generation_without_a_rendered_resume_is_refused(
 
     with pytest.raises(ResumeNotRenderedError):
         await generate_handoff_packet(
-            session, application=application, store=store, method="email", blocked_reason=None,
+            session,
+            application=application,
+            store=store,
+            method="email",
+            blocked_reason=None,
         )
 
 
@@ -708,8 +839,13 @@ async def test_packet_checklist_reflects_the_readiness_outcome(
     app_id = demo_application["id"]
     await _require_human(session)
     await _approve_everything(
-        session, demo_profile=demo_profile, demo_job=demo_job,
-        demo_application=demo_application, facts=facts, store=store, tmp_path=tmp_path,
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
     )
     await _trigger_readiness(session, app_id, store=store)
     packet = await current_packet(session, app_id)
@@ -747,7 +883,8 @@ async def test_approval_order_does_not_matter(
     await _allow_via_email(session)
     await c1._generate(session, demo_profile, demo_job, app_id, facts)
     await apps_service.prepare_application(
-        session, application_id=app_id,
+        session,
+        application_id=app_id,
         questions=[
             apps_service.RawQuestion(question_text="What city do you live in?", input_type="text"),
         ],
@@ -756,8 +893,13 @@ async def test_approval_order_does_not_matter(
     actor = await _actor(session, demo_application)
     await resume_review.enter_review(session, application_id=app_id, actor=actor)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=800),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=800),
     )
 
     for step, kind in enumerate(order):
@@ -770,13 +912,13 @@ async def test_approval_order_does_not_matter(
 
         application = await _get_application(session, app_id)
         if step < 2:
-            assert application.status is ApplicationStatus.AWAITING_APPROVAL, (
-                f"order {order}: completed early after step {step} ({kind})"
-            )
+            assert (
+                application.status is ApplicationStatus.AWAITING_APPROVAL
+            ), f"order {order}: completed early after step {step} ({kind})"
         else:
-            assert application.status is ApplicationStatus.APPROVED, (
-                f"order {order}: did not complete after the final step ({kind})"
-            )
+            assert (
+                application.status is ApplicationStatus.APPROVED
+            ), f"order {order}: did not complete after the final step ({kind})"
 
 
 @pytest.mark.parametrize(
@@ -796,8 +938,13 @@ async def test_zero_question_approval_order_does_not_matter(
     await clr._ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=801),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=801),
     )
 
     for step, kind in enumerate(order):
@@ -824,8 +971,13 @@ async def test_final_approval_causes_approved_exactly_once(
     await clr._ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=802),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=802),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
     await resume_review.approve(session, application_id=app_id, actor=actor)
@@ -834,26 +986,36 @@ async def test_final_approval_causes_approved_exactly_once(
     assert application.status is ApplicationStatus.APPROVED
 
     approved_history = (
-        await session.execute(
-            select(Event).where(
-                Event.type == "application.status.changed", Event.correlation_id == app_id,
-                Event.payload["to_status"].as_string() == "approved",
+        (
+            await session.execute(
+                select(Event).where(
+                    Event.type == "application.status.changed",
+                    Event.correlation_id == app_id,
+                    Event.payload["to_status"].as_string() == "approved",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(approved_history) == 1
 
     # Replaying the completing decision (resume approve, idempotent by its
     # own snapshot check) must not attempt a second transition.
     await resume_review.approve(session, application_id=app_id, actor=actor)
     approved_history_after = (
-        await session.execute(
-            select(Event).where(
-                Event.type == "application.status.changed", Event.correlation_id == app_id,
-                Event.payload["to_status"].as_string() == "approved",
+        (
+            await session.execute(
+                select(Event).where(
+                    Event.type == "application.status.changed",
+                    Event.correlation_id == app_id,
+                    Event.payload["to_status"].as_string() == "approved",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(approved_history_after) == 1
 
 
@@ -876,8 +1038,13 @@ async def test_packet_becomes_available_through_resume_rendered_retry(
     await clr._ready_for_review(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
     await clr._generate_cover_letter(
-        session, application_id=app_id, demo_profile=demo_profile, demo_job=demo_job,
-        tmp_path=tmp_path, fact_id=str(facts[0].id), event_id=UUID(int=803),
+        session,
+        application_id=app_id,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        tmp_path=tmp_path,
+        fact_id=str(facts[0].id),
+        event_id=UUID(int=803),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
     await resume_review.approve(session, application_id=app_id, actor=actor)
@@ -916,12 +1083,16 @@ async def test_packet_becomes_available_through_resume_rendered_retry(
     result_again = await sr.retry_packet_generation(session, rendered_event, store=store)
     assert result_again == "nothing-to-retry"
     packets = (
-        await session.execute(
-            select(Artifact).where(
-                Artifact.application_id == app_id, Artifact.kind == "handoff_packet"
+        (
+            await session.execute(
+                select(Artifact).where(
+                    Artifact.application_id == app_id, Artifact.kind == "handoff_packet"
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(packets) == 1
 
 
@@ -946,11 +1117,18 @@ async def test_resume_rendered_before_readiness_is_a_safe_noop(
     # shape - the ordinary render triggered by generation itself, well
     # before this application is anywhere near submission_ready.
     rendered_event = await emit(
-        session, type="resume.rendered", aggregate_type="resume",
-        aggregate_id=resume.id, correlation_id=app_id, actor_type="agent",
+        session,
+        type="resume.rendered",
+        aggregate_type="resume",
+        aggregate_id=resume.id,
+        correlation_id=app_id,
+        actor_type="agent",
         payload={
-            "resume_id": str(resume.id), "application_id": str(app_id),
-            "resume_version": resume.version, "approval_id": None, "artifacts": [],
+            "resume_id": str(resume.id),
+            "application_id": str(app_id),
+            "resume_version": resume.version,
+            "approval_id": None,
+            "artifacts": [],
         },
     )
     result = await sr.retry_packet_generation(session, rendered_event, store=store)

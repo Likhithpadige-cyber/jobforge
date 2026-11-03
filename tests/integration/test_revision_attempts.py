@@ -138,9 +138,7 @@ async def test_accepted_to_running_is_permitted(session, revision_attempt) -> No
     assert await _status(session, revision_attempt["id"]) == "running"
 
 
-async def test_accepted_cannot_jump_straight_to_succeeded(
-    session, revision_attempt
-) -> None:
+async def test_accepted_cannot_jump_straight_to_succeeded(session, revision_attempt) -> None:
     """`accepted` may become running, failed or abandoned - nothing else.
 
     A jump to `succeeded` would mean an attempt that produced a result without
@@ -169,9 +167,7 @@ async def test_running_to_abandoned_is_refused(session, revision_attempt) -> Non
 
 
 @pytest.mark.parametrize("target", ["accepted", "running"])
-async def test_failed_is_never_resurrected(
-    session, revision_attempt, target
-) -> None:
+async def test_failed_is_never_resurrected(session, revision_attempt, target) -> None:
     """A failed attempt is never re-driven; replacement is a new row (C.4).
 
     Parametrised rather than looped so each case gets its own fixture and its
@@ -180,9 +176,7 @@ async def test_failed_is_never_resurrected(
     unnecessary and that a bare rollback made wrong.
     """
     await _to_running(session, revision_attempt["id"])
-    await _set(
-        session, revision_attempt["id"], status="failed", failure_class="lease_lost"
-    )
+    await _set(session, revision_attempt["id"], status="failed", failure_class="lease_lost")
     with pytest.raises(DBAPIError) as exc:
         async with session.begin_nested():
             await _set(session, revision_attempt["id"], status=target)
@@ -229,9 +223,7 @@ async def test_a_succeeded_attempt_rejects_every_update(
         ("replacement_ordinal", "3"),
     ],
 )
-async def test_source_bindings_are_immutable(
-    session, revision_attempt, column, value
-) -> None:
+async def test_source_bindings_are_immutable(session, revision_attempt, column, value) -> None:
     """An attempt that could be re-pointed makes "one live attempt per
     approval" unenforceable, so the binding is frozen by trigger."""
     with pytest.raises(DBAPIError) as exc:
@@ -244,9 +236,7 @@ async def test_source_bindings_are_immutable(
     ("column", "value"),
     [("evidence_stale_retry_count", "0"), ("evidence_stale_retried_at", "NULL")],
 )
-async def test_retry_counters_only_move_forward(
-    session, revision_attempt, column, value
-) -> None:
+async def test_retry_counters_only_move_forward(session, revision_attempt, column, value) -> None:
     """Gate 1, as a database fact.
 
     `failure_class` may be rewritten - that is how a retryable class becomes
@@ -271,10 +261,7 @@ async def test_retry_counters_only_move_forward(
     # The established state survived the rejection, which is the whole point
     # of the savepoint: a bare rollback would have discarded it.
     still = await session.execute(
-        text(
-            "SELECT evidence_stale_retry_count FROM resume_revision_attempts "
-            "WHERE id = :id"
-        ),
+        text("SELECT evidence_stale_retry_count FROM resume_revision_attempts " "WHERE id = :id"),
         {"id": revision_attempt["id"]},
     )
     assert still.scalar_one() == 1
@@ -291,9 +278,7 @@ async def test_attempt_count_never_decreases(session, revision_attempt) -> None:
 # =====================================================================
 # 3. CHECK constraints (A.3)
 # =====================================================================
-async def test_a_semantic_negative_can_never_be_a_failed_status(
-    session, revision_attempt
-) -> None:
+async def test_a_semantic_negative_can_never_be_a_failed_status(session, revision_attempt) -> None:
     """The single most important constraint in the table.
 
     `outcome` is about the content and only ever exists on a succeeded
@@ -322,9 +307,7 @@ async def test_abandonment_must_name_a_human(session, revision_attempt) -> None:
     assert "abandoned_named_a_human" in str(exc.value)
 
 
-async def test_accepted_to_abandoned_requires_a_human(
-    session, revision_attempt
-) -> None:
+async def test_accepted_to_abandoned_requires_a_human(session, revision_attempt) -> None:
     """The "requested by mistake" path (C.1 row 10), done properly."""
     await session.execute(
         text(
@@ -344,9 +327,7 @@ async def test_running_requires_a_lease(session, revision_attempt) -> None:
     assert "running_has_lease" in str(exc.value)
 
 
-async def test_retry_counter_and_timestamp_must_agree(
-    session, revision_attempt
-) -> None:
+async def test_retry_counter_and_timestamp_must_agree(session, revision_attempt) -> None:
     with pytest.raises(DBAPIError) as exc:
         async with session.begin_nested():
             await _set(session, revision_attempt["id"], evidence_stale_retry_count=1)
@@ -360,15 +341,11 @@ async def test_one_live_attempt_per_approval(session, revision_attempt) -> None:
     """THE rule the table exists to enforce."""
     with pytest.raises(DBAPIError) as exc:
         async with session.begin_nested():
-            await _insert_attempt(
-                session, revision_attempt, revision_attempt["source_approval_id"]
-            )
+            await _insert_attempt(session, revision_attempt, revision_attempt["source_approval_id"])
     assert "uq_revision_attempt_per_approval" in str(exc.value)
 
 
-async def test_an_abandoned_attempt_frees_the_approval(
-    session, revision_attempt
-) -> None:
+async def test_an_abandoned_attempt_frees_the_approval(session, revision_attempt) -> None:
     """The partial index is what makes replacement possible at all."""
     await _abandon(session, revision_attempt["id"], revision_attempt["user_id"])
     replacement = await _insert_attempt(
@@ -381,9 +358,7 @@ async def test_an_abandoned_attempt_frees_the_approval(
     assert await _status(session, replacement) == "accepted"
 
 
-async def test_replaced_by_is_set_once_on_an_abandoned_row(
-    session, revision_attempt
-) -> None:
+async def test_replaced_by_is_set_once_on_an_abandoned_row(session, revision_attempt) -> None:
     """The one exception to terminal immutability, and its limit.
 
     NULL -> A is the permitted write. A -> A changes nothing and is allowed
@@ -412,10 +387,7 @@ async def test_replaced_by_is_set_once_on_an_abandoned_row(
     assert "set once" in str(exc.value).lower()
 
     current = await session.execute(
-        text(
-            "SELECT replaced_by_attempt_id FROM resume_revision_attempts "
-            "WHERE id = :id"
-        ),
+        text("SELECT replaced_by_attempt_id FROM resume_revision_attempts " "WHERE id = :id"),
         {"id": revision_attempt["id"]},
     )
     assert current.scalar_one() == first

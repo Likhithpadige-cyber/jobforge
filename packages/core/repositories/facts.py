@@ -149,9 +149,7 @@ class FactRepository(BaseRepository[ProfileFact]):
         Agent roles hold no UPDATE on profile_facts, so they cannot write this
         column directly. The function is the single narrow exception.
         """
-        stmt = select(
-            text("jobforge_increment_fact_usage(:fact_id)").bindparams(fact_id=fact_id)
-        )
+        stmt = select(text("jobforge_increment_fact_usage(:fact_id)").bindparams(fact_id=fact_id))
         # The raw SQL expression loses the INTEGER return type declared by
         # migration 0002; callers supply the existing fact being cited.
         return cast(int, (await self.session.execute(stmt)).scalar_one())

@@ -65,9 +65,7 @@ async def get_profile(session: DbSession) -> Any:
 async def update_profile(payload: ProfileUpdate, session: DbSession) -> Any:
     service = ProfileService(session)
     profile = await service.profiles.get_singleton()
-    updated = await service.update_profile(
-        profile.id, **payload.model_dump(exclude_unset=True)
-    )
+    updated = await service.update_profile(profile.id, **payload.model_dump(exclude_unset=True))
     await session.commit()
     return updated
 
@@ -108,9 +106,7 @@ async def create_experience(payload: ExperienceCreate, session: DbSession) -> An
     response_model=ExperienceRead,
     dependencies=[Depends(require_owner)],
 )
-async def update_experience(
-    entity_id: UUID, payload: ExperienceUpdate, session: DbSession
-) -> Any:
+async def update_experience(entity_id: UUID, payload: ExperienceUpdate, session: DbSession) -> Any:
     repo = ExperienceRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
@@ -155,9 +151,7 @@ async def create_education(payload: EducationCreate, session: DbSession) -> Any:
     response_model=EducationRead,
     dependencies=[Depends(require_owner)],
 )
-async def update_education(
-    entity_id: UUID, payload: EducationUpdate, session: DbSession
-) -> Any:
+async def update_education(entity_id: UUID, payload: EducationUpdate, session: DbSession) -> Any:
     repo = EducationRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
@@ -180,9 +174,7 @@ async def delete_education(entity_id: UUID, session: DbSession) -> Response:
 # ---------------------------------------------------------- certifications
 @router.get("/certifications", response_model=list[CertificationRead])
 async def list_certifications(session: DbSession) -> Any:
-    return await CertificationRepository(session).list_for_profile(
-        await _profile_id(session)
-    )
+    return await CertificationRepository(session).list_for_profile(await _profile_id(session))
 
 
 @router.post(
@@ -296,9 +288,7 @@ async def create_project(payload: ProjectCreate, session: DbSession) -> Any:
     response_model=ProjectRead,
     dependencies=[Depends(require_owner)],
 )
-async def update_project(
-    entity_id: UUID, payload: ProjectUpdate, session: DbSession
-) -> Any:
+async def update_project(entity_id: UUID, payload: ProjectUpdate, session: DbSession) -> Any:
     repo = ProjectRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))

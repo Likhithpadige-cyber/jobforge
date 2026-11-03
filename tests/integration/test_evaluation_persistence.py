@@ -88,13 +88,18 @@ def test_inverted_thresholds_are_rejected() -> None:
 # --------------------------------------------------------------- persistence
 async def test_persists_the_evaluation_row(session, normalized_job) -> None:
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     row = (
         await session.execute(
-            text("SELECT job_id, score, recommendation, profile_version "
-                 "FROM job_evaluations WHERE id = :id"),
+            text(
+                "SELECT job_id, score, recommendation, profile_version "
+                "FROM job_evaluations WHERE id = :id"
+            ),
             {"id": result.evaluation_id},
         )
     ).one()
@@ -105,21 +110,28 @@ async def test_persists_the_evaluation_row(session, normalized_job) -> None:
 
 async def test_shortlists_above_the_threshold(session, normalized_job) -> None:
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     assert result.to_status is JobStatus.SHORTLISTED
     status = (
-        await session.execute(text("SELECT status FROM jobs WHERE id = :id"),
-                              {"id": normalized_job})
+        await session.execute(
+            text("SELECT status FROM jobs WHERE id = :id"), {"id": normalized_job}
+        )
     ).scalar_one()
     assert status == "shortlisted"
 
 
 async def test_discards_below_the_floor_with_a_reason(session, normalized_job) -> None:
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(20), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(20),
+        match_matrix=MATRIX,
     )
     assert result.to_status is JobStatus.DISCARDED
     row = (
@@ -134,8 +146,11 @@ async def test_discards_below_the_floor_with_a_reason(session, normalized_job) -
 
 async def test_borderline_stays_evaluated_for_a_human(session, normalized_job) -> None:
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(60), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(60),
+        match_matrix=MATRIX,
     )
     assert result.to_status is JobStatus.EVALUATED
     assert result.borderline is True
@@ -144,13 +159,18 @@ async def test_borderline_stays_evaluated_for_a_human(session, normalized_job) -
 # ------------------------------------------------------------------- events
 async def test_emits_job_evaluated(session, normalized_job) -> None:
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     rows = (
         await session.execute(
-            text("SELECT type, payload, actor_type, aggregate_type "
-                 "FROM events WHERE aggregate_id = :id ORDER BY occurred_at"),
+            text(
+                "SELECT type, payload, actor_type, aggregate_type "
+                "FROM events WHERE aggregate_id = :id ORDER BY occurred_at"
+            ),
             {"id": normalized_job},
         )
     ).all()
@@ -166,11 +186,15 @@ async def test_emits_job_evaluated(session, normalized_job) -> None:
 
 async def test_emits_the_transition_event(session, normalized_job) -> None:
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     types = {
-        r[0] for r in (
+        r[0]
+        for r in (
             await session.execute(
                 text("SELECT type FROM events WHERE aggregate_id = :id"),
                 {"id": normalized_job},
@@ -182,11 +206,15 @@ async def test_emits_the_transition_event(session, normalized_job) -> None:
 
 async def test_discard_emits_job_discarded(session, normalized_job) -> None:
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(10), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(10),
+        match_matrix=MATRIX,
     )
     types = {
-        r[0] for r in (
+        r[0]
+        for r in (
             await session.execute(
                 text("SELECT type FROM events WHERE aggregate_id = :id"),
                 {"id": normalized_job},
@@ -198,11 +226,15 @@ async def test_discard_emits_job_discarded(session, normalized_job) -> None:
 
 async def test_borderline_emits_only_job_evaluated(session, normalized_job) -> None:
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(60), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(60),
+        match_matrix=MATRIX,
     )
     types = {
-        r[0] for r in (
+        r[0]
+        for r in (
             await session.execute(
                 text("SELECT type FROM events WHERE aggregate_id = :id"),
                 {"id": normalized_job},
@@ -215,8 +247,11 @@ async def test_borderline_emits_only_job_evaluated(session, normalized_job) -> N
 async def test_events_are_written_unpublished(session, normalized_job) -> None:
     """The outbox relay publishes; the producer never does."""
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     published = (
         await session.execute(
@@ -230,12 +265,16 @@ async def test_events_are_written_unpublished(session, normalized_job) -> None:
 async def test_correlation_id_ties_the_events_together(session, normalized_job) -> None:
     correlation = uuid7()
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
         correlation_id=correlation,
     )
     ids = {
-        r[0] for r in (
+        r[0]
+        for r in (
             await session.execute(
                 text("SELECT correlation_id FROM events WHERE aggregate_id = :id"),
                 {"id": normalized_job},
@@ -250,14 +289,20 @@ async def test_repeated_delivery_creates_one_evaluation(session, normalized_job)
     """At-least-once delivery must not produce two evaluations."""
     event_id = uuid7()
     kwargs = {
-        "job_id": normalized_job, "profile_version": 1,
-        "breakdown": breakdown_for(80), "match_matrix": MATRIX,
+        "job_id": normalized_job,
+        "profile_version": 1,
+        "breakdown": breakdown_for(80),
+        "match_matrix": MATRIX,
     }
     first = await persist_evaluation_once(
-        session, triggering_event_id=event_id, **kwargs  # type: ignore[arg-type]
+        session,
+        triggering_event_id=event_id,
+        **kwargs,  # type: ignore[arg-type]
     )
     second = await persist_evaluation_once(
-        session, triggering_event_id=event_id, **kwargs  # type: ignore[arg-type]
+        session,
+        triggering_event_id=event_id,
+        **kwargs,  # type: ignore[arg-type]
     )
     assert first is not None
     assert second is None, "redelivery must be a no-op"
@@ -275,18 +320,27 @@ async def test_genuine_re_evaluation_creates_a_new_row(session, normalized_job) 
     """job_evaluations is append-only by design: a newer profile version is a
     new row, not an overwrite (DATABASE_DESIGN.md §5.6)."""
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(60), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(60),
+        match_matrix=MATRIX,
     )
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=2,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=2,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     versions = [
-        r[0] for r in (
+        r[0]
+        for r in (
             await session.execute(
-                text("SELECT profile_version FROM job_evaluations "
-                     "WHERE job_id = :id ORDER BY profile_version"),
+                text(
+                    "SELECT profile_version FROM job_evaluations "
+                    "WHERE job_id = :id ORDER BY profile_version"
+                ),
                 {"id": normalized_job},
             )
         ).all()
@@ -298,8 +352,11 @@ async def test_genuine_re_evaluation_creates_a_new_row(session, normalized_job) 
 async def test_missing_job_raises(session) -> None:
     with pytest.raises(NotFoundError):
         await persist_evaluation(
-            session, job_id=uuid7(), profile_version=1,
-            breakdown=breakdown_for(80), match_matrix=MATRIX,
+            session,
+            job_id=uuid7(),
+            profile_version=1,
+            breakdown=breakdown_for(80),
+            match_matrix=MATRIX,
         )
 
 
@@ -315,8 +372,11 @@ async def test_illegal_transition_rolls_everything_back(session, demo_job) -> No
 
     with pytest.raises(IllegalTransitionError):
         await persist_evaluation(
-            session, job_id=demo_job, profile_version=1,
-            breakdown=breakdown_for(80), match_matrix=MATRIX,
+            session,
+            job_id=demo_job,
+            profile_version=1,
+            breakdown=breakdown_for(80),
+            match_matrix=MATRIX,
         )
     await session.rollback()
 
@@ -336,8 +396,11 @@ async def test_evaluation_rows_remain_append_only(session, normalized_job) -> No
     from sqlalchemy.exc import DBAPIError, IntegrityError
 
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     with pytest.raises((IntegrityError, DBAPIError)) as exc:
         await session.execute(
@@ -355,8 +418,11 @@ async def test_emitted_events_remain_immutable(session, normalized_job) -> None:
     from sqlalchemy.exc import DBAPIError, IntegrityError
 
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     event_id = (
         await session.execute(
@@ -378,10 +444,7 @@ def test_a5_performs_no_inference() -> None:
     import ast
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "packages/agents/resume_optimizer/persistence.py"
-    )
+    source = Path(__file__).resolve().parents[2] / "packages/agents/resume_optimizer/persistence.py"
     imports: set[str] = set()
     for node in ast.walk(ast.parse(source.read_text())):
         if isinstance(node, ast.Import | ast.ImportFrom):
@@ -402,22 +465,29 @@ def test_a5_performs_no_inference() -> None:
     ],
 )
 async def test_lifecycle_sequence(
-    session, normalized_job, score: float, expected_final: JobStatus,
+    session,
+    normalized_job,
+    score: float,
+    expected_final: JobStatus,
     expected_events: list[str],
 ) -> None:
     """normalized -> evaluated -> (shortlisted | discarded), or stop at
     evaluated when borderline. ARCHITECTURE.md §7.1."""
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(score), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(score),
+        match_matrix=MATRIX,
     )
     assert result.from_status is JobStatus.NORMALIZED, "from_status is the status before A5"
     assert result.to_status is expected_final
     assert result.events_emitted == expected_events, "events follow the lifecycle order"
 
     status = (
-        await session.execute(text("SELECT status FROM jobs WHERE id = :id"),
-                              {"id": normalized_job})
+        await session.execute(
+            text("SELECT status FROM jobs WHERE id = :id"), {"id": normalized_job}
+        )
     ).scalar_one()
     assert status == str(expected_final)
 
@@ -449,8 +519,11 @@ async def test_transition_is_called_in_the_documented_order(
 
     monkeypatch.setattr(module, "transition", recording)
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     assert calls == [("normalized", "evaluated"), ("evaluated", "shortlisted")]
 
@@ -459,12 +532,18 @@ async def test_re_evaluation_from_shortlisted_is_allowed(session, normalized_job
     """A job already shortlisted may be re-evaluated against a new profile
     version; the documented graph permits shortlisted -> evaluated."""
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=2,
-        breakdown=breakdown_for(60), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=2,
+        breakdown=breakdown_for(60),
+        match_matrix=MATRIX,
     )
     assert result.from_status is JobStatus.SHORTLISTED
     assert result.to_status is JobStatus.EVALUATED

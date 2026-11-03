@@ -200,8 +200,13 @@ async def test_stage_local_budget_ceiling(session, engine, case, writer, tmp_pat
     model = client(tmp_path, AsyncMock(), mode="replay", budget=Decimal("0.001"))
     request = module.prepare_request(context, selection, model.model)
     (tmp_path / f"{request.digest}.json").write_text(
-        Response(body=canonical(output), input_tokens=1000, output_tokens=500,
-                 cost_usd=Decimal("0.0020"), stop_reason="tool_use").model_dump_json()
+        Response(
+            body=canonical(output),
+            input_tokens=1000,
+            output_tokens=500,
+            cost_usd=Decimal("0.0020"),
+            stop_reason="tool_use",
+        ).model_dump_json()
     )
     with pytest.raises(CostLimitError):
         await run(case, session, model, writer)
@@ -224,8 +229,11 @@ async def test_b2_b3_survive_later_t3_failure(
     )
     with pytest.raises(RuntimeError, match="B5 stopped"):
         await c3._revise(
-            session, tmp_path, demo_application, actor,
-            bullet_text="Delivered AWS infrastructure work."
+            session,
+            tmp_path,
+            demo_application,
+            actor,
+            bullet_text="Delivered AWS infrastructure work.",
         )
     await session.rollback()
     runs, steps, calls, _ = await evidence(engine, demo_job)

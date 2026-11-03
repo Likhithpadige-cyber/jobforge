@@ -157,9 +157,7 @@ async def _read_model(session: DbSession, resume: Resume) -> ResumeRead:
 async def get_resume(resume_id: UUID, session: DbSession) -> Any:
     resume = (
         await session.execute(
-            select(Resume)
-            .options(selectinload(Resume.claims))
-            .where(Resume.id == resume_id)
+            select(Resume).options(selectinload(Resume.claims)).where(Resume.id == resume_id)
         )
     ).scalar_one_or_none()
     if resume is None:
@@ -201,9 +199,7 @@ async def list_applications(
                 select(
                     func.count(Resume.id),
                     func.max(Resume.version),
-                ).where(
-                    Resume.application_id == application.id, Resume.kind == "tailored"
-                )
+                ).where(Resume.application_id == application.id, Resume.kind == "tailored")
             )
         ).first()
         count, latest_version = (summary or (0, None))[0], (summary or (0, None))[1]
@@ -253,9 +249,7 @@ async def latest_resume(application_id: UUID, session: DbSession) -> Any:
     the status code, matching the rest of the API.
     """
     application = (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one_or_none()
     if application is None:
         raise NotFoundError(f"applications {application_id} not found")

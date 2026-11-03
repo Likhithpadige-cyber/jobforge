@@ -55,9 +55,7 @@ async def test_agent_cannot_delete_profile_fact(agent_engine, verified_fact) -> 
         assert "permission denied" in str(exc.value).lower()
 
 
-async def test_agent_cannot_promote_a_draft_fact_to_verified(
-    agent_engine, draft_fact
-) -> None:
+async def test_agent_cannot_promote_a_draft_fact_to_verified(agent_engine, draft_fact) -> None:
     """The most valuable single test in the suite.
 
     If an agent could flip status to 'verified', every other anti-fabrication
@@ -85,9 +83,7 @@ async def test_agent_can_read_facts(agent_engine, committed_fact) -> None:
         assert result.scalar_one() == "verified"
 
 
-async def test_agent_can_increment_usage_via_definer_function(
-    agent_engine, committed_fact
-) -> None:
+async def test_agent_can_increment_usage_via_definer_function(agent_engine, committed_fact) -> None:
     """The one narrow exception, and it touches exactly one column.
 
     Also proves the SECURITY DEFINER function is genuinely the only write
@@ -121,15 +117,12 @@ async def test_agent_cannot_insert_approval(agent_engine, demo_application) -> N
                     "(:id, :app, 'application', 'approved', '{}'::jsonb, now(), "
                     "now(), :user)"
                 ),
-                {"id": uuid7(), "app": demo_application["id"],
-                 "user": demo_application["user_id"]},
+                {"id": uuid7(), "app": demo_application["id"], "user": demo_application["user_id"]},
             )
         assert "permission denied" in str(exc.value).lower()
 
 
-async def test_agent_cannot_update_existing_approval(
-    agent_engine, pending_approval
-) -> None:
+async def test_agent_cannot_update_existing_approval(agent_engine, pending_approval) -> None:
     async with agent_engine.connect() as conn:
         with pytest.raises((ProgrammingError, DBAPIError)) as exc:
             await conn.execute(

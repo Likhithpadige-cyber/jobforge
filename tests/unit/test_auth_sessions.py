@@ -140,9 +140,7 @@ def redis() -> FakeRedis:
 
 
 async def new_session(redis: FakeRedis) -> Session:
-    return await create_session(
-        redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE
-    )
+    return await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
 
 
 def store_at(redis: FakeRedis, session: Session, replacement: Session) -> None:
@@ -181,9 +179,7 @@ async def test_stored_record_carries_no_credentials(redis: FakeRedis) -> None:
 
 async def test_ttl_never_exceeds_the_absolute_deadline(redis: FakeRedis) -> None:
     """A 1-hour absolute limit must cap a 12-hour idle window."""
-    session = await create_session(
-        redis, user_id=USER, idle_minutes=IDLE, absolute_hours=1
-    )
+    session = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=1)
     assert redis.ttls[f"{KEY_PREFIX}{session.id}"] <= 3600
 
 
@@ -243,9 +239,7 @@ async def test_absolute_expiry_beats_recent_activity(redis: FakeRedis) -> None:
 
 
 @pytest.mark.parametrize("session_id", [None, "", "never-issued"])
-async def test_unknown_session_returns_none(
-    redis: FakeRedis, session_id: str | None
-) -> None:
+async def test_unknown_session_returns_none(redis: FakeRedis, session_id: str | None) -> None:
     assert await load_session(redis, session_id, idle_minutes=IDLE) is None
 
 
@@ -284,9 +278,7 @@ async def test_csrf_matches_the_servers_copy(redis: FakeRedis) -> None:
 
 
 @pytest.mark.parametrize("presented", [None, "", "wrong-token"])
-async def test_csrf_rejects_anything_else(
-    redis: FakeRedis, presented: str | None
-) -> None:
+async def test_csrf_rejects_anything_else(redis: FakeRedis, presented: str | None) -> None:
     session = await new_session(redis)
     assert not csrf_matches(session, presented)
 

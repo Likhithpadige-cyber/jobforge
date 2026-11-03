@@ -133,18 +133,14 @@ def build_rationale(
         # A row only counts as supporting evidence if it actually cites a
         # fact. This mirrors RequirementMatch.counts_as_met, which scores an
         # uncited claim at zero - the prose must not disagree with the score.
-        return [
-            r for r in candidates
-            if r.get("status") in statuses and (r.get("fact_ids") or [])
-        ]
+        return [r for r in candidates if r.get("status") in statuses and (r.get("fact_ids") or [])]
 
     met_required = cited(required, ("met",))
     partial_required = cited(required, ("partially_met",))
     met_preferred = cited(preferred, ("met", "partially_met"))
 
     unmet_required = [
-        r for r in required
-        if r.get("status") not in MET_STATUSES or not (r.get("fact_ids") or [])
+        r for r in required if r.get("status") not in MET_STATUSES or not (r.get("fact_ids") or [])
     ]
     unassessable = [r for r in rows if r.get("assessable") is False]
     unmet_assessable = [r for r in unmet_required if r.get("assessable") is not False]
@@ -168,9 +164,7 @@ def build_rationale(
                 "read from this posting, so nothing was matched against your "
                 "verified profile."
             ),
-            caveats=[
-                "The score reflects role, seniority and location alignment only."
-            ],
+            caveats=["The score reflects role, seniority and location alignment only."],
             counts=counts,
         )
 
@@ -209,10 +203,13 @@ def build_rationale(
     caveats: list[str] = []
 
     years_short = [
-        r for r in partial_required
+        r
+        for r in partial_required
         if r.get("years_required") is not None
-        and (r.get("years_evidenced") is None
-             or float(r.get("years_evidenced") or 0) < float(r["years_required"]))
+        and (
+            r.get("years_evidenced") is None
+            or float(r.get("years_evidenced") or 0) < float(r["years_required"])
+        )
     ]
     if years_short:
         caveats.append(
@@ -235,9 +232,9 @@ def build_rationale(
         )
 
     # Passed in from A3 and named verbatim; not recomputed here.
-    extra_gaps = [g for g in (gaps or []) if g and g not in {
-        str(r.get("requirement_text")) for r in rows
-    }]
+    extra_gaps = [
+        g for g in (gaps or []) if g and g not in {str(r.get("requirement_text")) for r in rows}
+    ]
     if extra_gaps:
         gap_sentences.append(f"Also flagged: {_name_list(extra_gaps)}.")
 
@@ -262,8 +259,6 @@ def rationale_from_breakdown(
     )
 
 
-def rationale_text(
-    match_matrix: dict[str, Any] | None, breakdown: ScoreBreakdown
-) -> str:
+def rationale_text(match_matrix: dict[str, Any] | None, breakdown: ScoreBreakdown) -> str:
     """The string to hand to A5's existing `rationale` parameter."""
     return rationale_from_breakdown(match_matrix, breakdown).summary

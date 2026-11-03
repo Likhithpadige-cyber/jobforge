@@ -113,9 +113,7 @@ def _provenance(request: RevisionRequest) -> dict[str, object]:
     }
 
 
-async def _existing_revision(
-    session: AsyncSession, request: RevisionRequest
-) -> Resume | None:
+async def _existing_revision(session: AsyncSession, request: RevisionRequest) -> Resume | None:
     """A resume already produced for this exact revision, if there is one.
 
     Matching on the fingerprint rather than on "is there a newer version"
@@ -164,9 +162,7 @@ async def completed_revision(
     this revision did not produce - a stale request, not a retry.
     """
     application = (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
 
     existing = await _existing_revision(session, request)
@@ -236,9 +232,7 @@ async def begin_generation(
     of bug that ships. The id is all this function ever wanted.
     """
     application = (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
     assert_revisable(application)
     await transition_application(
@@ -345,9 +339,7 @@ async def generate_revision(
     and its verification status must land together or not at all.
     """
     (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
 
     # B0. Loaded fresh, from the current verified facts - not from a snapshot

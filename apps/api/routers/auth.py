@@ -140,18 +140,14 @@ async def login(
     # Neither key is a lock. Both expire on their own; nothing here writes to
     # the user row, and there is no state a human has to clear.
     if settings.rate_limit_enabled:
-        await enforce(
-            redis, login_ip_limit(settings), source_fingerprint(request, settings)
-        )
+        await enforce(redis, login_ip_limit(settings), source_fingerprint(request, settings))
         await enforce(
             redis,
             login_identifier_limit(settings),
             identifier_fingerprint(payload.email, settings),
         )
 
-    user = (
-        await db.execute(select(User).where(User.email == payload.email))
-    ).scalar_one_or_none()
+    user = (await db.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
 
     # Verify a hash either way, so a missing account and a wrong password take
     # comparable time and cannot be told apart by an attacker enumerating emails.
@@ -202,9 +198,7 @@ async def login(
     user.last_login_at = utc_now()
     await db.commit()
     log.info("auth.login.succeeded", user_id=str(user.id))
-    return LoginResponse(
-        user=UserRead.model_validate(user), csrf_token=session.csrf_token
-    )
+    return LoginResponse(user=UserRead.model_validate(user), csrf_token=session.csrf_token)
 
 
 @router.post(

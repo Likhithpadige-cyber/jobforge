@@ -89,31 +89,35 @@ class ProfileService:
             for sentence in _SENTENCE_SPLIT.split(entity.description or ""):
                 cleaned = sentence.strip(" -•\t")
                 if len(cleaned) > 10:
-                    suggestions.append(
-                        (cleaned, {"numerals": _NUMERAL.findall(cleaned), **period})
-                    )
+                    suggestions.append((cleaned, {"numerals": _NUMERAL.findall(cleaned), **period}))
         elif kind == "educations" and isinstance(entity, Education):
             parts = [p for p in (entity.degree, entity.field_of_study) if p]
             label = " in ".join(parts) if parts else "Studied"
             suggestions.append(
-                (f"{label} at {entity.institution}",
-                 {"end_date": entity.end_date.isoformat() if entity.end_date else None})
+                (
+                    f"{label} at {entity.institution}",
+                    {"end_date": entity.end_date.isoformat() if entity.end_date else None},
+                )
             )
         elif kind == "certifications" and isinstance(entity, Certification):
             # An in-progress certification is never suggested as one held.
             if entity.status == "active":
                 suggestions.append(
-                    (f"Holds {entity.name}" + (f" from {entity.issuer}" if entity.issuer else ""),
-                     {"issued_date": entity.issued_date.isoformat()
-                      if entity.issued_date else None})
+                    (
+                        f"Holds {entity.name}"
+                        + (f" from {entity.issuer}" if entity.issuer else ""),
+                        {
+                            "issued_date": entity.issued_date.isoformat()
+                            if entity.issued_date
+                            else None
+                        },
+                    )
                 )
         elif kind == "skills" and isinstance(entity, Skill):
             level = f" at a {entity.proficiency} level" if entity.proficiency else ""
             suggestions.append((f"Uses {entity.name}{level}", {}))
         elif kind == "projects" and isinstance(entity, Project):
-            suggestions.append(
-                (f"Built {entity.name}", {"tech_stack": list(entity.tech_stack)})
-            )
+            suggestions.append((f"Built {entity.name}", {"tech_stack": list(entity.tech_stack)}))
             if entity.summary:
                 suggestions.append(
                     (entity.summary.strip(), {"numerals": _NUMERAL.findall(entity.summary)})
@@ -137,10 +141,7 @@ class ProfileService:
             raise NotFoundError(f"{kind} {entity_id} not found on this profile")
 
         existing = {
-            fact.text
-            for fact in await self.facts.list_for_profile(
-                profile_id, source_table=kind
-            )
+            fact.text for fact in await self.facts.list_for_profile(profile_id, source_table=kind)
         }
 
         created: list[ProfileFact] = []

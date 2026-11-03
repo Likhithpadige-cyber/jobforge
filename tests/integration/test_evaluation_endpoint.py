@@ -45,12 +45,18 @@ async def test_latest_returns_the_most_recent_of_several(session, normalized_job
     """Evaluations are append-only, so re-scoring adds a row. The endpoint
     must return the newest, not the first."""
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(60), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(60),
+        match_matrix=MATRIX,
     )
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=2,
-        breakdown=breakdown_for(88), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=2,
+        breakdown=breakdown_for(88),
+        match_matrix=MATRIX,
     )
     latest = await JobEvaluationRepository(session).latest_for_job(normalized_job)
     assert latest is not None
@@ -60,12 +66,18 @@ async def test_latest_returns_the_most_recent_of_several(session, normalized_job
 
 async def test_history_is_available_newest_first(session, normalized_job) -> None:
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(60), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(60),
+        match_matrix=MATRIX,
     )
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=2,
-        breakdown=breakdown_for(88), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=2,
+        breakdown=breakdown_for(88),
+        match_matrix=MATRIX,
     )
     history = await JobEvaluationRepository(session).list_for_job(normalized_job)
     assert [e.profile_version for e in history] == [2, 1]
@@ -74,8 +86,11 @@ async def test_history_is_available_newest_first(session, normalized_job) -> Non
 # --------------------------------------------------------------- endpoint
 async def test_returns_the_latest_evaluation(db_app_client, session, normalized_job) -> None:
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(87), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(87),
+        match_matrix=MATRIX,
     )
     await session.commit()
 
@@ -94,8 +109,11 @@ async def test_response_contains_no_fabricated_evidence(
 ) -> None:
     """A2 does not exist. The response must not imply it does."""
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(87), match_matrix={},
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(87),
+        match_matrix={},
     )
     await session.commit()
 
@@ -131,8 +149,11 @@ async def test_malformed_job_id_is_rejected(db_app_client) -> None:
 @pytest.mark.safety
 async def test_get_creates_no_evaluation(db_app_client, session, normalized_job) -> None:
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(87), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(87),
+        match_matrix=MATRIX,
     )
     await session.commit()
 
@@ -156,20 +177,25 @@ async def test_get_creates_no_evaluation(db_app_client, session, normalized_job)
 @pytest.mark.safety
 async def test_get_does_not_change_job_status(db_app_client, session, normalized_job) -> None:
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(87), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(87),
+        match_matrix=MATRIX,
     )
     await session.commit()
     before = (
-        await session.execute(text("SELECT status FROM jobs WHERE id = :id"),
-                              {"id": normalized_job})
+        await session.execute(
+            text("SELECT status FROM jobs WHERE id = :id"), {"id": normalized_job}
+        )
     ).scalar_one()
 
     await db_app_client.get(f"/api/v1/jobs/{normalized_job}/evaluation")
 
     after = (
-        await session.execute(text("SELECT status FROM jobs WHERE id = :id"),
-                              {"id": normalized_job})
+        await session.execute(
+            text("SELECT status FROM jobs WHERE id = :id"), {"id": normalized_job}
+        )
     ).scalar_one()
     assert after == before
 
@@ -178,8 +204,11 @@ async def test_get_does_not_change_job_status(db_app_client, session, normalized
 async def test_get_emits_no_event(db_app_client, session, normalized_job) -> None:
     """A read must never append to the outbox."""
     await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
-        breakdown=breakdown_for(87), match_matrix=MATRIX,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
+        breakdown=breakdown_for(87),
+        match_matrix=MATRIX,
     )
     await session.commit()
     before = (

@@ -154,9 +154,7 @@ ALLOWED_TRANSITIONS: dict[ApplicationStatus, frozenset[ApplicationStatus]] = {
     ),
     # Rework (C3). The only exit, and it goes back to the start of
     # generation so the revision is verified like any other attempt.
-    ApplicationStatus.CHANGES_REQUESTED: frozenset(
-        {ApplicationStatus.RESUME_GENERATING}
-    ),
+    ApplicationStatus.CHANGES_REQUESTED: frozenset({ApplicationStatus.RESUME_GENERATING}),
     # M10 Phase 2. See the module docstring's readiness section.
     ApplicationStatus.APPROVED: frozenset({ApplicationStatus.SUBMISSION_READY}),
     # M11 Phase 2: human Submit action opens SUBMITTING.

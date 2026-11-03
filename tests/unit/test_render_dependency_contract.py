@@ -88,6 +88,6 @@ def test_renderer_tests_refuse_rather_than_skip_on_a_missing_dependency(name: st
         f"{name} must not use pytest.importorskip: a missing renderer "
         "dependency has to fail the run, not shrink it"
     )
-    assert "require_dependency(" in source, (
-        f"{name} must declare its renderer dependencies via require_dependency"
-    )
+    assert (
+        "require_dependency(" in source
+    ), f"{name} must declare its renderer dependencies via require_dependency"

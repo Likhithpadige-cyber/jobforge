@@ -23,7 +23,13 @@ from sqlalchemy.exc import DBAPIError, ProgrammingError
 pytestmark = [pytest.mark.integration, pytest.mark.safety]
 
 TABLE_PRIVILEGES = (
-    "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER",
+    "SELECT",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+    "TRUNCATE",
+    "REFERENCES",
+    "TRIGGER",
 )
 
 #: I.6.1, exactly. Table -> row privileges that must be true.
@@ -37,12 +43,23 @@ AUDIT_MATRIX: dict[str, set[str]] = {
 #: The only columns app_audit may UPDATE, per table.
 AUDIT_UPDATE_COLUMNS: dict[str, set[str]] = {
     "agent_runs": {
-        "status", "steps_completed", "input_tokens", "output_tokens", "cost_usd",
-        "prompt_version", "error_type", "error_message", "duration_ms",
+        "status",
+        "steps_completed",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "prompt_version",
+        "error_type",
+        "error_message",
+        "duration_ms",
         "finished_at",
     },
     "agent_run_steps": {
-        "status", "input_digest", "output", "guardrail_results", "duration_ms",
+        "status",
+        "input_digest",
+        "output",
+        "guardrail_results",
+        "duration_ms",
         "finished_at",
     },
     "llm_calls": {"response_redacted"},
@@ -50,8 +67,15 @@ AUDIT_UPDATE_COLUMNS: dict[str, set[str]] = {
 }
 
 DOMAIN_TABLES = (
-    "applications", "resumes", "resume_claims", "approvals", "profile_facts",
-    "profiles", "resume_revision_attempts", "settings", "users",
+    "applications",
+    "resumes",
+    "resume_claims",
+    "approvals",
+    "profile_facts",
+    "profiles",
+    "resume_revision_attempts",
+    "settings",
+    "users",
 )
 
 
@@ -253,8 +277,7 @@ async def test_every_executable_security_definer_function_is_a_trigger(
         )
         callable_definers = [name for (name,) in rows]
     assert not callable_definers, (
-        "app_audit can EXECUTE non-trigger SECURITY DEFINER functions: "
-        f"{callable_definers}"
+        "app_audit can EXECUTE non-trigger SECURITY DEFINER functions: " f"{callable_definers}"
     )
 
 
@@ -263,9 +286,7 @@ async def test_every_executable_security_definer_function_is_a_trigger(
 # =====================================================================
 @pytest.mark.parametrize("table", DOMAIN_TABLES)
 @pytest.mark.parametrize("verb", ["INSERT", "UPDATE", "DELETE"])
-async def test_audit_role_cannot_write_domain_tables(
-    audit_engine, table, verb
-) -> None:
+async def test_audit_role_cannot_write_domain_tables(audit_engine, table, verb) -> None:
     """Catalog assertions can still be wrong about the world; try it."""
     statements = {
         "INSERT": f"INSERT INTO {table} DEFAULT VALUES",
@@ -296,9 +317,7 @@ async def test_audit_role_cannot_write_domain_tables(
         "CREATE TABLE public.t_leak (i int)",
     ],
 )
-async def test_audit_role_is_refused_outside_its_matrix(
-    audit_engine, statement
-) -> None:
+async def test_audit_role_is_refused_outside_its_matrix(audit_engine, statement) -> None:
     """Each case is a column or verb the matrix withholds.
 
     `UPDATE events SET published` fails on privilege, before the
@@ -356,18 +375,14 @@ async def test_agent_cannot_insert_a_revision_attempt(agent_engine) -> None:
     principle that keeps app_agent off `approvals`."""
     async with agent_engine.connect() as conn:
         with pytest.raises((ProgrammingError, DBAPIError)) as exc:
-            await conn.execute(
-                text("INSERT INTO resume_revision_attempts DEFAULT VALUES")
-            )
+            await conn.execute(text("INSERT INTO resume_revision_attempts DEFAULT VALUES"))
     assert "permission denied" in str(exc.value).lower()
 
 
 @pytest.mark.parametrize(
     "column", ["abandoned_by", "abandon_reason", "replaces_attempt_id", "recovered_at"]
 )
-async def test_agent_cannot_write_the_human_only_columns(
-    agent_engine, column
-) -> None:
+async def test_agent_cannot_write_the_human_only_columns(agent_engine, column) -> None:
     """Column-level UPDATE is what makes "a worker cannot release its own
     attempt" physical rather than procedural."""
     async with agent_engine.connect() as conn:

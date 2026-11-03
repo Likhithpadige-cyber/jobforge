@@ -80,13 +80,9 @@ def _key_bytes(key_b64: str) -> bytes:
     try:
         raw = base64.b64decode(key_b64, validate=True)
     except (ValueError, TypeError) as exc:
-        raise MissingEncryptionKeyError(
-            "TOTP_ENCRYPTION_KEY must be base64-encoded"
-        ) from exc
+        raise MissingEncryptionKeyError("TOTP_ENCRYPTION_KEY must be base64-encoded") from exc
     if len(raw) != _KEY_BYTES:
-        raise MissingEncryptionKeyError(
-            f"TOTP_ENCRYPTION_KEY must decode to {_KEY_BYTES} bytes"
-        )
+        raise MissingEncryptionKeyError(f"TOTP_ENCRYPTION_KEY must decode to {_KEY_BYTES} bytes")
     return raw
 
 

@@ -47,8 +47,7 @@ async def permitted_source(session, demo_user):  # type: ignore[no-untyped-def]
     )
     await session.flush()
     row = (
-        await session.execute(text("SELECT slug FROM sources WHERE id = :id"),
-                              {"id": source_id})
+        await session.execute(text("SELECT slug FROM sources WHERE id = :id"), {"id": source_id})
     ).scalar_one()
     return {"id": source_id, "slug": row, "domain": domain}
 
@@ -80,25 +79,27 @@ async def test_disabled_source_is_blocked(session, permitted_source) -> None:
     )
     await session.flush()
     with pytest.raises(PolicyBlockedError, match="disabled"):
-        await IngestionPipeline(session).ingest_batch(
-            permitted_source["slug"], [posting()]
-        )
+        await IngestionPipeline(session).ingest_batch(permitted_source["slug"], [posting()])
 
 
 async def test_ingest_creates_a_normalized_job(session, permitted_source) -> None:
     report = await IngestionPipeline(session).ingest_batch(
         permitted_source["slug"],
-        [posting(
-            title="Sr. Cloud Engineer (Remote)",
-            company_name="Example Cloud, Inc.",
-            location="Remote - Dallas, TX",
-            description="Work with AWS. Pay $130,000 - $160,000 per year.",
-        )],
+        [
+            posting(
+                title="Sr. Cloud Engineer (Remote)",
+                company_name="Example Cloud, Inc.",
+                location="Remote - Dallas, TX",
+                description="Work with AWS. Pay $130,000 - $160,000 per year.",
+            )
+        ],
     )
     assert report.created == 1
-    job = await __import__(
-        "packages.core.repositories", fromlist=["JobRepository"]
-    ).JobRepository(session).get_or_404(report.outcomes[0].job_id)
+    job = (
+        await __import__("packages.core.repositories", fromlist=["JobRepository"])
+        .JobRepository(session)
+        .get_or_404(report.outcomes[0].job_id)
+    )
     assert job.status == JobStatus.NORMALIZED
     assert job.normalized_title == "senior cloud engineer"
     assert job.seniority == "senior"
@@ -121,9 +122,7 @@ async def test_identical_posting_is_marked_duplicate(session, permitted_source) 
     assert second.outcomes[0].canonical_id == first.outcomes[0].job_id
 
 
-async def test_same_external_id_updates_rather_than_duplicating(
-    session, permitted_source
-) -> None:
+async def test_same_external_id_updates_rather_than_duplicating(session, permitted_source) -> None:
     pipeline = IngestionPipeline(session)
     url = "https://jobs.example.invalid/j/stable"
     first = await pipeline.ingest_batch(
@@ -142,10 +141,16 @@ async def test_different_roles_are_both_kept(session, permitted_source) -> None:
     report = await pipeline.ingest_batch(
         permitted_source["slug"],
         [
-            posting(title="Junior Cloud Engineer", company_name="Example Cloud Corp",
-                    description="Junior role."),
-            posting(title="Senior Cloud Engineer", company_name="Example Cloud Corp",
-                    description="Senior role."),
+            posting(
+                title="Junior Cloud Engineer",
+                company_name="Example Cloud Corp",
+                description="Junior role.",
+            ),
+            posting(
+                title="Senior Cloud Engineer",
+                company_name="Example Cloud Corp",
+                description="Senior role.",
+            ),
         ],
     )
     assert report.created == 2, "a junior and a senior opening are two real jobs"
@@ -160,9 +165,7 @@ async def test_stale_posting_is_rejected(session, permitted_source) -> None:
     assert "older than" in report.outcomes[0].reason
 
 
-async def test_posting_on_an_unreviewed_domain_is_rejected(
-    session, permitted_source
-) -> None:
+async def test_posting_on_an_unreviewed_domain_is_rejected(session, permitted_source) -> None:
     """A source may legally list jobs whose apply URLs point elsewhere.
     Those still need their own reviewed policy."""
     report = await IngestionPipeline(session).ingest_batch(
@@ -173,9 +176,7 @@ async def test_posting_on_an_unreviewed_domain_is_rejected(
     assert "not permitted" in report.outcomes[0].reason
 
 
-async def test_malformed_posting_is_rejected_not_crashed(
-    session, permitted_source
-) -> None:
+async def test_malformed_posting_is_rejected_not_crashed(session, permitted_source) -> None:
     report = await IngestionPipeline(session).ingest_batch(
         permitted_source["slug"],
         [posting(title="   "), posting(title="Cloud Engineer")],
@@ -189,10 +190,8 @@ async def test_company_variants_resolve_to_one_row(session, permitted_source) ->
     await pipeline.ingest_batch(
         permitted_source["slug"],
         [
-            posting(title="Cloud Engineer", company_name="Example Cloud Corp",
-                    description="A"),
-            posting(title="Data Engineer", company_name="Example Cloud, Inc.",
-                    description="B"),
+            posting(title="Cloud Engineer", company_name="Example Cloud Corp", description="A"),
+            posting(title="Data Engineer", company_name="Example Cloud, Inc.", description="B"),
         ],
     )
     count = (
@@ -203,19 +202,19 @@ async def test_company_variants_resolve_to_one_row(session, permitted_source) ->
     assert count == 1
 
 
-async def test_duplicate_does_not_reach_normalized_status(
-    session, permitted_source
-) -> None:
+async def test_duplicate_does_not_reach_normalized_status(session, permitted_source) -> None:
     """Only `normalized` jobs are picked up for evaluation, so a duplicate
     must never carry that status - otherwise it costs an LLM call."""
     pipeline = IngestionPipeline(session)
-    common = {"title": "Cloud Engineer", "company_name": "Example Cloud Corp",
-              "description": "Same text."}
+    common = {
+        "title": "Cloud Engineer",
+        "company_name": "Example Cloud Corp",
+        "description": "Same text.",
+    }
     await pipeline.ingest_batch(permitted_source["slug"], [posting(**common)])
     second = await pipeline.ingest_batch(permitted_source["slug"], [posting(**common)])
     job_id = second.outcomes[0].job_id
     status = (
-        await session.execute(text("SELECT status FROM jobs WHERE id = :id"),
-                              {"id": job_id})
+        await session.execute(text("SELECT status FROM jobs WHERE id = :id"), {"id": job_id})
     ).scalar_one()
     assert status == "duplicate"

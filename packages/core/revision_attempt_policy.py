@@ -63,9 +63,7 @@ RETRYABLE: frozenset[RevisionFailureClass] = frozenset(
 #: `evidence_stale` alone carries a per-attempt budget. Evidence that moved
 #: once may well have moved for a reason; retrying for ever would mean a
 #: revision racing a human editor indefinitely.
-BUDGETED: frozenset[RevisionFailureClass] = frozenset(
-    {RevisionFailureClass.EVIDENCE_STALE}
-)
+BUDGETED: frozenset[RevisionFailureClass] = frozenset({RevisionFailureClass.EVIDENCE_STALE})
 
 
 class AttemptView(Protocol):
@@ -108,7 +106,8 @@ def can_retry(
 
 
 def retryable_sql(
-    *, failure_class_param: str = "failure_class",
+    *,
+    failure_class_param: str = "failure_class",
     max_attempts_param: str = "max_attempts",
     budget_param: str = "evidence_stale_budget",
 ) -> str:

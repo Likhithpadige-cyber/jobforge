@@ -1,4 +1,5 @@
 """Read access to base resume structures."""
+
 from uuid import UUID
 
 from sqlalchemy import select

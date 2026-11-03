@@ -65,9 +65,7 @@ def download_filename(*, application_id: UUID | str, version: int, extension: st
     profile, a job title or a company name, so there is no branch that can
     leak one into a Content-Disposition header.
     """
-    application = (
-        application_id if isinstance(application_id, UUID) else UUID(str(application_id))
-    )
+    application = application_id if isinstance(application_id, UUID) else UUID(str(application_id))
     ext = _UNSAFE.sub("", extension).lstrip(".").lower()
     if not ext:
         raise ValueError("extension has no usable characters")

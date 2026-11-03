@@ -38,9 +38,10 @@ async def test_required_extensions_are_installed(postgres_available: bool) -> No
         async with session_scope() as session:
             result = await session.execute(text("SELECT extname FROM pg_extension"))
             installed = {row[0] for row in result}
-        assert {"pgcrypto", "pg_trgm"} <= installed, (
-            f"missing extensions; run `make migrate`. installed={sorted(installed)}"
-        )
+        assert {
+            "pgcrypto",
+            "pg_trgm",
+        } <= installed, f"missing extensions; run `make migrate`. installed={sorted(installed)}"
     finally:
         await dispose_engine()
 

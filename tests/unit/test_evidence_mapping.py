@@ -49,8 +49,10 @@ SHORT_AWS_FACT = FactView(
 
 def req(text: str, necessity: Necessity = Necessity.REQUIRED, **kwargs) -> Requirement:
     return Requirement(
-        text=text, necessity=necessity,
-        kind=kwargs.pop("kind", RequirementKind.SKILL), **kwargs,
+        text=text,
+        necessity=necessity,
+        kind=kwargs.pop("kind", RequirementKind.SKILL),
+        **kwargs,
     )
 
 
@@ -70,7 +72,9 @@ def test_anchors_drop_filler_words() -> None:
 
 def test_anchors_keep_multiple_terms() -> None:
     assert set(anchor_terms("Terraform and Kubernetes in production")) >= {
-        "terraform", "kubernetes", "production",
+        "terraform",
+        "kubernetes",
+        "production",
     }
 
 
@@ -81,7 +85,7 @@ def test_anchors_are_empty_when_nothing_is_checkable() -> None:
 
 
 def test_a_non_technical_term_is_still_checked_not_skipped() -> None:
-    """"communication" is a real term. It simply will not match a technical
+    """ "communication" is a real term. It simply will not match a technical
     fact, which is NOT_MET rather than unassessable - the matcher did look."""
     assert anchor_terms("Excellent communication skills") == ["communication"]
 
@@ -122,9 +126,12 @@ def test_unrelated_fact_does_not_match() -> None:
 
 def test_partial_support_is_conservative() -> None:
     """Half the terms found is partial, never met."""
-    row = map_requirement(req("Terraform and Kubernetes"), [
-        FactView(id=uuid4(), text="Wrote Terraform modules"),
-    ])
+    row = map_requirement(
+        req("Terraform and Kubernetes"),
+        [
+            FactView(id=uuid4(), text="Wrote Terraform modules"),
+        ],
+    )
     assert row.status is MatchStatus.PARTIALLY_MET
     assert "terraform" in row.matched_terms
     assert "kubernetes" in row.unmatched_terms
@@ -134,7 +141,8 @@ def test_years_requirement_caps_a_full_term_match_at_partial() -> None:
     """Six months of AWS is real partial support for "3+ years of AWS",
     and calling it met would overstate the candidate."""
     row = map_requirement(
-        req("3+ years of AWS", years_min=3), [SHORT_AWS_FACT],
+        req("3+ years of AWS", years_min=3),
+        [SHORT_AWS_FACT],
         today=date(2025, 6, 1),
     )
     assert row.status is MatchStatus.PARTIALLY_MET
@@ -144,7 +152,9 @@ def test_years_requirement_caps_a_full_term_match_at_partial() -> None:
 
 def test_sufficient_years_stays_met() -> None:
     row = map_requirement(
-        req("3+ years of AWS", years_min=3), [AWS_FACT], today=date(2025, 1, 1),
+        req("3+ years of AWS", years_min=3),
+        [AWS_FACT],
+        today=date(2025, 1, 1),
     )
     assert row.status is MatchStatus.MET
     assert row.years_evidenced is not None and row.years_evidenced >= 3
@@ -177,12 +187,18 @@ def test_checked_but_unsupported_is_distinguishable() -> None:
 def test_status_is_always_a_canonical_match_status() -> None:
     """A2 must never widen the enum A3 and A5 depend on."""
     facts = [AWS_FACT, LINUX_FACT]
-    reqs = [req("AWS"), req("Kubernetes"), req("Strong working knowledge"),
-            req("Terraform and AWS")]
+    reqs = [
+        req("AWS"),
+        req("Kubernetes"),
+        req("Strong working knowledge"),
+        req("Terraform and AWS"),
+    ]
     for row in build_match_matrix(reqs, facts).rows:
         assert row.status in {
-            MatchStatus.MET, MatchStatus.PARTIALLY_MET,
-            MatchStatus.NOT_MET, MatchStatus.TRANSFERABLE,
+            MatchStatus.MET,
+            MatchStatus.PARTIALLY_MET,
+            MatchStatus.NOT_MET,
+            MatchStatus.TRANSFERABLE,
         }
 
 
@@ -191,8 +207,7 @@ def test_transferable_is_never_emitted_yet() -> None:
     facts = [AWS_FACT, LINUX_FACT, SHORT_AWS_FACT]
     reqs = [req("AWS"), req("Kubernetes"), req("Linux"), req("Terraform")]
     assert all(
-        row.status is not MatchStatus.TRANSFERABLE
-        for row in build_match_matrix(reqs, facts).rows
+        row.status is not MatchStatus.TRANSFERABLE for row in build_match_matrix(reqs, facts).rows
     )
 
 
@@ -216,9 +231,7 @@ def test_empty_requirements_produce_an_empty_matrix() -> None:
 
 
 def test_empty_facts_produce_honest_unmatched_rows() -> None:
-    matrix = build_match_matrix(
-        [req("AWS"), req("Strong working knowledge")], []
-    )
+    matrix = build_match_matrix([req("AWS"), req("Strong working knowledge")], [])
     assert all(row.status is MatchStatus.NOT_MET for row in matrix.rows)
     assert all(row.fact_ids == [] for row in matrix.rows)
     # Same status, different reason — the matrix keeps them apart.
@@ -247,9 +260,7 @@ def test_no_evidence_field_is_invented() -> None:
 def test_output_is_deterministic_across_runs() -> None:
     facts = [AWS_FACT, LINUX_FACT, SHORT_AWS_FACT]
     reqs = [req("AWS"), req("Linux"), req("Kubernetes")]
-    results = {
-        repr(build_match_matrix(reqs, facts).as_dict()) for _ in range(25)
-    }
+    results = {repr(build_match_matrix(reqs, facts).as_dict()) for _ in range(25)}
     assert len(results) == 1
 
 
@@ -261,8 +272,8 @@ def test_summary_counts_statuses_and_flags_unassessable_separately() -> None:
     summary = matrix.summary
     assert summary["total"] == 3
     assert summary["met"] == 1
-    assert summary["not_met"] == 2          # unsupported + uncheckable
-    assert summary["unassessable"] == 1     # metadata, not a status
+    assert summary["not_met"] == 2  # unsupported + uncheckable
+    assert summary["unassessable"] == 1  # metadata, not a status
     assert "unknown" not in summary
 
 
@@ -287,9 +298,7 @@ def test_regex_metacharacters_cannot_break_matching() -> None:
 @pytest.mark.safety
 def test_requirement_text_cannot_reach_a_field_lookup() -> None:
     row = map_requirement(req("__class__ structured verified_by"), [AWS_FACT])
-    assert row.fact_ids == [] or all(
-        item["text"] == AWS_FACT.text for item in row.evidence
-    )
+    assert row.fact_ids == [] or all(item["text"] == AWS_FACT.text for item in row.evidence)
 
 
 @pytest.mark.safety
@@ -297,10 +306,7 @@ def test_requirement_text_is_never_interpolated_into_sql() -> None:
     import ast
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "packages/agents/resume_optimizer/evidence.py"
-    )
+    source = Path(__file__).resolve().parents[2] / "packages/agents/resume_optimizer/evidence.py"
     tree = ast.parse(source.read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
@@ -315,8 +321,14 @@ def test_requirement_text_is_never_interpolated_into_sql() -> None:
 def test_requirements_rebuilt_from_stored_payload() -> None:
     payload = {
         "requirements": [
-            {"text": "AWS", "necessity": "required", "kind": "skill",
-             "years_min": 3, "years_max": None, "section": "Requirements"},
+            {
+                "text": "AWS",
+                "necessity": "required",
+                "kind": "skill",
+                "years_min": 3,
+                "years_max": None,
+                "section": "Requirements",
+            },
         ]
     }
     rebuilt = requirements_from_payload(payload)

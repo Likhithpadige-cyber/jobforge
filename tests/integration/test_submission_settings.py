@@ -54,7 +54,8 @@ async def test_submission_enabled_absent_row_is_false(session) -> None:  # type:
 
 
 async def test_submission_enabled_false_after_explicit_disable(
-    session, demo_user,  # type: ignore[no-untyped-def]
+    session,
+    demo_user,  # type: ignore[no-untyped-def]
 ) -> None:
     owner = await session.get(User, demo_user)
     await set_submission_dispatch_enabled(session, True, actor=owner)
@@ -63,7 +64,8 @@ async def test_submission_enabled_false_after_explicit_disable(
 
 
 async def test_submission_enabled_true_after_explicit_enable(
-    session, demo_user,  # type: ignore[no-untyped-def]
+    session,
+    demo_user,  # type: ignore[no-untyped-def]
 ) -> None:
     owner = await session.get(User, demo_user)
     await set_submission_dispatch_enabled(session, True, actor=owner)
@@ -71,27 +73,33 @@ async def test_submission_enabled_true_after_explicit_enable(
 
 
 async def test_set_creates_exactly_one_row_and_records_the_actor(
-    session, demo_user,  # type: ignore[no-untyped-def]
+    session,
+    demo_user,  # type: ignore[no-untyped-def]
 ) -> None:
     owner = await session.get(User, demo_user)
     await set_submission_dispatch_enabled(session, True, actor=owner)
-    rows = (await session.execute(
-        select(Setting).where(Setting.key == SUBMISSION_ENABLED_KEY)
-    )).scalars().all()
+    rows = (
+        (await session.execute(select(Setting).where(Setting.key == SUBMISSION_ENABLED_KEY)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].value == {"enabled": True}
     assert rows[0].updated_by == owner.id
 
 
 async def test_set_updates_the_same_row_not_a_second_one(
-    session, demo_user,  # type: ignore[no-untyped-def]
+    session,
+    demo_user,  # type: ignore[no-untyped-def]
 ) -> None:
     owner = await session.get(User, demo_user)
     await set_submission_dispatch_enabled(session, True, actor=owner)
     await set_submission_dispatch_enabled(session, False, actor=owner)
-    rows = (await session.execute(
-        select(Setting).where(Setting.key == SUBMISSION_ENABLED_KEY)
-    )).scalars().all()
+    rows = (
+        (await session.execute(select(Setting).where(Setting.key == SUBMISSION_ENABLED_KEY)))
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     assert rows[0].value == {"enabled": False}
 
@@ -105,7 +113,8 @@ async def test_gate_requires_both_switches_env_alone_is_insufficient(session) ->
 
 
 async def test_gate_requires_both_switches_db_alone_is_insufficient(
-    session, demo_user,  # type: ignore[no-untyped-def]
+    session,
+    demo_user,  # type: ignore[no-untyped-def]
 ) -> None:
     """The persisted switch alone, with `SUBMISSION_MODE` left at its safe
     default (dry_run), must not enable real dispatch."""
@@ -116,7 +125,8 @@ async def test_gate_requires_both_switches_db_alone_is_insufficient(
 
 
 async def test_gate_both_switches_true_enables_the_gate_only(
-    session, demo_user,  # type: ignore[no-untyped-def]
+    session,
+    demo_user,  # type: ignore[no-untyped-def]
 ) -> None:
     """Both true produces an internally *enabled* gate - it still causes no
     external submission by itself: nothing in Phase 1 calls this gate from
@@ -154,9 +164,7 @@ async def test_owner_can_change_the_switch(api_sessions) -> None:  # type: ignor
 
 async def test_reviewer_cannot_change_the_switch(api_sessions) -> None:  # type: ignore[no-untyped-def]
     reviewer = await api_sessions("reviewer")
-    response = await reviewer.put(
-        "/api/v1/settings/submission-enabled", json={"enabled": True}
-    )
+    response = await reviewer.put("/api/v1/settings/submission-enabled", json={"enabled": True})
     assert response.status_code == 403
 
 
@@ -169,9 +177,7 @@ async def test_reviewer_cannot_change_the_switch_even_when_already_true(
     owner = await api_sessions("owner")
     await owner.put("/api/v1/settings/submission-enabled", json={"enabled": True})
     reviewer = await api_sessions("reviewer")
-    response = await reviewer.put(
-        "/api/v1/settings/submission-enabled", json={"enabled": False}
-    )
+    response = await reviewer.put("/api/v1/settings/submission-enabled", json={"enabled": False})
     assert response.status_code == 403
     still_true = await owner.get("/api/v1/settings/submission-enabled")
     assert still_true.json() == {"submission_enabled": True}

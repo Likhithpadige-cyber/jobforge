@@ -1,4 +1,5 @@
 """Canonical public resume.rendered v2 payload; no storage locators or prose."""
+
 from typing import Literal
 from uuid import UUID
 

@@ -62,26 +62,27 @@ class ResumeRevisionAttempt(TimestampMixin, UUIDPrimaryKeyMixin, Base):
         nullable=False,
     )
     source_resume_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("resumes.id", ondelete="NO ACTION"),
+        PGUUID(as_uuid=True),
+        ForeignKey("resumes.id", ondelete="NO ACTION"),
         nullable=False,
     )
     #: Denormalised on purpose: T3 compares against the version it was told
     #: about, not the version the row happens to hold at commit time.
     source_resume_version: Mapped[int] = mapped_column(Integer, nullable=False)
     source_approval_id: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("approvals.id", ondelete="NO ACTION"),
+        PGUUID(as_uuid=True),
+        ForeignKey("approvals.id", ondelete="NO ACTION"),
         nullable=False,
     )
     #: The screened note, exactly as sent to B1, and its digest.
     instructions_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     instructions_digest: Mapped[str] = mapped_column(Text, nullable=False)
     requested_by: Mapped[UUID] = mapped_column(
-        PGUUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"),
+        PGUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    requested_at: Mapped[datetime] = mapped_column(
-        server_default=func.now(), nullable=False
-    )
+    requested_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 
     # --- lifecycle ----------------------------------------------------
     status: Mapped[RevisionAttemptStatus] = mapped_column(
@@ -104,20 +105,14 @@ class ResumeRevisionAttempt(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     outcome: Mapped[RevisionOutcome | None] = mapped_column(revision_outcome_enum)
 
     # --- failure ------------------------------------------------------
-    failure_class: Mapped[RevisionFailureClass | None] = mapped_column(
-        revision_failure_class_enum
-    )
+    failure_class: Mapped[RevisionFailureClass | None] = mapped_column(revision_failure_class_enum)
     #: Never model prose. A classification and a short operator-facing note.
     failure_detail: Mapped[str | None] = mapped_column(Text)
 
     # --- retry accounting ---------------------------------------------
     #: Incremented in exactly one place (D.2 acquisition), never here.
-    attempt_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
-    retry_exhausted: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
-    )
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    retry_exhausted: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     #: Durable record of how many evidence_stale retries this row has spent.
     #: Monotonic by trigger: never reset, never decremented, never cleared by
     #: a later failure_class write. Without it, an attempt that consumed its
@@ -143,9 +138,7 @@ class ResumeRevisionAttempt(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     #: Predecessor + 1. Non-negative in the schema; the ceiling is
     #: configuration (N), enforced in the service, never a CHECK - raising a
     #: limit must not require a migration.
-    replacement_ordinal: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="0"
-    )
+    replacement_ordinal: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     abandoned_at: Mapped[datetime | None]
     #: Abandonment always names a human (PO-3). The worker cannot write it:
     #: it is absent from app_agent's column-level UPDATE grant.
@@ -178,13 +171,11 @@ class ResumeRevisionAttempt(TimestampMixin, UUIDPrimaryKeyMixin, Base):
             name="outcome_only_on_success",
         ),
         CheckConstraint(
-            "status <> 'abandoned' "
-            "OR (abandoned_at IS NOT NULL AND abandoned_by IS NOT NULL)",
+            "status <> 'abandoned' " "OR (abandoned_at IS NOT NULL AND abandoned_by IS NOT NULL)",
             name="abandoned_named_a_human",
         ),
         CheckConstraint(
-            "status <> 'running' "
-            "OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
+            "status <> 'running' " "OR (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)",
             name="running_has_lease",
         ),
         CheckConstraint(

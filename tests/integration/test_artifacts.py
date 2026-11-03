@@ -173,9 +173,7 @@ async def test_rendering_never_invents_text(
     )
     body = (await store.get(produced[0].storage_key)).decode("utf-8")
     approved = approved_resume_fixtures["content_lines"]
-    rendered_lines = [
-        line[2:] for line in body.splitlines() if line.startswith("- ")
-    ]
+    rendered_lines = [line[2:] for line in body.splitlines() if line.startswith("- ")]
     assert sorted(rendered_lines) == sorted(approved)
 
 
@@ -207,9 +205,7 @@ async def test_replaying_the_render_writes_nothing_new(
     assert [a.id for a in first] == [a.id for a in second]
     _, after_replay = await _durable_record(session, resume_id)
     assert len(after_replay) == 1, "a pure replay emitted a second rendered event"
-    rows = (
-        await session.scalars(select(Artifact).where(Artifact.resume_id == resume_id))
-    ).all()
+    rows = (await session.scalars(select(Artifact).where(Artifact.resume_id == resume_id))).all()
     assert len(rows) == 1
 
 
@@ -276,9 +272,9 @@ async def test_a_mixed_invocation_emits_one_event_covering_every_artifact(
     assert len(events) == 2, "one further event, for the invocation that created one"
 
     listed = [{a["artifact_id"] for a in event.payload["artifacts"]} for event in events]
-    assert {str(a.id) for a in produced} in listed, (
-        "the new event must name every artifact the resume now has"
-    )
+    assert {
+        str(a.id) for a in produced
+    } in listed, "the new event must name every artifact the resume now has"
 
 
 # ------------------------------------------- the mid-flight approval races
@@ -333,16 +329,18 @@ async def _durable_record(session, resume_id):  # type: ignore[no-untyped-def]
     ).all()
     events = (
         await session.scalars(
-            select(Event).where(
-                Event.type == "resume.rendered", Event.aggregate_id == resume_id
-            )
+            select(Event).where(Event.type == "resume.rendered", Event.aggregate_id == resume_id)
         )
     ).all()
     return artifacts, events
 
 
 async def test_an_approved_decision_cannot_request_rework_mid_render(
-    session, store, renderers, approved_resume_fixtures, demo_user,
+    session,
+    store,
+    renderers,
+    approved_resume_fixtures,
+    demo_user,
 ) -> None:
     """The supported workflow and DB both refuse approved -> changes_requested.
 
@@ -362,8 +360,10 @@ async def test_an_approved_decision_cannot_request_rework_mid_render(
         actor = await session.get(User, demo_user)
         with pytest.raises(ReviewStateError, match="awaiting_approval"):
             await request_changes(
-                session, application_id=approved_resume_fixtures["application_id"],
-                actor=actor, note="Synthetic rework request after approval",
+                session,
+                application_id=approved_resume_fixtures["application_id"],
+                actor=actor,
+                note="Synthetic rework request after approval",
             )
         approval = await session.get(Approval, approval_id)
         with pytest.raises(DBAPIError, match="requires a pending resume approval and human actor"):
@@ -376,7 +376,10 @@ async def test_an_approved_decision_cannot_request_rework_mid_render(
 
     tripwire = TripwireStore(store, rejected_rework)
     produced = await render_resume(
-        session, store=tripwire, renderers=renderers, resume_id=resume_id,
+        session,
+        store=tripwire,
+        renderers=renderers,
+        resume_id=resume_id,
         allow_non_production_renderers=True,
     )
     assert tripwire.keys, "the rejected decision must occur after upload"
@@ -412,9 +415,9 @@ async def test_a_resume_superseded_mid_render_persists_nothing(
         )
 
     approval = await session.get(Approval, approved_resume_fixtures["approval_id"])
-    assert approval.status == ApprovalStatus.APPROVED, (
-        "this case must fail on the snapshot, not on the approval status"
-    )
+    assert (
+        approval.status == ApprovalStatus.APPROVED
+    ), "this case must fail on the snapshot, not on the approval status"
 
     assert tripwire.keys, "nothing was uploaded, so the race was never reached"
     artifacts, events = await _durable_record(session, resume_id)
@@ -472,9 +475,9 @@ async def test_the_orphaned_object_is_recoverable_and_replay_stays_idempotent(
         allow_non_production_renderers=True,
     )
     assert len(produced) == 1
-    assert produced[0].storage_key == orphan, (
-        "recovery should reuse the deterministic key rather than orphan it twice"
-    )
+    assert (
+        produced[0].storage_key == orphan
+    ), "recovery should reuse the deterministic key rather than orphan it twice"
     await store.verify(produced[0].storage_key, sha256=produced[0].sha256)
 
     rows, events = await _durable_record(session, resume_id)
@@ -553,10 +556,7 @@ async def test_downloads_are_rate_limited(api_sessions, monkeypatch) -> None:
     monkeypatch.setenv("RATE_LIMIT_ARTIFACT_DOWNLOAD_PER_USER", "2")
     get_settings.cache_clear()
     owner = await api_sessions("owner")
-    seen = [
-        (await owner.get(f"/api/v1/artifacts/{uuid7()}/content")).status_code
-        for _ in range(4)
-    ]
+    seen = [(await owner.get(f"/api/v1/artifacts/{uuid7()}/content")).status_code for _ in range(4)]
     get_settings.cache_clear()
     assert 429 in seen
 
@@ -570,7 +570,10 @@ async def test_csrf_is_irrelevant_to_a_read(db_app_client) -> None:
 
 
 async def test_approval_fixture_has_human_decision_and_exact_snapshot(
-    session, approved_resume_fixtures, demo_user, demo_job,
+    session,
+    approved_resume_fixtures,
+    demo_user,
+    demo_job,
 ) -> None:
     from packages.core.models import Application
     from packages.core.services.resume_review import snapshot_matches
@@ -591,8 +594,14 @@ async def test_approval_fixture_has_human_decision_and_exact_snapshot(
 @pytest.mark.parametrize("role", ["owner", "reviewer"])
 @pytest.mark.parametrize("resource", ["missing", "unreadable", "known"])
 async def test_store_outage_is_considered_only_for_readable_artifacts(
-    api_sessions, session, store, renderers, approved_resume_fixtures,
-    monkeypatch, role, resource,
+    api_sessions,
+    session,
+    store,
+    renderers,
+    approved_resume_fixtures,
+    monkeypatch,
+    role,
+    resource,
 ) -> None:
     from apps.api.routers import artifacts as router
     from packages.core.db import get_session
@@ -602,12 +611,21 @@ async def test_store_outage_is_considered_only_for_readable_artifacts(
     artifact_id = uuid7()
     if resource == "unreadable":
         # An evidence upload is not a resume download under the existing policy.
-        session.add(Artifact(id=artifact_id, kind="evidence", resume_id=None,
-                             storage_key=f"evidence/{artifact_id}", bucket=store.bucket))
+        session.add(
+            Artifact(
+                id=artifact_id,
+                kind="evidence",
+                resume_id=None,
+                storage_key=f"evidence/{artifact_id}",
+                bucket=store.bucket,
+            )
+        )
         await session.flush()
     elif resource == "known":
         produced = await render_resume(
-            session, store=store, renderers=renderers,
+            session,
+            store=store,
+            renderers=renderers,
             resume_id=approved_resume_fixtures["approved_resume_id"],
             allow_non_production_renderers=True,
         )
@@ -641,7 +659,11 @@ async def test_store_outage_is_considered_only_for_readable_artifacts(
 
 @pytest.mark.parametrize("mixed", [False, True])
 async def test_rendered_event_exact_public_v2_contract(
-    session, store, renderers, approved_resume_fixtures, mixed,
+    session,
+    store,
+    renderers,
+    approved_resume_fixtures,
+    mixed,
 ) -> None:
     import json
 
@@ -651,12 +673,18 @@ async def test_rendered_event_exact_public_v2_contract(
     selected = renderers
     if mixed:
         await render_resume(
-            session, store=store, renderers=renderers, resume_id=resume_id,
+            session,
+            store=store,
+            renderers=renderers,
+            resume_id=resume_id,
             allow_non_production_renderers=True,
         )
         selected = (*renderers, ReferenceTextRenderer(ALT_TEMPLATE_VERSION))
     produced = await render_resume(
-        session, store=store, renderers=selected, resume_id=resume_id,
+        session,
+        store=store,
+        renderers=selected,
+        resume_id=resume_id,
         allow_non_production_renderers=True,
     )
     _, events = await _durable_record(session, resume_id)
@@ -665,9 +693,16 @@ async def test_rendered_event_exact_public_v2_contract(
         "application_id": str(approved_resume_fixtures["application_id"]),
         "resume_version": approved_resume_fixtures["approved_version"],
         "approval_id": str(approved_resume_fixtures["approval_id"]),
-        "artifacts": [{"artifact_id": str(a.id), "kind": a.kind,
-                       "template_version": a.template_version,
-                       "size_bytes": a.size_bytes, "sha256": a.sha256} for a in produced],
+        "artifacts": [
+            {
+                "artifact_id": str(a.id),
+                "kind": a.kind,
+                "template_version": a.template_version,
+                "size_bytes": a.size_bytes,
+                "sha256": a.sha256,
+            }
+            for a in produced
+        ],
     }
     assert len(events) == (2 if mixed else 1)
     event = next(e for e in events if len(e.payload["artifacts"]) == len(produced))
@@ -680,7 +715,10 @@ async def test_rendered_event_exact_public_v2_contract(
     assert event.aggregate_id == resume_id
     assert event.correlation_id == approved_resume_fixtures["application_id"]
     await render_resume(
-        session, store=store, renderers=selected, resume_id=resume_id,
+        session,
+        store=store,
+        renderers=selected,
+        resume_id=resume_id,
         allow_non_production_renderers=True,
     )
     _, replay_events = await _durable_record(session, resume_id)

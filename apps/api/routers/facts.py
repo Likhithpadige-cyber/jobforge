@@ -74,9 +74,7 @@ async def fact_summary(session: DbSession) -> Any:
     return await ProfileService(session).fact_summary(await _profile_id(session))
 
 
-@router.get(
-    "/citable", response_model=list[FactRead], summary="Facts a resume may cite"
-)
+@router.get("/citable", response_model=list[FactRead], summary="Facts a resume may cite")
 async def list_citable(session: DbSession) -> Any:
     """Verified, undeleted facts. This is the only set generation may draw on."""
     return await FactRepository(session).list_citable(await _profile_id(session))
@@ -140,12 +138,8 @@ async def update_fact(fact_id: UUID, payload: FactUpdate, session: DbSession) ->
     summary="Verify a fact (human action)",
     dependencies=[Depends(require_owner)],
 )
-async def verify_fact(
-    fact_id: UUID, payload: FactVerifyRequest, session: DbSession
-) -> Any:
-    fact = await FactRepository(session).verify(
-        fact_id, verified_by=payload.verified_by
-    )
+async def verify_fact(fact_id: UUID, payload: FactVerifyRequest, session: DbSession) -> Any:
+    fact = await FactRepository(session).verify(fact_id, verified_by=payload.verified_by)
     await session.commit()
     return fact
 
@@ -200,9 +194,7 @@ async def suggest_facts(payload: FactSuggestRequest, session: DbSession) -> Any:
     must still be verified before it can be cited.
     """
     if payload.source_table == "profiles":
-        raise ValidationError(
-            "suggest from a specific profile section, not the profile"
-        )
+        raise ValidationError("suggest from a specific profile section, not the profile")
     created = await ProfileService(session).suggest_facts(
         await _profile_id(session), payload.source_table, payload.source_id
     )
@@ -223,14 +215,10 @@ async def list_evidence(fact_id: UUID, session: DbSession) -> Any:
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_owner)],
 )
-async def add_evidence(
-    fact_id: UUID, payload: FactEvidenceCreate, session: DbSession
-) -> Any:
+async def add_evidence(fact_id: UUID, payload: FactEvidenceCreate, session: DbSession) -> Any:
     await FactRepository(session).get_or_404(fact_id)
     if not any((payload.url, payload.note, payload.artifact_id)):
         raise ValidationError("evidence needs at least a url, a note, or an artifact")
-    evidence = await FactEvidenceRepository(session).create(
-        fact_id=fact_id, **payload.model_dump()
-    )
+    evidence = await FactEvidenceRepository(session).create(fact_id=fact_id, **payload.model_dump())
     await session.commit()
     return evidence

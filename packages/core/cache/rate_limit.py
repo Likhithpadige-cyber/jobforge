@@ -63,9 +63,7 @@ class CounterPipeline(Protocol):
 
 
 class RateLimitStore(Protocol):
-    def pipeline(
-        self, *, transaction: bool
-    ) -> AbstractAsyncContextManager[CounterPipeline]: ...
+    def pipeline(self, *, transaction: bool) -> AbstractAsyncContextManager[CounterPipeline]: ...
 
 
 class RateLimitedError(AppError):

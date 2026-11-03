@@ -103,9 +103,7 @@ def is_authoritative_failure(verdicts: list[ClaimVerdict]) -> bool:
     return any(v is not ClaimVerdict.SUPPORTED for v in verdicts)
 
 
-def prepare_request(
-    claim_text: str, cited_facts: list[TailoringFact], model: str
-) -> Request:
+def prepare_request(claim_text: str, cited_facts: list[TailoringFact], model: str) -> Request:
     """Build the B5 request from only this claim's text and its own cited
     facts - nothing else reaches the prompt.
     """
@@ -189,8 +187,12 @@ async def verify_claim(
     if writer is None:
         writer = DomainInferenceAudit(session)
     stage = await writer.begin_stage(
-        agent="resume_optimizer", pipeline="tailoring", step_name="B5",
-        aggregate_type="job", aggregate_id=aggregate_id, correlation_id=aggregate_id,
+        agent="resume_optimizer",
+        pipeline="tailoring",
+        step_name="B5",
+        aggregate_type="job",
+        aggregate_id=aggregate_id,
+        correlation_id=aggregate_id,
     )
     # C3 supplies an ordinal from its ordered ClaimRef sequence. It is safe
     # attribution and never contains generated claim prose.
@@ -202,7 +204,9 @@ async def verify_claim(
     try:
         request = prepare_request(claim_text, cited_facts, client.model)
         await writer.record_request(
-            stage, prompt_version=request.prompt_version, input_digest=request.digest,
+            stage,
+            prompt_version=request.prompt_version,
+            input_digest=request.digest,
             guardrail_results=attribution,
         )
         for attempt in range(2):
@@ -217,9 +221,13 @@ async def verify_claim(
                     raise ModelOutputError("B5 schema repair has no recorded response") from None
                 raise
             call = await writer.record_call(
-                stage, model=request.model, input_tokens=response.input_tokens,
-                output_tokens=response.output_tokens, cost_usd=response.cost_usd,
-                prompt_hash=request.digest, stop_reason=response.stop_reason,
+                stage,
+                model=request.model,
+                input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens,
+                cost_usd=response.cost_usd,
+                prompt_hash=request.digest,
+                stop_reason=response.stop_reason,
             )
             if writer.spent(stage) > client.max_cost:
                 raise CostLimitError("B5 exceeded its run budget")
@@ -228,9 +236,7 @@ async def verify_claim(
                     raise ModelOutputError(
                         "B5 response was truncated or did not use the verdict tool"
                     )
-                result = validate_verdict(
-                    response.body, prompt_version=request.prompt_version
-                )
+                result = validate_verdict(response.body, prompt_version=request.prompt_version)
             except ModelOutputError:
                 client.record(request, response.model_copy(update={"body": "null"}))
                 if attempt:
@@ -251,14 +257,11 @@ async def verify_claim(
             }
             await writer.record_call_output(stage, call, response_redacted=canonical(safe_output))
             await writer.record_step_output(stage, output=safe_output)
-            client.record(
-                request, response.model_copy(update={"body": canonical(safe_output)})
-            )
+            client.record(request, response.model_copy(update={"body": canonical(safe_output)}))
             completed = True
             if result.verdict is not ClaimVerdict.SUPPORTED:
                 raise ClaimNotSupportedError(
-                    f"Claim verifier returned {result.verdict}: "
-                    "not supported by cited evidence",
+                    f"Claim verifier returned {result.verdict}: " "not supported by cited evidence",
                     result=result,
                 )
             return result
@@ -272,9 +275,7 @@ async def verify_claim(
             violation = {
                 "kind": "pii_in_prompt" if pii else "fabrication",
                 "agent": "resume_optimizer",
-                "severity": (
-                    "high" if pii else _NEGATIVE_SEVERITY.get(verdict, "critical")
-                ),
+                "severity": ("high" if pii else _NEGATIVE_SEVERITY.get(verdict, "critical")),
                 "aggregate_type": "job",
                 "aggregate_id": str(aggregate_id),
                 "detail": (
@@ -288,11 +289,16 @@ async def verify_claim(
             }
             try:
                 await writer.record_guardrail(
-                    stage, guardrail_results={**attribution, "failure": violation},
+                    stage,
+                    guardrail_results={**attribution, "failure": violation},
                     event=EventEnvelope(
-                        type="guardrail.violation.detected", aggregate_type="job",
-                        aggregate_id=aggregate_id, correlation_id=aggregate_id,
-                        actor_type="agent", actor_id="resume_optimizer", payload=violation,
+                        type="guardrail.violation.detected",
+                        aggregate_type="job",
+                        aggregate_id=aggregate_id,
+                        correlation_id=aggregate_id,
+                        actor_type="agent",
+                        actor_id="resume_optimizer",
+                        payload=violation,
                     ),
                 )
             except BaseException as evidence_exc:
@@ -309,16 +315,17 @@ async def verify_claim(
         if not evidence_failed:
             try:
                 await writer.finish_stage(
-                    stage, status="succeeded" if completed else "failed",
+                    stage,
+                    status="succeeded" if completed else "failed",
                     steps_completed=1 if completed else 0,
                     duration_ms=int((monotonic() - started) * 1000),
                     error_type=(
-                        type(primary).__name__
-                        if primary is not None and not completed else None
+                        type(primary).__name__ if primary is not None and not completed else None
                     ),
                     error_message=(
                         "B5 claim verification failed"
-                        if primary is not None and not completed else None
+                        if primary is not None and not completed
+                        else None
                     ),
                 )
             except Exception:

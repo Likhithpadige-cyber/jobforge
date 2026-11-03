@@ -91,13 +91,21 @@ class Application(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     # added after both tables exist rather than inline.
     resume_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("resumes.id", ondelete="SET NULL", use_alter=True,
-                   name="fk_applications_resume_id_resumes"),
+        ForeignKey(
+            "resumes.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_applications_resume_id_resumes",
+        ),
     )
     cover_letter_id: Mapped[UUID | None] = mapped_column(
         PGUUID(as_uuid=True),
-        ForeignKey("cover_letters.id", ondelete="SET NULL", use_alter=True,
-                   name="fk_applications_cover_letter_id_cover_letters"),
+        ForeignKey(
+            "cover_letters.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_applications_cover_letter_id_cover_letters",
+        ),
     )
     submission_method: Mapped[SubmissionMethod | None] = mapped_column(submission_method_enum)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
@@ -115,9 +123,7 @@ class Application(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     job: Mapped[Job] = relationship(back_populates="application")
     profile: Mapped[Profile] = relationship()
     approver: Mapped[User | None] = relationship(foreign_keys=[approved_by])
-    resume: Mapped[Resume | None] = relationship(
-        foreign_keys=[resume_id], post_update=True
-    )
+    resume: Mapped[Resume | None] = relationship(foreign_keys=[resume_id], post_update=True)
     cover_letter: Mapped[CoverLetter | None] = relationship(
         foreign_keys=[cover_letter_id], post_update=True
     )
@@ -149,9 +155,7 @@ class Application(TimestampMixin, UUIDPrimaryKeyMixin, Base):
             "uq_application_per_job",
             "job_id",
             unique=True,
-            postgresql_where=sa_text(
-                "status NOT IN ('abandoned', 'error', 'policy_blocked')"
-            ),
+            postgresql_where=sa_text("status NOT IN ('abandoned', 'error', 'policy_blocked')"),
         ),
         Index("idx_applications_status", "status", sa_text("updated_at DESC")),
         Index("idx_applications_outcome", "outcome", sa_text("submitted_at DESC")),
@@ -173,9 +177,7 @@ class Resume(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     summary_text: Mapped[str | None] = mapped_column(Text)
-    diff_vs_base: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    diff_vs_base: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     verification_status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="pending"
     )
@@ -528,8 +530,11 @@ class ApplicationStatusHistory(UUIDPrimaryKeyMixin, Base):
 
     __table_args__ = (
         CheckConstraint("actor_type IN ('agent', 'human', 'system')", name="actor_type_allowed"),
-        Index("ix_application_status_history_application_id", "application_id",
-              sa_text("created_at DESC")),
+        Index(
+            "ix_application_status_history_application_id",
+            "application_id",
+            sa_text("created_at DESC"),
+        ),
     )
 
 
@@ -588,8 +593,6 @@ class Artifact(UUIDPrimaryKeyMixin, Base):
             "kind",
             "template_version",
             unique=True,
-            postgresql_where=sa_text(
-                "resume_id IS NOT NULL AND template_version IS NOT NULL"
-            ),
+            postgresql_where=sa_text("resume_id IS NOT NULL AND template_version IS NOT NULL"),
         ),
     )

@@ -45,7 +45,8 @@ class FindingKind(StrEnum):
 #: (kind, severity, pattern, why it matters)
 PATTERNS: tuple[tuple[FindingKind, Severity, re.Pattern[str], str], ...] = (
     (
-        FindingKind.INSTRUCTION_OVERRIDE, Severity.HIGH,
+        FindingKind.INSTRUCTION_OVERRIDE,
+        Severity.HIGH,
         re.compile(
             r"\b(ignore|disregard|forget|override|bypass)\b[^.\n]{0,40}"
             r"\b(previous|prior|above|earlier|all|any|your)\b[^.\n]{0,20}"
@@ -55,7 +56,8 @@ PATTERNS: tuple[tuple[FindingKind, Severity, re.Pattern[str], str], ...] = (
         "attempts to discard the system prompt",
     ),
     (
-        FindingKind.ROLE_MARKER, Severity.HIGH,
+        FindingKind.ROLE_MARKER,
+        Severity.HIGH,
         re.compile(
             r"(^|\n)\s*(system|assistant|user)\s*:|"
             r"\[/?INST\]|<\|im_(start|end)\|>|<\|(system|assistant|user)\|>|"
@@ -65,7 +67,8 @@ PATTERNS: tuple[tuple[FindingKind, Severity, re.Pattern[str], str], ...] = (
         "forges a conversation turn boundary",
     ),
     (
-        FindingKind.DELIMITER_ESCAPE, Severity.HIGH,
+        FindingKind.DELIMITER_ESCAPE,
+        Severity.HIGH,
         re.compile(
             r"</?(untrusted|job_description|context|system|prompt)>",
             re.IGNORECASE,
@@ -73,7 +76,8 @@ PATTERNS: tuple[tuple[FindingKind, Severity, re.Pattern[str], str], ...] = (
         "tries to close the delimiter wrapping untrusted data",
     ),
     (
-        FindingKind.FABRICATION_DIRECTIVE, Severity.HIGH,
+        FindingKind.FABRICATION_DIRECTIVE,
+        Severity.HIGH,
         re.compile(
             r"\b(state|say|claim|write|assert|add|include|pretend|report)\b"
             r"[^.\n]{0,40}\bthat\b[^.\n]{0,60}"
@@ -84,16 +88,17 @@ PATTERNS: tuple[tuple[FindingKind, Severity, re.Pattern[str], str], ...] = (
         "instructs the model to assert something about the candidate",
     ),
     (
-        FindingKind.FABRICATION_DIRECTIVE, Severity.HIGH,
+        FindingKind.FABRICATION_DIRECTIVE,
+        Severity.HIGH,
         re.compile(
-            r"\b(rate|score|rank|grade)\b[^.\n]{0,30}"
-            r"\b(100|perfect|maximum|highest|top)\b",
+            r"\b(rate|score|rank|grade)\b[^.\n]{0,30}" r"\b(100|perfect|maximum|highest|top)\b",
             re.IGNORECASE,
         ),
         "instructs the model to manipulate the fit score",
     ),
     (
-        FindingKind.EXFILTRATION_ATTEMPT, Severity.HIGH,
+        FindingKind.EXFILTRATION_ATTEMPT,
+        Severity.HIGH,
         re.compile(
             r"\b(list|output|print|reveal|repeat|show|send|email|include)\b"
             r"[^.\n]{0,40}\b(your\s+)?(system\s+prompt|instructions|api[\s_-]?key|"
@@ -104,12 +109,14 @@ PATTERNS: tuple[tuple[FindingKind, Severity, re.Pattern[str], str], ...] = (
         "attempts to extract prompt contents or personal data",
     ),
     (
-        FindingKind.ENCODED_PAYLOAD, Severity.MEDIUM,
+        FindingKind.ENCODED_PAYLOAD,
+        Severity.MEDIUM,
         re.compile(r"(?:[A-Za-z0-9+/]{40,}={0,2})"),
         "long base64-like run that may hide an instruction",
     ),
     (
-        FindingKind.ENCODED_PAYLOAD, Severity.MEDIUM,
+        FindingKind.ENCODED_PAYLOAD,
+        Severity.MEDIUM,
         re.compile(r"(?:\\u[0-9a-fA-F]{4}){4,}"),
         "escaped-unicode run that may hide an instruction",
     ),
@@ -199,9 +206,7 @@ def strip_hidden_characters(text: str) -> tuple[str, int]:
     removed = 0
     out: list[str] = []
     for char in text:
-        if char in HIDDEN_CHARS or (
-            unicodedata.category(char) == "Cf" and char not in "\n\t"
-        ):
+        if char in HIDDEN_CHARS or (unicodedata.category(char) == "Cf" and char not in "\n\t"):
             removed += 1
             continue
         out.append(char)

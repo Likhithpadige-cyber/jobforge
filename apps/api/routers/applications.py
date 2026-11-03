@@ -250,9 +250,7 @@ async def download_packet(
     await _existing_application(session, application_id)
     artifact = await current_packet(session, application_id)
     if artifact is None:
-        raise NotFoundError(
-            "no handoff packet exists yet for this application"
-        )
+        raise NotFoundError("no handoff packet exists yet for this application")
     if artifact.content_type != PACKET_CONTENT_TYPE:
         raise ArtifactIntegrityError("packet artifact has an unsupported content type")
 

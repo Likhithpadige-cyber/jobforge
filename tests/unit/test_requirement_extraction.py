@@ -95,11 +95,9 @@ def test_kind_classification(line: str, expected: RequirementKind) -> None:
 
 
 def test_inline_cue_overrides_the_section() -> None:
-    """"Kubernetes a plus" inside Requirements is still preferred. Treating
+    """ "Kubernetes a plus" inside Requirements is still preferred. Treating
     it as required would manufacture a gap the posting never stated."""
-    result = extract_requirements(
-        "Requirements:\n- AWS experience\n- Kubernetes is a plus\n"
-    )
+    result = extract_requirements("Requirements:\n- AWS experience\n- Kubernetes is a plus\n")
     kubernetes = next(r for r in result.requirements if "Kubernetes" in r.text)
     assert kubernetes.necessity is Necessity.PREFERRED
 
@@ -168,10 +166,7 @@ def test_serialisable_for_the_evaluation_row() -> None:
 
 
 def test_deterministic() -> None:
-    runs = {
-        tuple(r.text for r in extract_requirements(STRUCTURED).requirements)
-        for _ in range(20)
-    }
+    runs = {tuple(r.text for r in extract_requirements(STRUCTURED).requirements) for _ in range(20)}
     assert len(runs) == 1
 
 
@@ -180,8 +175,7 @@ def test_no_llm_import() -> None:
     from pathlib import Path
 
     source = (
-        Path(__file__).resolve().parents[2]
-        / "packages/agents/resume_optimizer/requirements.py"
+        Path(__file__).resolve().parents[2] / "packages/agents/resume_optimizer/requirements.py"
     )
     imports: set[str] = set()
     for node in ast.walk(ast.parse(source.read_text())):

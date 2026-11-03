@@ -213,7 +213,5 @@ def load_revision(path: Path = REVISION_FIXTURE) -> dict[str, Any]:
     raw: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
     revision = raw["revision"]
     if not isinstance(revision, dict):
-        raise TypeError(
-            f"{path}: 'revision' must be a JSON object, got {type(revision).__name__}"
-        )
+        raise TypeError(f"{path}: 'revision' must be a JSON object, got {type(revision).__name__}")
     return revision

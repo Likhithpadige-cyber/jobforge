@@ -52,8 +52,13 @@ async def verified_fact(session, demo_profile, demo_experience, demo_user):  # t
             "'Managed AWS EC2, IAM and VPC infrastructure', '{}'::jsonb, "
             "'experiences', :sid, 'verified', :vb, :va, now(), now())"
         ),
-        {"id": fact_id, "pid": demo_profile, "sid": demo_experience,
-         "vb": demo_user, "va": utc_now()},
+        {
+            "id": fact_id,
+            "pid": demo_profile,
+            "sid": demo_experience,
+            "vb": demo_user,
+            "va": utc_now(),
+        },
     )
     await session.flush()
     return fact_id
@@ -63,8 +68,11 @@ async def _evaluate(session, profile_id, job_id, requirements):  # type: ignore[
     matrix = await build_match_matrix_for_profile(session, profile_id, requirements)
     breakdown = compute_score(matrix.to_requirement_matches())
     result = await persist_evaluation(
-        session, job_id=job_id, profile_version=1,
-        breakdown=breakdown, match_matrix=matrix.as_dict(),
+        session,
+        job_id=job_id,
+        profile_version=1,
+        breakdown=breakdown,
+        match_matrix=matrix.as_dict(),
     )
     return result, matrix
 
@@ -102,9 +110,7 @@ async def test_rationale_names_real_requirements_only(
 
 
 @pytest.mark.safety
-async def test_rationale_agrees_with_the_score(
-    session, demo_profile, normalized_job
-) -> None:
+async def test_rationale_agrees_with_the_score(session, demo_profile, normalized_job) -> None:
     """No verified facts at all: the prose must not claim coverage."""
     result, _ = await _evaluate(session, demo_profile, normalized_job, [req("AWS")])
     stored = (
@@ -123,7 +129,9 @@ async def test_explicit_rationale_is_respected(
     """Existing callers that supply their own text keep it."""
     matrix = await build_match_matrix_for_profile(session, demo_profile, [req("AWS")])
     result = await persist_evaluation(
-        session, job_id=normalized_job, profile_version=1,
+        session,
+        job_id=normalized_job,
+        profile_version=1,
         breakdown=compute_score(matrix.to_requirement_matches()),
         match_matrix=matrix.as_dict(),
         rationale="Supplied by the caller.",
@@ -147,14 +155,18 @@ async def test_rationale_is_reproducible_from_the_stored_row(
     result, _ = await _evaluate(session, demo_profile, normalized_job, [req("AWS")])
     row = (
         await session.execute(
-            text("SELECT rationale, match_matrix, score, recommendation, gaps "
-                 "FROM job_evaluations WHERE id = :id"),
+            text(
+                "SELECT rationale, match_matrix, score, recommendation, gaps "
+                "FROM job_evaluations WHERE id = :id"
+            ),
             {"id": result.evaluation_id},
         )
     ).one()
     rebuilt = build_rationale(
-        row.match_matrix, score=Decimal(str(row.score)),
-        recommendation=str(row.recommendation), gaps=list(row.gaps),
+        row.match_matrix,
+        score=Decimal(str(row.score)),
+        recommendation=str(row.recommendation),
+        gaps=list(row.gaps),
     )
     assert rebuilt.summary == row.rationale
 

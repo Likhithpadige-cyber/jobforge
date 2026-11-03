@@ -201,8 +201,7 @@ class TestStaticGuards:
                     ):
                         offenders.append(f"{relative}:{node.lineno}")
         assert not offenders, (
-            "use utc_now() from packages.shared.clock instead of "
-            f"datetime.now(...): {offenders}"
+            "use utc_now() from packages.shared.clock instead of " f"datetime.now(...): {offenders}"
         )
 
     def test_ruff_enforces_datetimez(self) -> None:

@@ -16,8 +16,16 @@ from packages.agents.resume_optimizer.rationale import (
 pytestmark = pytest.mark.unit
 
 
-def row(text: str, *, necessity="required", status="met", facts=("f1",),
-        assessable=True, years_required=None, years_evidenced=None):
+def row(
+    text: str,
+    *,
+    necessity="required",
+    status="met",
+    facts=("f1",),
+    assessable=True,
+    years_required=None,
+    years_evidenced=None,
+):
     return {
         "requirement_text": text,
         "necessity": necessity,
@@ -37,10 +45,7 @@ def matrix(*rows):
 # ------------------------------------------------------------- determinism
 def test_same_input_always_produces_the_same_text() -> None:
     data = matrix(row("AWS"), row("Kubernetes", status="not_met", facts=()))
-    texts = {
-        build_rationale(data, score=72, recommendation="moderate").summary
-        for _ in range(30)
-    }
+    texts = {build_rationale(data, score=72, recommendation="moderate").summary for _ in range(30)}
     assert len(texts) == 1
 
 
@@ -57,10 +62,7 @@ def test_no_llm_or_network_import() -> None:
     import ast
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "packages/agents/resume_optimizer/rationale.py"
-    )
+    source = Path(__file__).resolve().parents[2] / "packages/agents/resume_optimizer/rationale.py"
     imports: set[str] = set()
     for node in ast.walk(ast.parse(source.read_text())):
         if isinstance(node, ast.Import | ast.ImportFrom):
@@ -129,7 +131,7 @@ def test_unassessable_rows_are_declared_not_hidden() -> None:
 
 @pytest.mark.safety
 def test_unassessable_rows_are_not_listed_as_candidate_failings() -> None:
-    """"Could not be checked" is a limit of the matcher, not a gap in the
+    """ "Could not be checked" is a limit of the matcher, not a gap in the
     person. It must not be named alongside real unmet requirements."""
     data = matrix(row("Good attitude", status="not_met", facts=(), assessable=False))
     result = build_rationale(data, score=50, recommendation="weak")
@@ -138,19 +140,18 @@ def test_unassessable_rows_are_not_listed_as_candidate_failings() -> None:
 
 @pytest.mark.safety
 def test_years_shortfall_is_declared() -> None:
-    data = matrix(row("3+ years AWS", status="partially_met",
-                      years_required=3, years_evidenced=0.5))
+    data = matrix(
+        row("3+ years AWS", status="partially_met", years_required=3, years_evidenced=0.5)
+    )
     result = build_rationale(data, score=60, recommendation="moderate")
-    assert any("more years than your verified facts evidence" in c
-               for c in result.caveats)
+    assert any("more years than your verified facts evidence" in c for c in result.caveats)
 
 
 @pytest.mark.safety
 def test_no_supporting_facts_at_all_is_stated_plainly() -> None:
     data = matrix(row("AWS", status="not_met", facts=()))
     result = build_rationale(data, score=20, recommendation="no")
-    assert any("No verified fact supported any requirement" in c
-               for c in result.caveats)
+    assert any("No verified fact supported any requirement" in c for c in result.caveats)
 
 
 @pytest.mark.safety
@@ -185,38 +186,43 @@ def test_matrix_without_requirements_key() -> None:
 
 
 def test_malformed_rows_do_not_raise() -> None:
-    result = build_rationale({"requirements": [{}, {"status": "met"}]},
-                             score=50, recommendation="weak")
+    result = build_rationale(
+        {"requirements": [{}, {"status": "met"}]}, score=50, recommendation="weak"
+    )
     assert isinstance(result.summary, str)
 
 
 def test_counts_are_internally_consistent() -> None:
-    data = matrix(row("AWS"), row("Linux", status="partially_met"),
-                  row("K8s", status="not_met", facts=()),
-                  row("Terraform", necessity="preferred"))
+    data = matrix(
+        row("AWS"),
+        row("Linux", status="partially_met"),
+        row("K8s", status="not_met", facts=()),
+        row("Terraform", necessity="preferred"),
+    )
     counts = build_rationale(data, score=70, recommendation="moderate").counts
     assert counts["required"] == 3
     assert counts["preferred"] == 1
-    assert counts["required_met"] + counts["required_partial"] \
-        + counts["required_unmet"] == counts["required"]
+    assert (
+        counts["required_met"] + counts["required_partial"] + counts["required_unmet"]
+        == counts["required"]
+    )
 
 
 def test_extra_gaps_from_a3_are_named_verbatim() -> None:
-    result = build_rationale(matrix(row("AWS")), score=70,
-                             recommendation="moderate", gaps=["Security clearance"])
+    result = build_rationale(
+        matrix(row("AWS")), score=70, recommendation="moderate", gaps=["Security clearance"]
+    )
     assert any("Security clearance" in g for g in result.gaps)
 
 
 def test_a3_gaps_already_in_the_matrix_are_not_repeated() -> None:
     data = matrix(row("Kubernetes", status="not_met", facts=()))
-    result = build_rationale(data, score=40, recommendation="weak",
-                             gaps=["Kubernetes"])
+    result = build_rationale(data, score=40, recommendation="weak", gaps=["Kubernetes"])
     assert sum("Kubernetes" in g for g in result.gaps) == 1
 
 
 def test_as_dict_is_serialisable_and_labelled_deterministic() -> None:
-    data = build_rationale(matrix(row("AWS")), score=87,
-                           recommendation="strong").as_dict()
+    data = build_rationale(matrix(row("AWS")), score=87, recommendation="strong").as_dict()
     assert data["method"] == "deterministic"
     assert set(data) >= {"headline", "strengths", "gaps", "caveats", "counts", "summary"}
 
@@ -231,8 +237,10 @@ def test_rationale_from_breakdown_uses_the_score_object() -> None:
 
     breakdown = compute_score([RequirementMatch("AWS", True, MatchStatus.MET, ["f1"])])
     result = rationale_from_breakdown(matrix(row("AWS")), breakdown)
-    assert str(breakdown.score.quantize(Decimal("1"))) in result.headline \
+    assert (
+        str(breakdown.score.quantize(Decimal("1"))) in result.headline
         or f"{breakdown.score:g}" in result.headline
+    )
 
 
 def test_rationale_text_returns_the_string_a5_stores() -> None:

@@ -47,21 +47,117 @@ if TYPE_CHECKING:
 #: "3+ years of hands-on AWS experience" reduces to the term that matters.
 STOPWORDS: frozenset[str] = frozenset(
     {
-        "a", "an", "and", "or", "the", "of", "in", "on", "at", "to", "for",
-        "with", "within", "using", "use", "used", "strong", "solid", "good",
-        "excellent", "deep", "proven", "demonstrated", "hands", "hands-on",
-        "experience", "experienced", "background", "knowledge", "understanding",
-        "familiarity", "familiar", "working", "work", "ability", "able",
-        "skills", "skill", "years", "year", "yrs", "yr", "plus", "minimum",
-        "least", "must", "have", "has", "is", "are", "be", "you", "your", "we",
-        "our", "including", "include", "such", "as", "etc", "e", "g", "ie",
-        "preferred", "required", "nice", "bonus", "desirable", "ideally",
-        "equivalent", "related", "similar", "environment", "environments",
-        "practices", "practice", "level", "senior", "junior", "mid", "team",
-        "teams", "across", "large", "scale", "modern", "complex", "real",
-        "world", "based", "driven", "focused", "strongly", "highly", "very",
-        "will", "can", "should", "would", "this", "that", "these", "those",
-        "it", "its", "from", "by", "into", "over", "under", "about",
+        "a",
+        "an",
+        "and",
+        "or",
+        "the",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "with",
+        "within",
+        "using",
+        "use",
+        "used",
+        "strong",
+        "solid",
+        "good",
+        "excellent",
+        "deep",
+        "proven",
+        "demonstrated",
+        "hands",
+        "hands-on",
+        "experience",
+        "experienced",
+        "background",
+        "knowledge",
+        "understanding",
+        "familiarity",
+        "familiar",
+        "working",
+        "work",
+        "ability",
+        "able",
+        "skills",
+        "skill",
+        "years",
+        "year",
+        "yrs",
+        "yr",
+        "plus",
+        "minimum",
+        "least",
+        "must",
+        "have",
+        "has",
+        "is",
+        "are",
+        "be",
+        "you",
+        "your",
+        "we",
+        "our",
+        "including",
+        "include",
+        "such",
+        "as",
+        "etc",
+        "e",
+        "g",
+        "ie",
+        "preferred",
+        "required",
+        "nice",
+        "bonus",
+        "desirable",
+        "ideally",
+        "equivalent",
+        "related",
+        "similar",
+        "environment",
+        "environments",
+        "practices",
+        "practice",
+        "level",
+        "senior",
+        "junior",
+        "mid",
+        "team",
+        "teams",
+        "across",
+        "large",
+        "scale",
+        "modern",
+        "complex",
+        "real",
+        "world",
+        "based",
+        "driven",
+        "focused",
+        "strongly",
+        "highly",
+        "very",
+        "will",
+        "can",
+        "should",
+        "would",
+        "this",
+        "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "from",
+        "by",
+        "into",
+        "over",
+        "under",
+        "about",
     }
 )
 
@@ -73,8 +169,13 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "azure": ("microsoft azure",),
     "kubernetes": ("k8s",),
     "terraform": ("hashicorp terraform",),
-    "ci/cd": ("cicd", "ci cd", "continuous integration", "continuous delivery",
-              "continuous deployment"),
+    "ci/cd": (
+        "cicd",
+        "ci cd",
+        "continuous integration",
+        "continuous delivery",
+        "continuous deployment",
+    ),
     "iac": ("infrastructure as code",),
     "postgresql": ("postgres",),
     "javascript": ("js",),
@@ -110,9 +211,7 @@ PHRASES: tuple[str, ...] = tuple(
 
 #: Reverse index: every alias form -> its canonical term.
 _ALIAS_TO_CANONICAL: dict[str, str] = {
-    alias: canonical
-    for canonical, aliases in ALIASES.items()
-    for alias in (canonical, *aliases)
+    alias: canonical for canonical, aliases in ALIASES.items() for alias in (canonical, *aliases)
 }
 
 MIN_TERM_LENGTH = 2
@@ -125,9 +224,7 @@ def normalise(text: str) -> str:
     `+`, `#`, `/` and `.` survive so that c++, c#, ci/cd and .net stay intact.
     """
     folded = "".join(
-        ch
-        for ch in unicodedata.normalize("NFKD", text)
-        if not unicodedata.combining(ch)
+        ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch)
     ).lower()
     cleaned = re.sub(r"[^a-z0-9+#/.\s-]", " ", folded)
     return re.sub(r"\s+", " ", cleaned).strip()
@@ -233,10 +330,7 @@ def fact_views(facts: list[Any]) -> list[FactView]:
     does not re-check, because silently dropping rows would hide a caller's
     mistake rather than surface it.
     """
-    return [
-        FactView(id=f.id, text=f.text, structured=dict(f.structured or {}))
-        for f in facts
-    ]
+    return [FactView(id=f.id, text=f.text, structured=dict(f.structured or {})) for f in facts]
 
 
 # ------------------------------------------------------------------ result
@@ -392,9 +486,7 @@ def map_requirement(
     if supporting:
         durations = [
             value
-            for value in (
-                supporting[fact_id].years_of_evidence(today) for fact_id in fact_ids
-            )
+            for value in (supporting[fact_id].years_of_evidence(today) for fact_id in fact_ids)
             if value is not None
         ]
         years_evidenced = max(durations) if durations else None
@@ -445,9 +537,7 @@ def build_match_matrix(
     An empty requirement list yields an empty matrix. An empty fact list
     yields a matrix of honest NOT_MET rows rather than nothing.
     """
-    return MatchMatrix(
-        rows=[map_requirement(req, facts, today) for req in requirements]
-    )
+    return MatchMatrix(rows=[map_requirement(req, facts, today) for req in requirements])
 
 
 # ------------------------------------------------------ database adapter

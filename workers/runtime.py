@@ -58,8 +58,15 @@ from packages.shared.logging import configure_logging, get_logger
 log = get_logger(__name__)
 
 WorkerKind = Literal[
-    "relay", "monitor", "scheduler", "optimizer", "first-draft", "render", "application",
-    "cover-letter", "submission",
+    "relay",
+    "monitor",
+    "scheduler",
+    "optimizer",
+    "first-draft",
+    "render",
+    "application",
+    "cover-letter",
+    "submission",
 ]
 
 
@@ -88,16 +95,25 @@ def build_artifact_store(settings: Settings) -> ArtifactStore:
 
 async def verify_role(engine: AsyncEngine, expected: str) -> None:
     async with engine.connect() as conn:
-        row = (await conn.execute(text(
-            "SELECT current_user, rolsuper, rolcreaterole, rolbypassrls "
-            "FROM pg_roles WHERE rolname = current_user"
-        ))).one()
+        row = (
+            await conn.execute(
+                text(
+                    "SELECT current_user, rolsuper, rolcreaterole, rolbypassrls "
+                    "FROM pg_roles WHERE rolname = current_user"
+                )
+            )
+        ).one()
         if row[0] != expected or any(row[1:]):
             raise RuntimeError(f"Worker requires the unprivileged {expected} role")
 
 
-async def serve(step: Callable[[], Awaitable[object]], stop: asyncio.Event,
-                *, interval: float = 0.25, shutdown_timeout: float = 30) -> None:
+async def serve(
+    step: Callable[[], Awaitable[object]],
+    stop: asyncio.Event,
+    *,
+    interval: float = 0.25,
+    shutdown_timeout: float = 30,
+) -> None:
     """Stop intake on a signal, drain briefly, then cancel (rolling back work)."""
     while not stop.is_set():
         running = asyncio.ensure_future(step())
@@ -137,8 +153,11 @@ async def run(
     if not dsn:
         raise RuntimeError("WORKER_DATABASE_URL is required; no owner-DSN fallback")
     engine = create_async_engine(dsn, pool_pre_ping=True, pool_size=2, max_overflow=0)
-    redis = Redis.from_url(str(settings.redis_url), decode_responses=True,
-                           socket_timeout=settings.redis_socket_timeout_seconds)
+    redis = Redis.from_url(
+        str(settings.redis_url),
+        decode_responses=True,
+        socket_timeout=settings.redis_socket_timeout_seconds,
+    )
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -147,18 +166,28 @@ async def run(
         await verify_role(
             engine,
             "app_agent"
-            if kind in {"relay", "optimizer", "first-draft", "render", "application",
-                        "cover-letter", "submission"}
+            if kind
+            in {
+                "relay",
+                "optimizer",
+                "first-draft",
+                "render",
+                "application",
+                "cover-letter",
+                "submission",
+            }
             else "app_monitor",
         )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         if kind == "relay":
             await serve(OutboxRelay(sessions, redis).step, stop)
         elif kind == "scheduler":
+
             async def schedule() -> None:
                 async with sessions.begin() as session:
                     await schedule_snapshot(session)
                     await schedule_due_retries(session)
+
             await serve(schedule, stop, interval=30)
         else:
             if kind == "first-draft":
@@ -166,22 +195,32 @@ async def run(
                 audit_engine = await init_audit_engine(
                     settings.model_copy(update={"database_url": dsn})
                 )
-                await verify_role(audit_engine, "app_audit" if settings.audit_database_url
-                                  else "app_agent")
+                await verify_role(
+                    audit_engine, "app_audit" if settings.audit_database_url else "app_agent"
+                )
                 prices = None
-                if (settings.llm_tailoring_input_price_per_million is not None
-                        and settings.llm_tailoring_output_price_per_million is not None):
-                    prices = Prices(model=settings.llm_model_tailoring,
-                                    input_per_million=settings.llm_tailoring_input_price_per_million,
-                                    output_per_million=settings.llm_tailoring_output_price_per_million)
+                if (
+                    settings.llm_tailoring_input_price_per_million is not None
+                    and settings.llm_tailoring_output_price_per_million is not None
+                ):
+                    prices = Prices(
+                        model=settings.llm_model_tailoring,
+                        input_per_million=settings.llm_tailoring_input_price_per_million,
+                        output_per_million=settings.llm_tailoring_output_price_per_million,
+                    )
 
                 async def first_draft(db: AsyncSession, event: Event) -> str:
                     client = FirstDraftClient(settings, prices=prices)
                     return await generate_first_draft(db, event, client)
 
-                runtime = DeliveryRuntime(sessions, "cg.first-draft", {
-                    "resume.first_draft.requested": first_draft,
-                }, retry=RetryPolicy(delays=()))
+                runtime = DeliveryRuntime(
+                    sessions,
+                    "cg.first-draft",
+                    {
+                        "resume.first_draft.requested": first_draft,
+                    },
+                    retry=RetryPolicy(delays=()),
+                )
             elif kind == "render":
                 # M8. Deterministic and offline: no model, no provider budget,
                 # no network beyond the object store. The renderers are the
@@ -230,9 +269,7 @@ async def run(
                 readiness_store = build_artifact_store(settings)
 
                 async def on_approval_granted(db: AsyncSession, event: Event) -> str:
-                    return await check_readiness_on_approval(
-                        db, event, store=readiness_store
-                    )
+                    return await check_readiness_on_approval(db, event, store=readiness_store)
 
                 # M10 Phase 2 stabilization (part C). The deterministic retry
                 # path for the packet race: resume.render.requested fires the
@@ -243,9 +280,7 @@ async def run(
                 # table), and almost every delivery is a cheap no-op - see
                 # retry_packet_generation's own docstring.
                 async def on_resume_rendered(db: AsyncSession, event: Event) -> str:
-                    return await retry_packet_generation(
-                        db, event, store=readiness_store
-                    )
+                    return await retry_packet_generation(db, event, store=readiness_store)
 
                 runtime = DeliveryRuntime(
                     sessions,
@@ -265,14 +300,19 @@ async def run(
                 audit_engine = await init_audit_engine(
                     settings.model_copy(update={"database_url": dsn})
                 )
-                await verify_role(audit_engine, "app_audit" if settings.audit_database_url
-                                  else "app_agent")
+                await verify_role(
+                    audit_engine, "app_audit" if settings.audit_database_url else "app_agent"
+                )
                 prices = None
-                if (settings.llm_tailoring_input_price_per_million is not None
-                        and settings.llm_tailoring_output_price_per_million is not None):
-                    prices = Prices(model=settings.llm_model_tailoring,
-                                    input_per_million=settings.llm_tailoring_input_price_per_million,
-                                    output_per_million=settings.llm_tailoring_output_price_per_million)
+                if (
+                    settings.llm_tailoring_input_price_per_million is not None
+                    and settings.llm_tailoring_output_price_per_million is not None
+                ):
+                    prices = Prices(
+                        model=settings.llm_model_tailoring,
+                        input_per_million=settings.llm_tailoring_input_price_per_million,
+                        output_per_million=settings.llm_tailoring_output_price_per_million,
+                    )
 
                 async def draft(db: AsyncSession, event: Event) -> str:
                     client = CoverLetterClient(settings, prices=prices)
@@ -288,9 +328,14 @@ async def run(
                     )
                     return f"{cover_letter.verification_status}:{cover_letter.id}"
 
-                runtime = DeliveryRuntime(sessions, "cg.cover-letter", {
-                    "cover_letter.generation.requested": draft,
-                }, retry=RetryPolicy(delays=()))
+                runtime = DeliveryRuntime(
+                    sessions,
+                    "cg.cover-letter",
+                    {
+                        "cover_letter.generation.requested": draft,
+                    },
+                    retry=RetryPolicy(delays=()),
+                )
             elif kind == "submission":
                 # M11: email submission execution and durable retry recovery.
                 # Runs on cg.submission, consuming submission.requested and
@@ -322,9 +367,7 @@ async def run(
                     UUID(selected) if selected else None,
                     Thresholds.from_settings(settings),
                 )
-                runtime = DeliveryRuntime(
-                    sessions, "cg.optimizer", {"job.normalized": handler}
-                )
+                runtime = DeliveryRuntime(sessions, "cg.optimizer", {"job.normalized": handler})
             else:
                 runtime = DeliveryRuntime(
                     sessions,

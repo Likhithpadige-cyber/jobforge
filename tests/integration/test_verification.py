@@ -32,9 +32,7 @@ pytestmark = pytest.mark.integration
 
 
 async def _run_b1_and_b3(session, demo_profile, demo_job, facts, tmp_path, client):
-    context = await load_tailoring_context(
-        session, profile_id=demo_profile, job_id=demo_job
-    )
+    context = await load_tailoring_context(session, profile_id=demo_profile, job_id=demo_job)
     b1_request, _ = prepare_b1_request(context, client.model)
     b1_body = {
         "selections": [
@@ -79,18 +77,14 @@ async def _run_b1_and_b3(session, demo_profile, demo_job, facts, tmp_path, clien
         stop_reason="tool_use",
     )
     (tmp_path / f"{b3_request.digest}.json").write_text(b3_response.model_dump_json())
-    result = await draft_summary(
-        session, context=context, selection=selection, client=client
-    )
+    result = await draft_summary(session, context=context, selection=selection, client=client)
     return context, result
 
 
 async def test_b3_to_b5_boundary(session, demo_profile, demo_job, inputs, tmp_path):
     _base, _evaluation, facts = inputs
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
-    context, result = await _run_b1_and_b3(
-        session, demo_profile, demo_job, facts, tmp_path, client
-    )
+    context, result = await _run_b1_and_b3(session, demo_profile, demo_job, facts, tmp_path, client)
 
     resume_count = (await session.execute(select(Resume.id))).all()
     claim_count = (await session.execute(select(ResumeClaim.id))).all()
@@ -132,9 +126,7 @@ async def test_b3_to_b5_boundary(session, demo_profile, demo_job, inputs, tmp_pa
         )
     ).scalar_one()
     step = (
-        await session.execute(
-            select(AgentRunStep).where(AgentRunStep.run_id == b5_run.id)
-        )
+        await session.execute(select(AgentRunStep).where(AgentRunStep.run_id == b5_run.id))
     ).scalar_one()
     assert step.step_name == "B5" and b5_run.status == "succeeded"
 
@@ -144,9 +136,7 @@ async def test_b5_negative_verdict_emits_guardrail_event(
 ):
     _base, _evaluation, facts = inputs
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
-    context, result = await _run_b1_and_b3(
-        session, demo_profile, demo_job, facts, tmp_path, client
-    )
+    context, result = await _run_b1_and_b3(session, demo_profile, demo_job, facts, tmp_path, client)
 
     sentence = result.sentences[0]
     cited = [f for f in context.facts if str(f.id) in sentence.fact_ids]

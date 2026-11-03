@@ -28,13 +28,22 @@ AggregateType = Literal["job", "application", "resume", "approval", "submission"
 KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
     {
         # jobs
-        "job.discovered", "job.normalized", "job.duplicate_detected",
-        "job.evaluation.requested", "job.evaluated", "job.shortlisted",
-        "job.discarded", "job.expired",
+        "job.discovered",
+        "job.normalized",
+        "job.duplicate_detected",
+        "job.evaluation.requested",
+        "job.evaluated",
+        "job.shortlisted",
+        "job.discarded",
+        "job.expired",
         # resumes
-        "resume.master.imported", "resume.first_draft.requested",
-        "resume.generation.requested", "resume.generated",
-        "resume.verification.failed", "resume.render.requested", "resume.rendered",
+        "resume.master.imported",
+        "resume.first_draft.requested",
+        "resume.generation.requested",
+        "resume.generated",
+        "resume.verification.failed",
+        "resume.render.requested",
+        "resume.rendered",
         # M10 Phase 1. The request/result pair for cover-letter (re)generation,
         # matching the resume.render.requested/application.questions.requested
         # shape: an owner-review-triggered request event with its own
@@ -53,21 +62,37 @@ KNOWN_EVENT_TYPES: frozenset[str] = frozenset(
         # built for those two pipelines applies here unchanged.
         "application.questions.requested",
         "application.questions.extracted",
-        "application.answers.drafted", "application.ready",
-        "application.status.changed", "application.outcome.updated",
+        "application.answers.drafted",
+        "application.ready",
+        "application.status.changed",
+        "application.outcome.updated",
         "application.abandoned",
         # approvals
-        "approval.requested", "approval.granted", "approval.rejected",
-        "approval.changes_requested", "approval.superseded",
+        "approval.requested",
+        "approval.granted",
+        "approval.rejected",
+        "approval.changes_requested",
+        "approval.superseded",
         # submissions
-        "submission.requested", "submission.retry_requested", "submission.started",
-        "submission.succeeded", "submission.failed", "submission.handoff.required",
+        "submission.requested",
+        "submission.retry_requested",
+        "submission.started",
+        "submission.succeeded",
+        "submission.failed",
+        "submission.handoff.required",
         # system
-        "agent.run.started", "agent.run.finished", "agent.run.failed",
+        "agent.run.started",
+        "agent.run.finished",
+        "agent.run.failed",
         "worker.delivery.started",
-        "guardrail.violation.detected", "policy.blocked", "quota.exhausted",
-        "metrics.snapshot.created", "alert.raised", "alert.resolved",
-        "notification.dispatched", "schedule.tick",
+        "guardrail.violation.detected",
+        "policy.blocked",
+        "quota.exhausted",
+        "metrics.snapshot.created",
+        "alert.raised",
+        "alert.resolved",
+        "notification.dispatched",
+        "schedule.tick",
         # Inference evidence failures; no stage lifecycle events.
         "inference.audit.start_failed",
         "inference.audit.evidence_not_recorded",
@@ -98,8 +123,14 @@ SUPPORTED_EVENT_VERSIONS: dict[str, frozenset[int]] = {
 #: Events a human alone may produce (EVENTS.md §3.4). An agent emitting one of
 #: these would mean an approval had been forged.
 HUMAN_ONLY_EVENT_TYPES: frozenset[str] = frozenset(
-    {"approval.granted", "approval.rejected", "approval.changes_requested",
-     "resume.master.imported", "resume.first_draft.requested", "submission.requested"}
+    {
+        "approval.granted",
+        "approval.rejected",
+        "approval.changes_requested",
+        "resume.master.imported",
+        "resume.first_draft.requested",
+        "submission.requested",
+    }
 )
 
 
@@ -135,8 +166,7 @@ class EventEnvelope:
             )
         if self.type in HUMAN_ONLY_EVENT_TYPES and self.actor_type != "human":
             raise ForbiddenActorError(
-                f"{self.type!r} may only be emitted by a human actor, "
-                f"not {self.actor_type!r}"
+                f"{self.type!r} may only be emitted by a human actor, " f"not {self.actor_type!r}"
             )
 
     def as_row(self) -> dict[str, Any]:

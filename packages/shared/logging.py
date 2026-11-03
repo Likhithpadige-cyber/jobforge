@@ -82,9 +82,7 @@ def _scrub_value(value: Any) -> Any:
     return value
 
 
-def redact_processor(
-    _logger: Any, _name: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+def redact_processor(_logger: Any, _name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
     """structlog processor: drop or scrub sensitive fields."""
     result: dict[str, Any] = {}
     for key, value in event_dict.items():

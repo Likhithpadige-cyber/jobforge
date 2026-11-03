@@ -50,6 +50,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.safety]
 # Authoritative destination email validation
 # ---------------------------------------------------------------------------
 
+
 def test_extract_and_validate_authoritative_email_from_mailto_job_url() -> None:
     job = MagicMock(spec=Job)
     job.id = uuid7()
@@ -108,6 +109,7 @@ def test_extract_and_validate_authoritative_email_rejects_empty_url() -> None:
 # ---------------------------------------------------------------------------
 # Preconditions
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_preconditions_rejects_non_ready_status() -> None:
@@ -443,6 +445,7 @@ async def test_preconditions_rejects_mailto_domain_mismatch() -> None:
 # request_submission
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_request_submission_not_found() -> None:
     session = AsyncMock()
@@ -491,9 +494,7 @@ async def test_request_submission_transitions_and_emits() -> None:
             new=AsyncMock(),
         ) as mock_emit,
     ):
-        result = await request_submission(
-            session, app.id, Settings(), actor=user
-        )
+        result = await request_submission(session, app.id, Settings(), actor=user)
         assert result is mock_sub
         # Proves API does not set started_at
         assert mock_sub.started_at is None
@@ -512,6 +513,7 @@ async def test_request_submission_transitions_and_emits() -> None:
 # ---------------------------------------------------------------------------
 # execute_submission_attempt
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_execute_attempt_dead_when_app_missing(tmp_path) -> None:

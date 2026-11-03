@@ -116,7 +116,8 @@ class FakeEmailTransport:
     ) -> None:
         self._responses: list[EmailSendResult] = list(responses or ())
         self._default = default_result or EmailSendResult(
-            status=EmailSendStatus.SENT, message_id="fake-message-id@jobforge.invalid",
+            status=EmailSendStatus.SENT,
+            message_id="fake-message-id@jobforge.invalid",
         )
         self.sent: list[OutboundEmail] = []
 
@@ -162,8 +163,11 @@ class SMTPEmailTransport:
             )
         try:
             await aiosmtplib.send(
-                mime, hostname=self._host, port=self._port,
-                username=self._username, password=self._password,
+                mime,
+                hostname=self._host,
+                port=self._port,
+                username=self._username,
+                password=self._password,
             )
         except smtp_errors.SMTPAuthenticationError as exc:
             return EmailSendResult(
@@ -177,13 +181,10 @@ class SMTPEmailTransport:
                 EmailSendStatus.AMBIGUOUS, message_id=message_id, detail=str(exc)
             )
         except smtp_errors.SMTPRecipientsRefused as exc:
-            return EmailSendResult(
-                EmailSendStatus.REJECTED, message_id=message_id, detail=str(exc)
-            )
+            return EmailSendResult(EmailSendStatus.REJECTED, message_id=message_id, detail=str(exc))
         except smtp_errors.SMTPResponseException as exc:
             status = (
-                EmailSendStatus.REJECTED if exc.code >= 500
-                else EmailSendStatus.TRANSIENT_FAILURE
+                EmailSendStatus.REJECTED if exc.code >= 500 else EmailSendStatus.TRANSIENT_FAILURE
             )
             return EmailSendResult(
                 status, message_id=message_id, smtp_code=exc.code, detail=str(exc)

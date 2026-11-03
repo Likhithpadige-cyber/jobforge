@@ -46,20 +46,12 @@ inputs = test_tailoring_context.inputs
 pytestmark = pytest.mark.integration
 
 
-async def _generate(
-    session, demo_profile, demo_job, application_id, facts, *, fail=False
-):
+async def _generate(session, demo_profile, demo_job, application_id, facts, *, fail=False):
     """Run B6 once for this application and return its result."""
-    context = await load_tailoring_context(
-        session, profile_id=demo_profile, job_id=demo_job
-    )
+    context = await load_tailoring_context(session, profile_id=demo_profile, job_id=demo_job)
     fact_id = str(facts[0].id)
     selection = SelectionResult(
-        selections=(
-            Selection(
-                fact_id=fact_id, section="experience", order=1, emphasis="normal"
-            ),
-        ),
+        selections=(Selection(fact_id=fact_id, section="experience", order=1, emphasis="normal"),),
         evaluation_gaps=(),
         material_gaps=(),
         requires_human_review=False,
@@ -73,9 +65,7 @@ async def _generate(
         ),
     )
     sentences = (
-        SummarySentence(
-            text="Cloud engineer with verified AWS depth.", fact_ids=[fact_id]
-        ),
+        SummarySentence(text="Cloud engineer with verified AWS depth.", fact_ids=[fact_id]),
         SummarySentence(text="Focused on infrastructure delivery.", fact_ids=[fact_id]),
     )
     refs = bullet_refs(bullets, selection) + sentence_refs(sentences)
@@ -88,17 +78,13 @@ async def _generate(
         verified.append(
             bind(
                 ref,
-                VerificationResult(
-                    verdict=verdict, explanation=reason, prompt_version="b5"
-                ),
+                VerificationResult(verdict=verdict, explanation=reason, prompt_version="b5"),
                 [by_id[fid] for fid in ref.fact_ids],
             )
         )
 
     application = (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
     if application.status is not ApplicationStatus.RESUME_GENERATING:
         await transition_application(
@@ -125,9 +111,7 @@ async def _generate(
 async def _reset(session, application_id):
     """Test-only: put the application back for a second generation attempt."""
     application = (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
     application.status = ApplicationStatus.RESUME_GENERATING
     await session.flush()
@@ -138,9 +122,7 @@ async def _row_counts(session):
         (await session.execute(select(func.count(Resume.id)))).scalar_one(),
         (await session.execute(select(func.count(ResumeClaim.id)))).scalar_one(),
         (await session.execute(select(func.count(Event.id)))).scalar_one(),
-        (
-            await session.execute(select(func.count(ApplicationStatusHistory.id)))
-        ).scalar_one(),
+        (await session.execute(select(func.count(ApplicationStatusHistory.id)))).scalar_one(),
     )
 
 
@@ -179,17 +161,13 @@ async def test_failed_resume_is_returned_not_hidden(
     assert read.application_status is ApplicationStatus.VERIFICATION_FAILED
     # The text that failed is present, not stripped.
     assert any(c.verdict is ClaimVerdict.UNSUPPORTED for c in read.claims)
-    assert any(
-        c.claim_text == "Delivered AWS infrastructure work." for c in read.claims
-    )
+    assert any(c.claim_text == "Delivered AWS infrastructure work." for c in read.claims)
 
 
 # --- read model -------------------------------------------------------------
 
 
-async def test_claims_map_correctly(
-    session, demo_profile, demo_job, demo_application, inputs
-):
+async def test_claims_map_correctly(session, demo_profile, demo_job, demo_application, inputs):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     await _generate(session, demo_profile, demo_job, app_id, facts)
@@ -208,9 +186,7 @@ async def test_claims_map_correctly(
 
 
 @pytest.mark.parametrize("fail", [False, True])
-async def test_counts_are_correct(
-    session, demo_profile, demo_job, demo_application, inputs, fail
-):
+async def test_counts_are_correct(session, demo_profile, demo_job, demo_application, inputs, fail):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     await _generate(session, demo_profile, demo_job, app_id, facts, fail=fail)
@@ -258,9 +234,7 @@ async def test_get_resume_by_id_matches_latest(
 # --- leakage ----------------------------------------------------------------
 
 
-async def test_no_jd_or_profile_leakage(
-    session, demo_profile, demo_job, demo_application, inputs
-):
+async def test_no_jd_or_profile_leakage(session, demo_profile, demo_job, demo_application, inputs):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     await _generate(session, demo_profile, demo_job, app_id, facts)
@@ -393,9 +367,7 @@ def test_query_validation_metadata_is_preserved() -> None:
         offset_adapter.validate_python(-1)
 
 
-async def test_list_applications_uses_its_default_limit(
-    session, demo_application
-) -> None:
+async def test_list_applications_uses_its_default_limit(session, demo_application) -> None:
     """The regression itself: omitting `limit` must reach the database."""
     result = await list_applications(session)
     assert isinstance(result, list)
@@ -405,9 +377,7 @@ async def test_list_applications_uses_its_default_limit(
 # --- read-only --------------------------------------------------------------
 
 
-async def test_reads_mutate_nothing(
-    session, demo_profile, demo_job, demo_application, inputs
-):
+async def test_reads_mutate_nothing(session, demo_profile, demo_job, demo_application, inputs):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     result = await _generate(session, demo_profile, demo_job, app_id, facts)

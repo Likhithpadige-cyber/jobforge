@@ -75,21 +75,31 @@ async def committed_job(engine):  # type: ignore[no-untyped-def]
     suffix = uuid4().hex[:10]
     async with maker() as setup:
         await setup.execute(
-            text("INSERT INTO sources (id, name, slug, domain, created_at, updated_at) "
-                 "VALUES (:id, 'Claim Test', :slug, 'example.invalid', now(), now())"),
+            text(
+                "INSERT INTO sources (id, name, slug, domain, created_at, updated_at) "
+                "VALUES (:id, 'Claim Test', :slug, 'example.invalid', now(), now())"
+            ),
             {"id": source_id, "slug": f"claim-{suffix}"},
         )
         await setup.execute(
-            text("INSERT INTO companies (id, name, normalized_name, created_at, updated_at) "
-                 "VALUES (:id, 'Example Cloud Corp', :norm, now(), now())"),
+            text(
+                "INSERT INTO companies (id, name, normalized_name, created_at, updated_at) "
+                "VALUES (:id, 'Example Cloud Corp', :norm, now(), now())"
+            ),
             {"id": company_id, "norm": f"claim-co-{suffix}"},
         )
         await setup.execute(
-            text("INSERT INTO jobs (id, source_id, company_id, url, title, status, "
-                 "created_at, updated_at) VALUES (:id, :src, :co, :url, "
-                 "'Cloud Engineer', 'normalized', now(), now())"),
-            {"id": job_id, "src": source_id, "co": company_id,
-             "url": f"https://example.invalid/j/{suffix}"},
+            text(
+                "INSERT INTO jobs (id, source_id, company_id, url, title, status, "
+                "created_at, updated_at) VALUES (:id, :src, :co, :url, "
+                "'Cloud Engineer', 'normalized', now(), now())"
+            ),
+            {
+                "id": job_id,
+                "src": source_id,
+                "co": company_id,
+                "url": f"https://example.invalid/j/{suffix}",
+            },
         )
         await setup.commit()
 
@@ -139,14 +149,20 @@ async def test_sequential_redelivery_is_a_no_op(session, demo_job) -> None:
     await session.flush()
     event_id = uuid7()
     kwargs = {
-        "job_id": demo_job, "profile_version": 1,
-        "breakdown": breakdown_for(80), "match_matrix": MATRIX,
+        "job_id": demo_job,
+        "profile_version": 1,
+        "breakdown": breakdown_for(80),
+        "match_matrix": MATRIX,
     }
     first = await persist_evaluation_once(
-        session, triggering_event_id=event_id, **kwargs  # type: ignore[arg-type]
+        session,
+        triggering_event_id=event_id,
+        **kwargs,  # type: ignore[arg-type]
     )
     second = await persist_evaluation_once(
-        session, triggering_event_id=event_id, **kwargs  # type: ignore[arg-type]
+        session,
+        triggering_event_id=event_id,
+        **kwargs,  # type: ignore[arg-type]
     )
     assert first is not None and second is None
 
@@ -158,8 +174,9 @@ async def test_sequential_redelivery_is_a_no_op(session, demo_job) -> None:
     ).scalar_one()
     evaluated_events = (
         await session.execute(
-            text("SELECT count(*) FROM events WHERE aggregate_id = :id "
-                 "AND type = 'job.evaluated'"),
+            text(
+                "SELECT count(*) FROM events WHERE aggregate_id = :id " "AND type = 'job.evaluated'"
+            ),
             {"id": demo_job},
         )
     ).scalar_one()
@@ -174,8 +191,12 @@ async def test_claim_records_the_outcome(session, demo_job) -> None:
     await session.flush()
     event_id = uuid7()
     await persist_evaluation_once(
-        session, triggering_event_id=event_id, job_id=demo_job, profile_version=1,
-        breakdown=breakdown_for(80), match_matrix=MATRIX,
+        session,
+        triggering_event_id=event_id,
+        job_id=demo_job,
+        profile_version=1,
+        breakdown=breakdown_for(80),
+        match_matrix=MATRIX,
     )
     result = (
         await session.execute(
@@ -218,8 +239,12 @@ async def test_evaluation_failure_rolls_back_claim_and_work(engine, committed_jo
         await attempt.flush()
         with pytest.raises(IllegalTransitionError):
             await persist_evaluation_once(
-                attempt, triggering_event_id=event_id, job_id=committed_job,
-                profile_version=1, breakdown=breakdown_for(80), match_matrix=MATRIX,
+                attempt,
+                triggering_event_id=event_id,
+                job_id=committed_job,
+                profile_version=1,
+                breakdown=breakdown_for(80),
+                match_matrix=MATRIX,
             )
         await attempt.rollback()
 
@@ -250,8 +275,12 @@ async def test_two_concurrent_transactions_claim_once(engine, committed_job) -> 
         async with maker() as sess:
             await asyncio.sleep(delay)
             result = await persist_evaluation_once(
-                sess, triggering_event_id=event_id, job_id=committed_job,
-                profile_version=1, breakdown=breakdown_for(80), match_matrix=MATRIX,
+                sess,
+                triggering_event_id=event_id,
+                job_id=committed_job,
+                profile_version=1,
+                breakdown=breakdown_for(80),
+                match_matrix=MATRIX,
             )
             started.set()
             if result is None:
@@ -274,8 +303,10 @@ async def test_two_concurrent_transactions_claim_once(engine, committed_job) -> 
         ).scalar_one()
         events = (
             await check.execute(
-                text("SELECT count(*) FROM events WHERE aggregate_id = :id "
-                     "AND type = 'job.evaluated'"),
+                text(
+                    "SELECT count(*) FROM events WHERE aggregate_id = :id "
+                    "AND type = 'job.evaluated'"
+                ),
                 {"id": committed_job},
             )
         ).scalar_one()
@@ -295,26 +326,37 @@ async def test_different_events_both_process(engine, committed_job) -> None:
     maker = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
     async with maker() as first:
         result = await persist_evaluation_once(
-            first, triggering_event_id=uuid7(), job_id=committed_job,
-            profile_version=1, breakdown=breakdown_for(60), match_matrix=MATRIX,
+            first,
+            triggering_event_id=uuid7(),
+            job_id=committed_job,
+            profile_version=1,
+            breakdown=breakdown_for(60),
+            match_matrix=MATRIX,
         )
         assert result is not None
         await first.commit()
 
     async with maker() as second:
         result = await persist_evaluation_once(
-            second, triggering_event_id=uuid7(), job_id=committed_job,
-            profile_version=2, breakdown=breakdown_for(80), match_matrix=MATRIX,
+            second,
+            triggering_event_id=uuid7(),
+            job_id=committed_job,
+            profile_version=2,
+            breakdown=breakdown_for(80),
+            match_matrix=MATRIX,
         )
         assert result is not None
         await second.commit()
 
     async with maker() as check:
         versions = [
-            r[0] for r in (
+            r[0]
+            for r in (
                 await check.execute(
-                    text("SELECT profile_version FROM job_evaluations "
-                         "WHERE job_id = :id ORDER BY profile_version"),
+                    text(
+                        "SELECT profile_version FROM job_evaluations "
+                        "WHERE job_id = :id ORDER BY profile_version"
+                    ),
                     {"id": committed_job},
                 )
             ).all()

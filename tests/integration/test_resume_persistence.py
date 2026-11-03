@@ -52,9 +52,7 @@ B6_EVENTS = (
 async def _ready(session, application_id):
     """Put the application where B6 expects to find it, via the state machine."""
     application = (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
     await transition_application(
         session,
@@ -70,11 +68,7 @@ def _fixture(facts):
     """B1/B2/B3 shapes built on the one verified, non-deleted fact."""
     fact_id = str(facts[0].id)
     selection = SelectionResult(
-        selections=(
-            Selection(
-                fact_id=fact_id, section="experience", order=1, emphasis="normal"
-            ),
-        ),
+        selections=(Selection(fact_id=fact_id, section="experience", order=1, emphasis="normal"),),
         evaluation_gaps=(),
         material_gaps=(),
         requires_human_review=False,
@@ -88,9 +82,7 @@ def _fixture(facts):
         ),
     )
     sentences = (
-        SummarySentence(
-            text="Cloud engineer with verified AWS depth.", fact_ids=[fact_id]
-        ),
+        SummarySentence(text="Cloud engineer with verified AWS depth.", fact_ids=[fact_id]),
         SummarySentence(text="Focused on infrastructure delivery.", fact_ids=[fact_id]),
     )
     return selection, bullets, sentences
@@ -108,9 +100,7 @@ def _verified(bullets, sentences, selection, context, verdicts=None):
         out.append(
             bind(
                 ref,
-                VerificationResult(
-                    verdict=verdict, explanation=explanation, prompt_version="b5"
-                ),
+                VerificationResult(verdict=verdict, explanation=explanation, prompt_version="b5"),
                 [by_id[fid] for fid in ref.fact_ids],
             )
         )
@@ -118,9 +108,7 @@ def _verified(bullets, sentences, selection, context, verdicts=None):
 
 
 async def _setup(session, demo_profile, demo_job, demo_application, facts):
-    context = await load_tailoring_context(
-        session, profile_id=demo_profile, job_id=demo_job
-    )
+    context = await load_tailoring_context(session, profile_id=demo_profile, job_id=demo_job)
     selection, bullets, sentences = _fixture(facts)
     await _ready(session, demo_application["id"])
     return context, selection, bullets, sentences
@@ -130,9 +118,7 @@ async def _events(session, application_id, *types):
     rows = (
         (
             await session.execute(
-                select(Event).where(
-                    Event.aggregate_id == application_id, Event.type.in_(types)
-                )
+                select(Event).where(Event.aggregate_id == application_id, Event.type.in_(types))
             )
         )
         .scalars()
@@ -287,10 +273,7 @@ async def test_success_transitions_and_emits(
         .scalars()
         .all()
     )
-    assert [
-        (row.from_status, row.to_status)
-        for row in sorted(history, key=lambda r: r.id)
-    ] == [
+    assert [(row.from_status, row.to_status) for row in sorted(history, key=lambda r: r.id)] == [
         (ApplicationStatus.CREATED, ApplicationStatus.RESUME_GENERATING),
         (ApplicationStatus.RESUME_GENERATING, ApplicationStatus.RESUME_READY),
     ]
@@ -355,9 +338,7 @@ async def test_negative_verdict_still_persists_everything(
     context, selection, bullets, sentences = await _setup(
         session, demo_profile, demo_job, demo_application, facts
     )
-    verified = _verified(
-        bullets, sentences, selection, context, verdicts={0: (verdict, reason)}
-    )
+    verified = _verified(bullets, sentences, selection, context, verdicts={0: (verdict, reason)})
 
     result = await persist_resume(
         session,
@@ -416,9 +397,7 @@ async def test_wrong_starting_state_rejected(
     """B6 does not move `created` itself; it refuses to run."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    context = await load_tailoring_context(
-        session, profile_id=demo_profile, job_id=demo_job
-    )
+    context = await load_tailoring_context(session, profile_id=demo_profile, job_id=demo_job)
     selection, bullets, sentences = _fixture(facts)
     verified = _verified(bullets, sentences, selection, context)
 
@@ -461,9 +440,7 @@ async def test_incomplete_coverage_rejected(
     assert (resumes, claims, events) == (0, 0, 0)
 
 
-async def test_stale_handoff_rejected(
-    session, demo_profile, demo_job, demo_application, inputs
-):
+async def test_stale_handoff_rejected(session, demo_profile, demo_job, demo_application, inputs):
     from dataclasses import replace
 
     from packages.agents.resume_optimizer.handoff import HandoffError
@@ -519,9 +496,7 @@ async def test_duplicate_handoff_rejected(
 # --- idempotency ------------------------------------------------------------
 
 
-async def test_exact_retry_is_idempotent(
-    session, demo_profile, demo_job, demo_application, inputs
-):
+async def test_exact_retry_is_idempotent(session, demo_profile, demo_job, demo_application, inputs):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     context, selection, bullets, sentences = await _setup(

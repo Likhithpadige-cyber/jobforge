@@ -88,9 +88,7 @@ async def _check_role_identity(conn) -> tuple[bool, bool]:  # type: ignore[no-un
     try:
         row = (
             await conn.execute(
-                text(
-                    "SELECT rolcanlogin, rolsuper FROM pg_roles WHERE rolname = :name"
-                ),
+                text("SELECT rolcanlogin, rolsuper FROM pg_roles WHERE rolname = :name"),
                 {"name": TARGET_ROLE},
             )
         ).first()
@@ -209,8 +207,11 @@ async def _check_connect_and_schema(conn) -> None:  # type: ignore[no-untyped-de
         ).scalar_one()
     except Exception:
         return
-    line(OK if not can_create else BAD, "3c. CREATE on schema public",
-         f"{can_create}  (expected False)")
+    line(
+        OK if not can_create else BAD,
+        "3c. CREATE on schema public",
+        f"{can_create}  (expected False)",
+    )
     if can_create:
         problems.append(
             f"{TARGET_ROLE} can CREATE in schema public; it could define a view "

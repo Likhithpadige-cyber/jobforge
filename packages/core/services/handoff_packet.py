@@ -151,9 +151,7 @@ async def _load_source(session: AsyncSession, application: Application) -> Packe
         raise ResumeNotRenderedError(f"no resume exists for application {application.id}")
     resume_artifact = (
         await session.execute(
-            select(Artifact).where(
-                Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf"
-            )
+            select(Artifact).where(Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf")
         )
     ).scalar_one_or_none()
     if resume_artifact is None:

@@ -73,9 +73,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.safety]
 async def _actor(session, demo_application) -> User:
     """The signed-in human, loaded the way the API dependency loads them."""
     return (
-        await session.execute(
-            select(User).where(User.id == demo_application["user_id"])
-        )
+        await session.execute(select(User).where(User.id == demo_application["user_id"]))
     ).scalar_one()
 
 
@@ -92,9 +90,7 @@ async def _ready(session, demo_profile, demo_job, demo_application, facts):
     ordinary case for a synthetic fixture with no ATS form), same as the
     real pipeline: `resume_ready -> questions_pending` before review ever
     opens."""
-    result = await c1._generate(
-        session, demo_profile, demo_job, demo_application["id"], facts
-    )
+    result = await c1._generate(session, demo_profile, demo_job, demo_application["id"], facts)
     await applications_service.prepare_application(
         session, application_id=demo_application["id"], questions=[]
     )
@@ -104,9 +100,7 @@ async def _ready(session, demo_profile, demo_job, demo_application, facts):
 
 async def _application(session, application_id) -> Application:
     return (
-        await session.execute(
-            select(Application).where(Application.id == application_id)
-        )
+        await session.execute(select(Application).where(Application.id == application_id))
     ).scalar_one()
 
 
@@ -150,11 +144,7 @@ async def _history_count(session, application_id) -> int:
 
 async def _claims(session, resume_id) -> list[ResumeClaim]:
     return list(
-        (
-            await session.execute(
-                select(ResumeClaim).where(ResumeClaim.resume_id == resume_id)
-            )
-        )
+        (await session.execute(select(ResumeClaim).where(ResumeClaim.resume_id == resume_id)))
         .scalars()
         .all()
     )
@@ -202,9 +192,7 @@ async def _supersede_with_a_newer_version(session, application_id) -> Resume:
 
 
 async def _start(session, application_id, actor):
-    return await start_resume_review(
-        application_id, ReviewRequest(), session, actor, None
-    )
+    return await start_resume_review(application_id, ReviewRequest(), session, actor, None)
 
 
 async def _approve(session, application_id, actor, note=None):
@@ -317,9 +305,7 @@ async def test_entering_review_moves_to_awaiting_approval(
     assert state.application_status is ApplicationStatus.AWAITING_APPROVAL
     assert state.review_status == "in_review"
     assert state.resume_id == generated.resume_id
-    assert (await _application(session, app_id)).status is (
-        ApplicationStatus.AWAITING_APPROVAL
-    )
+    assert (await _application(session, app_id)).status is (ApplicationStatus.AWAITING_APPROVAL)
 
 
 async def test_pending_approval_is_bound_to_the_exact_resume_and_version(
@@ -390,9 +376,7 @@ async def test_entering_review_is_idempotent(
     assert await _history_count(session, app_id) == history
 
 
-async def test_review_cannot_be_opened_from_the_wrong_state(
-    session, demo_application
-):
+async def test_review_cannot_be_opened_from_the_wrong_state(session, demo_application):
     """`created` is not `resume_ready`, and no amount of retrying makes it so."""
     with pytest.raises(service.NotFoundError):
         # No resume at all: refused before the status is even considered.
@@ -420,9 +404,7 @@ async def test_a_failed_resume_cannot_enter_review(
     """The tripwire holds: failed verification is reviewed, never approved."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    await c1._generate(
-        session, demo_profile, demo_job, app_id, facts, fail=True
-    )
+    await c1._generate(session, demo_profile, demo_job, app_id, facts, fail=True)
     await session.flush()
     actor = await _actor(session, demo_application)
 
@@ -771,9 +753,7 @@ async def test_the_database_approval_trigger_is_satisfied_naturally(
     assert application.approved_at is not None
 
 
-async def test_approve_is_idempotent(
-    session, demo_profile, demo_job, demo_application, inputs
-):
+async def test_approve_is_idempotent(session, demo_profile, demo_job, demo_application, inputs):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
     await _ready(session, demo_profile, demo_job, demo_application, facts)
@@ -802,9 +782,7 @@ async def test_approve_requires_awaiting_approval(
 
     with pytest.raises(service.ReviewStateError, match="awaiting_approval"):
         await _approve(session, app_id, actor)
-    assert (await _application(session, app_id)).status is (
-        ApplicationStatus.QUESTIONS_PENDING
-    )
+    assert (await _application(session, app_id)).status is (ApplicationStatus.QUESTIONS_PENDING)
     assert len(await _events(session, app_id, "approval.granted")) == 0
 
 
@@ -822,9 +800,7 @@ async def test_approve_refuses_a_stale_resume(
     with pytest.raises(service.StaleResumeError, match=re.escape(str(newer.id))):
         await _approve(session, app_id, actor)
 
-    assert (await _application(session, app_id)).status is (
-        ApplicationStatus.AWAITING_APPROVAL
-    )
+    assert (await _application(session, app_id)).status is (ApplicationStatus.AWAITING_APPROVAL)
     assert (await _approvals(session, app_id))[0].status is ApprovalStatus.PENDING
 
 
@@ -912,9 +888,7 @@ async def test_request_changes_refuses_an_empty_note(
     with pytest.raises((service.MissingNoteError, SchemaValidationError)):
         await _request_changes(session, app_id, actor, note)
 
-    assert (await _application(session, app_id)).status is (
-        ApplicationStatus.AWAITING_APPROVAL
-    )
+    assert (await _application(session, app_id)).status is (ApplicationStatus.AWAITING_APPROVAL)
     assert (await _approvals(session, app_id))[0].status is ApprovalStatus.PENDING
 
 
@@ -948,13 +922,10 @@ async def test_request_changes_leaves_the_resume_and_claims_untouched(
     await _start(session, app_id, actor)
 
     before_resumes = (
-        await session.execute(
-            select(func.count(Resume.id)).where(Resume.application_id == app_id)
-        )
+        await session.execute(select(func.count(Resume.id)).where(Resume.application_id == app_id))
     ).scalar_one()
     before_claims = [
-        (c.path, c.claim_text, c.verdict)
-        for c in await _claims(session, generated.resume_id)
+        (c.path, c.claim_text, c.verdict) for c in await _claims(session, generated.resume_id)
     ]
     renders = len(await _events(session, app_id, "resume.render.requested"))
 
@@ -962,13 +933,10 @@ async def test_request_changes_leaves_the_resume_and_claims_untouched(
     await session.flush()
 
     after_resumes = (
-        await session.execute(
-            select(func.count(Resume.id)).where(Resume.application_id == app_id)
-        )
+        await session.execute(select(func.count(Resume.id)).where(Resume.application_id == app_id))
     ).scalar_one()
     after_claims = [
-        (c.path, c.claim_text, c.verdict)
-        for c in await _claims(session, generated.resume_id)
+        (c.path, c.claim_text, c.verdict) for c in await _claims(session, generated.resume_id)
     ]
     assert after_resumes == before_resumes  # no new version
     assert after_claims == before_claims
@@ -1041,9 +1009,7 @@ async def test_database_rejects_fourth_decision_and_protects_counted_rows(
     app_id = demo_application["id"]
     await _ready(session, demo_profile, demo_job, demo_application, facts)
     actor = await _actor(session, demo_application)
-    historical = [
-        await _historical_rework_decision(session, app_id, actor.id) for _ in range(3)
-    ]
+    historical = [await _historical_rework_decision(session, app_id, actor.id) for _ in range(3)]
     await _start(session, app_id, actor)
     pending = (await _approvals(session, app_id))[-1]
     with pytest.raises(DBAPIError, match="rework limit reached"):
@@ -1087,10 +1053,10 @@ async def test_preexisting_over_limit_history_stays_intact_and_blocks_new_decisi
         await service.request_changes(
             session, application_id=app_id, actor=actor, note="Another revision"
         )
-    assert sum(
-        a.status is ApprovalStatus.CHANGES_REQUESTED
-        for a in await _approvals(session, app_id)
-    ) == 4
+    assert (
+        sum(a.status is ApprovalStatus.CHANGES_REQUESTED for a in await _approvals(session, app_id))
+        == 4
+    )
 
 
 async def test_two_simultaneous_fourth_requests_cannot_record_a_cycle(

@@ -186,9 +186,7 @@ def _select_renderers(
     chosen: list[ResumeRenderer] = []
     for renderer in renderers:
         if not renderer.production and not allow_non_production:
-            raise RendererUnavailableError(
-                f"{renderer.kind}: refusing a non-production renderer"
-            )
+            raise RendererUnavailableError(f"{renderer.kind}: refusing a non-production renderer")
         if not renderer.available() or not renderer.implemented:
             raise RendererUnavailableError(
                 f"{renderer.kind}: renderer dependency or implementation is unavailable"
@@ -298,27 +296,36 @@ async def render_resume(
     # available to act on, and a mixed invocation that reported only the new
     # format would understate what exists.
     if created:
-        await record_event(session, EventEnvelope(
-            type="resume.rendered",
-            version=2,
-            aggregate_type="resume",
-            aggregate_id=context.resume.id,
-            correlation_id=context.application.id,
-            causation_id=causation_id,
-            actor_type="agent",
-            payload=ResumeRenderedV2.model_validate({
-                "resume_id": str(context.resume.id),
-                "application_id": str(context.application.id),
-                "resume_version": context.resume.version,
-                "approval_id": str(context.approval.id),
-                "artifacts": [
-                    {"artifact_id": str(a.id), "kind": a.kind,
-                     "template_version": a.template_version,
-                     "size_bytes": a.size_bytes, "sha256": a.sha256}
-                    for a in produced
-                ],
-            }).model_dump(mode="json"),
-        ))
+        await record_event(
+            session,
+            EventEnvelope(
+                type="resume.rendered",
+                version=2,
+                aggregate_type="resume",
+                aggregate_id=context.resume.id,
+                correlation_id=context.application.id,
+                causation_id=causation_id,
+                actor_type="agent",
+                payload=ResumeRenderedV2.model_validate(
+                    {
+                        "resume_id": str(context.resume.id),
+                        "application_id": str(context.application.id),
+                        "resume_version": context.resume.version,
+                        "approval_id": str(context.approval.id),
+                        "artifacts": [
+                            {
+                                "artifact_id": str(a.id),
+                                "kind": a.kind,
+                                "template_version": a.template_version,
+                                "size_bytes": a.size_bytes,
+                                "sha256": a.sha256,
+                            }
+                            for a in produced
+                        ],
+                    }
+                ).model_dump(mode="json"),
+            ),
+        )
     return produced
 
 

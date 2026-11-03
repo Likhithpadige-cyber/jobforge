@@ -70,9 +70,7 @@ async def setup(email: str) -> int:
         return 1
 
     async with session_scope() as session:
-        user = (
-            await session.execute(select(User).where(User.email == email))
-        ).scalar_one_or_none()
+        user = (await session.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if user is None:
             print(f"no user with email {email}. Run `make seed` first.")
             return 1

@@ -43,8 +43,12 @@ def test_terminal_statuses_have_no_exits() -> None:
 def test_documented_happy_path() -> None:
     current = JobStatus.DISCOVERED
     for nxt in (
-        JobStatus.NORMALIZED, JobStatus.EVALUATED, JobStatus.SHORTLISTED,
-        JobStatus.QUEUED, JobStatus.CLAIMED, JobStatus.APPLIED,
+        JobStatus.NORMALIZED,
+        JobStatus.EVALUATED,
+        JobStatus.SHORTLISTED,
+        JobStatus.QUEUED,
+        JobStatus.CLAIMED,
+        JobStatus.APPLIED,
     ):
         assert can_transition(current, nxt), f"{current} -> {nxt}"
         current = nxt
@@ -53,12 +57,12 @@ def test_documented_happy_path() -> None:
 @pytest.mark.parametrize(
     ("current", "target"),
     [
-        (JobStatus.DISCOVERED, JobStatus.SHORTLISTED),   # skips evaluation
-        (JobStatus.NORMALIZED, JobStatus.APPLIED),       # skips everything
-        (JobStatus.APPLIED, JobStatus.EVALUATED),        # terminal
-        (JobStatus.DUPLICATE, JobStatus.NORMALIZED),     # terminal
-        (JobStatus.EXPIRED, JobStatus.SHORTLISTED),      # terminal
-        (JobStatus.EVALUATED, JobStatus.CLAIMED),        # skips the queue
+        (JobStatus.DISCOVERED, JobStatus.SHORTLISTED),  # skips evaluation
+        (JobStatus.NORMALIZED, JobStatus.APPLIED),  # skips everything
+        (JobStatus.APPLIED, JobStatus.EVALUATED),  # terminal
+        (JobStatus.DUPLICATE, JobStatus.NORMALIZED),  # terminal
+        (JobStatus.EXPIRED, JobStatus.SHORTLISTED),  # terminal
+        (JobStatus.EVALUATED, JobStatus.CLAIMED),  # skips the queue
     ],
 )
 def test_illegal_transitions_are_rejected(current: JobStatus, target: JobStatus) -> None:

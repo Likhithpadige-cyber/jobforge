@@ -48,9 +48,15 @@ async def bus(redis_available):
 async def delivery(engine, committed_job):
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with sessions.begin() as db:
-        event = await emit(db, type="job.evaluation.requested", aggregate_type="job",
-                           aggregate_id=committed_job, correlation_id=committed_job,
-                           actor_type="system", payload={"job_id": str(committed_job)})
+        event = await emit(
+            db,
+            type="job.evaluation.requested",
+            aggregate_type="job",
+            aggregate_id=committed_job,
+            correlation_id=committed_job,
+            actor_type="system",
+            payload={"job_id": str(committed_job)},
+        )
     group = f"test.m4.{uuid4().hex}"
     return sessions, event.id, committed_job, group
 
@@ -58,9 +64,16 @@ async def delivery(engine, committed_job):
 async def handler(db, event):
     job = await db.get(Job, event.aggregate_id)
     job.title += " handled"
-    await emit(db, type="job.evaluated", aggregate_type="job", aggregate_id=job.id,
-               correlation_id=event.correlation_id, causation_id=event.id,
-               actor_type="agent", payload={"job_id": str(job.id)})
+    await emit(
+        db,
+        type="job.evaluated",
+        aggregate_type="job",
+        aggregate_id=job.id,
+        correlation_id=event.correlation_id,
+        causation_id=event.id,
+        actor_type="agent",
+        payload={"job_id": str(job.id)},
+    )
     return "done"
 
 
@@ -69,12 +82,26 @@ async def state(delivery):
     async with sessions() as db:
         job = await db.get(Job, job_id)
         processed = await db.get(ProcessedEvent, (event_id, group))
-        outputs = await db.scalar(select(func.count()).select_from(Event).where(
-            Event.causation_id == event_id, Event.type == "job.evaluated",
-        ))
-        failures = list((await db.scalars(select(Event).where(
-            Event.causation_id == event_id, Event.type == "agent.run.failed",
-        ).order_by(Event.occurred_at, Event.id))).all())
+        outputs = await db.scalar(
+            select(func.count())
+            .select_from(Event)
+            .where(
+                Event.causation_id == event_id,
+                Event.type == "job.evaluated",
+            )
+        )
+        failures = list(
+            (
+                await db.scalars(
+                    select(Event)
+                    .where(
+                        Event.causation_id == event_id,
+                        Event.type == "agent.run.failed",
+                    )
+                    .order_by(Event.occurred_at, Event.id)
+                )
+            ).all()
+        )
         return job.title, processed.result if processed else None, outputs, failures
 
 
@@ -243,28 +270,56 @@ async def test_bad_reference_is_quarantined_before_ack(delivery, bus):
     await consumer.step()
     assert (await redis.xpending(stream, delivery[3]))["pending"] == 0
     async with delivery[0]() as db:
-        failures = list((await db.scalars(select(Event).where(
-            Event.payload["consumer_group"].as_string() == delivery[3],
-            Event.type == "agent.run.failed",
-        ))).all())
+        failures = list(
+            (
+                await db.scalars(
+                    select(Event).where(
+                        Event.payload["consumer_group"].as_string() == delivery[3],
+                        Event.type == "agent.run.failed",
+                    )
+                )
+            ).all()
+        )
     assert len(failures) == 1
     assert failures[0].payload["invalid_reference"] is True
     assert "untrusted secret content" not in str(failures[0].payload)
 
 
 async def test_real_monitor_handler_persists_snapshot_and_outbox(session):
-    event = await record_event(session, EventEnvelope(
-        type="schedule.tick", aggregate_type="system", actor_type="system",
-        correlation_id=uuid4(), payload={}, occurred_at=datetime(2099, 1, 1, tzinfo=UTC),
-    ))
+    event = await record_event(
+        session,
+        EventEnvelope(
+            type="schedule.tick",
+            aggregate_type="system",
+            actor_type="system",
+            correlation_id=uuid4(),
+            payload={},
+            occurred_at=datetime(2099, 1, 1, tzinfo=UTC),
+        ),
+    )
     result = await snapshot_jobs(session, event)
     assert result.startswith("snapshot:")
-    assert await session.scalar(select(func.count()).select_from(MetricsSnapshot).where(
-        MetricsSnapshot.bucket_start == event.occurred_at,
-    )) == 1
-    assert await session.scalar(select(func.count()).select_from(Event).where(
-        Event.causation_id == event.id, Event.type == "metrics.snapshot.created",
-    )) == 1
+    assert (
+        await session.scalar(
+            select(func.count())
+            .select_from(MetricsSnapshot)
+            .where(
+                MetricsSnapshot.bucket_start == event.occurred_at,
+            )
+        )
+        == 1
+    )
+    assert (
+        await session.scalar(
+            select(func.count())
+            .select_from(Event)
+            .where(
+                Event.causation_id == event.id,
+                Event.type == "metrics.snapshot.created",
+            )
+        )
+        == 1
+    )
 
 
 async def test_worker_role_check_rejects_owner_and_accepts_agent(engine, agent_engine):
@@ -308,10 +363,18 @@ async def test_redis_failure_never_marks_outbox_published(delivery, bus, monkeyp
 async def test_unsupported_version_never_calls_handler(delivery):
     sessions, _, job_id, group = delivery
     async with sessions.begin() as db:
-        event = await record_event(db, EventEnvelope(
-            type="job.evaluation.requested", version=2, aggregate_type="job",
-            aggregate_id=job_id, actor_type="system", correlation_id=job_id, payload={},
-        ))
+        event = await record_event(
+            db,
+            EventEnvelope(
+                type="job.evaluation.requested",
+                version=2,
+                aggregate_type="job",
+                aggregate_id=job_id,
+                actor_type="system",
+                correlation_id=job_id,
+                payload={},
+            ),
+        )
     assert await runtime(delivery).process(event.id) == "dead"
     async with sessions() as db:
         claim = await db.get(ProcessedEvent, (event.id, group))
@@ -322,9 +385,16 @@ async def test_unsupported_version_never_calls_handler(delivery):
 async def test_agent_cannot_forge_human_event_for_consumer(delivery):
     sessions, _, job_id, group = delivery
     async with sessions.begin() as db:
-        event = Event(id=uuid4(), type="approval.granted", version=1,
-                      aggregate_type="application", aggregate_id=uuid4(),
-                      correlation_id=job_id, actor_type="agent", payload={})
+        event = Event(
+            id=uuid4(),
+            type="approval.granted",
+            version=1,
+            aggregate_type="application",
+            aggregate_id=uuid4(),
+            correlation_id=job_id,
+            actor_type="agent",
+            payload={},
+        )
         db.add(event)
     called = False
 
@@ -353,9 +423,14 @@ async def test_scheduled_tick_and_monitoring_work_under_monitor_role(engine):
             transaction = await db.begin()
             await schedule_snapshot(db)
             await schedule_snapshot(db)
-            event = await db.scalar(select(Event).where(Event.type == "schedule.tick").order_by(
-                Event.occurred_at.desc(),
-            ).limit(1))
+            event = await db.scalar(
+                select(Event)
+                .where(Event.type == "schedule.tick")
+                .order_by(
+                    Event.occurred_at.desc(),
+                )
+                .limit(1)
+            )
             assert event is not None
             assert (await snapshot_jobs(db, event)).startswith("snapshot:")
             await transaction.rollback()
@@ -388,8 +463,14 @@ async def test_producer_rollback_removes_source_outbox_event(engine):
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     with pytest.raises(RuntimeError):
         async with sessions.begin() as db:
-            event = await emit(db, type="schedule.tick", aggregate_type="system",
-                               actor_type="system", correlation_id=uuid4(), payload={})
+            event = await emit(
+                db,
+                type="schedule.tick",
+                aggregate_type="system",
+                actor_type="system",
+                correlation_id=uuid4(),
+                payload={},
+            )
             event_id = event.id
             raise RuntimeError("producer transaction failed")
     async with sessions() as db:
@@ -410,21 +491,37 @@ async def test_relay_polling_batches_real_rows_without_touching_live_outbox(engi
         try:
             schema = f"m4_test_{uuid4().hex}"
             await conn.execute(CreateSchema(schema))
-            await conn.execute(text("SELECT set_config('search_path', :schema, true)"),
-                               {"schema": schema})
+            await conn.execute(
+                text("SELECT set_config('search_path', :schema, true)"), {"schema": schema}
+            )
             await conn.run_sync(lambda sync: Event.__table__.create(sync))
-            sessions = async_sessionmaker(conn, expire_on_commit=False,
-                                          join_transaction_mode="create_savepoint")
+            sessions = async_sessionmaker(
+                conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+            )
             async with sessions.begin() as db:
                 for _ in range(3):
-                    await emit(db, type="job.normalized", aggregate_type="job",
-                               actor_type="system", correlation_id=uuid4(), payload={})
+                    await emit(
+                        db,
+                        type="job.normalized",
+                        aggregate_type="job",
+                        actor_type="system",
+                        correlation_id=uuid4(),
+                        payload={},
+                    )
             relay = OutboxRelay(sessions, redis, prefix=prefix, batch_size=2)
             assert [await relay.step(), await relay.step(), await relay.step()] == [2, 1, 0]
             async with sessions() as db:
-                assert await db.scalar(select(func.count()).select_from(Event).where(
-                    Event.published.is_(True), Event.published_at.is_not(None),
-                )) == 3
+                assert (
+                    await db.scalar(
+                        select(func.count())
+                        .select_from(Event)
+                        .where(
+                            Event.published.is_(True),
+                            Event.published_at.is_not(None),
+                        )
+                    )
+                    == 3
+                )
             assert await redis.xlen(f"{prefix}.jobs") == 3
         finally:
             # Drops the temporary schema and rows by rolling back its creation.
@@ -439,24 +536,43 @@ async def test_rendered_versions_through_stream_dispatch_are_idempotent(delivery
     sessions, _, application_id, group = delivery
     resume_id, artifact_id, approval_id = uuid4(), uuid4(), uuid4()
     payload = {
-        "resume_id": str(resume_id), "resume_version": 1,
-        "approval_id": str(approval_id), "template_version": "synthetic-v1",
+        "resume_id": str(resume_id),
+        "resume_version": 1,
+        "approval_id": str(approval_id),
+        "template_version": "synthetic-v1",
         "artifacts": [{"artifact_id": str(artifact_id), "kind": "resume_pdf", "sha256": "a" * 64}],
     }
     if version != 1:
-        payload = ResumeRenderedV2.model_validate({
-            "resume_id": str(resume_id), "application_id": str(application_id),
-            "resume_version": 1, "approval_id": str(approval_id),
-            "artifacts": [{"artifact_id": str(artifact_id), "kind": "resume_pdf",
-                           "template_version": "synthetic-v1", "size_bytes": 100,
-                           "sha256": "a" * 64}],
-        }).model_dump(mode="json")
+        payload = ResumeRenderedV2.model_validate(
+            {
+                "resume_id": str(resume_id),
+                "application_id": str(application_id),
+                "resume_version": 1,
+                "approval_id": str(approval_id),
+                "artifacts": [
+                    {
+                        "artifact_id": str(artifact_id),
+                        "kind": "resume_pdf",
+                        "template_version": "synthetic-v1",
+                        "size_bytes": 100,
+                        "sha256": "a" * 64,
+                    }
+                ],
+            }
+        ).model_dump(mode="json")
     async with sessions.begin() as db:
-        event = await record_event(db, EventEnvelope(
-            type="resume.rendered", version=version, aggregate_type="resume",
-            aggregate_id=resume_id, correlation_id=application_id, actor_type="agent",
-            payload=payload,
-        ))
+        event = await record_event(
+            db,
+            EventEnvelope(
+                type="resume.rendered",
+                version=version,
+                aggregate_type="resume",
+                aggregate_id=resume_id,
+                correlation_id=application_id,
+                actor_type="agent",
+                payload=payload,
+            ),
+        )
     calls = []
 
     async def probe(db, delivered):
@@ -479,9 +595,16 @@ async def test_rendered_versions_through_stream_dispatch_are_idempotent(delivery
         assert claim.result == ("version-probe" if version in (1, 2) else "dead_letter")
         persisted = await db.get(Event, event.id)
         assert persisted.version == version and persisted.payload == payload
-        failures = list((await db.scalars(select(Event).where(
-            Event.causation_id == event.id, Event.type == "agent.run.failed",
-        ))).all())
+        failures = list(
+            (
+                await db.scalars(
+                    select(Event).where(
+                        Event.causation_id == event.id,
+                        Event.type == "agent.run.failed",
+                    )
+                )
+            ).all()
+        )
         assert len(failures) == (0 if version in (1, 2) else 1)
         if failures:
             assert failures[0].payload["error_type"] == "InvalidEventError"
@@ -493,15 +616,29 @@ async def test_rendered_versions_through_stream_dispatch_are_idempotent(delivery
 async def test_unsubscribed_rendered_v2_stays_available_for_future_subscriber(delivery):
     sessions, _, application_id, group = delivery
     async with sessions.begin() as db:
-        event = await record_event(db, EventEnvelope(
-            type="resume.rendered", version=2, aggregate_type="resume",
-            aggregate_id=uuid4(), correlation_id=application_id,
-            actor_type="agent", payload={},
-        ))
+        event = await record_event(
+            db,
+            EventEnvelope(
+                type="resume.rendered",
+                version=2,
+                aggregate_type="resume",
+                aggregate_id=uuid4(),
+                correlation_id=application_id,
+                actor_type="agent",
+                payload={},
+            ),
+        )
     assert await runtime(delivery).process(event.id) == "unsubscribed"
     async with sessions() as db:
         assert await db.get(ProcessedEvent, (event.id, group)) is None
-        assert await db.scalar(select(func.count()).select_from(Event).where(
-            Event.causation_id == event.id,
-            Event.type.in_(["worker.delivery.started", "agent.run.failed"]),
-        )) == 0
+        assert (
+            await db.scalar(
+                select(func.count())
+                .select_from(Event)
+                .where(
+                    Event.causation_id == event.id,
+                    Event.type.in_(["worker.delivery.started", "agent.run.failed"]),
+                )
+            )
+            == 0
+        )

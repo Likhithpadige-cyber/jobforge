@@ -65,9 +65,7 @@ def session(monkeypatch):
     return value
 
 
-def cassette(
-    client, claim_text, cited_facts, verdict_body, *, cost="0.001", stop="tool_use"
-):
+def cassette(client, claim_text, cited_facts, verdict_body, *, cost="0.001", stop="tool_use"):
     request = prepare_request(claim_text, cited_facts, client.model)
     response = Response(
         body=canonical(verdict_body),
@@ -77,9 +75,7 @@ def cassette(
         stop_reason=stop,
     )
     client.cassette_dir.mkdir(exist_ok=True)
-    (client.cassette_dir / f"{request.digest}.json").write_text(
-        response.model_dump_json()
-    )
+    (client.cassette_dir / f"{request.digest}.json").write_text(response.model_dump_json())
     return request
 
 
@@ -93,9 +89,7 @@ def test_is_authoritative_failure_true_on_any_negative():
 
 
 def test_is_authoritative_failure_false_when_all_supported():
-    assert not is_authoritative_failure(
-        [ClaimVerdict.SUPPORTED, ClaimVerdict.SUPPORTED]
-    )
+    assert not is_authoritative_failure([ClaimVerdict.SUPPORTED, ClaimVerdict.SUPPORTED])
 
 
 def test_is_authoritative_failure_single_unsupported():
@@ -151,9 +145,7 @@ def test_fully_supported_claim_returns_supported():
 
 
 def test_responsibility_inflation_is_overreach():
-    result = validate(
-        "overreach", "The cited fact says 'assisted with deployment', not 'led'."
-    )
+    result = validate("overreach", "The cited fact says 'assisted with deployment', not 'led'.")
     assert result.verdict is ClaimVerdict.OVERREACH
 
 
@@ -190,9 +182,7 @@ def test_scope_inflation_is_overreach():
 
 
 def test_multi_fact_fabricated_relationship_is_unsupported():
-    result = validate(
-        "unsupported", "The facts never state these two systems are related."
-    )
+    result = validate("unsupported", "The facts never state these two systems are related.")
     assert result.verdict is ClaimVerdict.UNSUPPORTED
 
 
@@ -202,9 +192,7 @@ def test_unsupported_numeric_claim_is_unsupported():
 
 
 def test_spelled_out_number_claim_is_unsupported():
-    result = validate(
-        "unsupported", "'doubled' is a numeric claim absent from evidence."
-    )
+    result = validate("unsupported", "'doubled' is a numeric claim absent from evidence.")
     assert result.verdict is ClaimVerdict.UNSUPPORTED
 
 
@@ -276,9 +264,7 @@ async def test_negative_verdict_raises_and_records(session, cited_facts, tmp_pat
     assert step.guardrail_results["failure"] == events[0].payload
 
 
-async def test_unsupported_verdict_emits_critical_severity(
-    session, cited_facts, tmp_path
-):
+async def test_unsupported_verdict_emits_critical_severity(session, cited_facts, tmp_path):
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
     cassette(
         client,
@@ -299,9 +285,7 @@ async def test_unsupported_verdict_emits_critical_severity(
     assert events[0].payload["severity"] == "critical"
 
 
-async def test_negative_verdict_does_not_trigger_automatic_redraft(
-    session, cited_facts, tmp_path
-):
+async def test_negative_verdict_does_not_trigger_automatic_redraft(session, cited_facts, tmp_path):
     # A single overreach/unsupported response is recorded once and raised -
     # no second call is made to ask the model to "try again".
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
@@ -319,15 +303,11 @@ async def test_negative_verdict_does_not_trigger_automatic_redraft(
             aggregate_id=UUID(int=22),
             client=client,
         )
-    calls = [
-        c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], LlmCall)
-    ]
+    calls = [c.args[0] for c in session.add.call_args_list if isinstance(c.args[0], LlmCall)]
     assert len(calls) == 1
 
 
-async def test_supported_verdict_returns_result_and_succeeds(
-    session, cited_facts, tmp_path
-):
+async def test_supported_verdict_returns_result_and_succeeds(session, cited_facts, tmp_path):
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
     cassette(
         client,
@@ -375,9 +355,7 @@ async def test_replay_determinism(session, cited_facts, tmp_path):
     transport.assert_not_called()
 
 
-async def test_accounting_survives_malformed_output_then_repair(
-    session, cited_facts, tmp_path
-):
+async def test_accounting_survives_malformed_output_then_repair(session, cited_facts, tmp_path):
     settings = Settings(llm_mode="record")
 
     def raw(value):
@@ -412,14 +390,10 @@ async def test_accounting_survives_malformed_output_then_repair(
     run = next(o for o in rows if isinstance(o, AgentRun))
     calls = [o for o in rows if isinstance(o, LlmCall)]
     assert run.status == "succeeded" and len(calls) == 2
-    assert all(
-        "Never cache" not in path.read_text() for path in tmp_path.glob("*.json")
-    )
+    assert all("Never cache" not in path.read_text() for path in tmp_path.glob("*.json"))
 
 
-async def test_pii_in_explanation_fails_closed_and_emits_event(
-    session, cited_facts, tmp_path
-):
+async def test_pii_in_explanation_fails_closed_and_emits_event(session, cited_facts, tmp_path):
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
     cassette(
         client,
@@ -469,9 +443,7 @@ async def test_no_persistence_occurs(session, cited_facts, tmp_path):
     assert all(isinstance(o, AgentRun | AgentRunStep | LlmCall) for o in objects)
 
 
-async def test_verify_claim_uses_verification_model_when_provided(
-    session, cited_facts, tmp_path
-):
+async def test_verify_claim_uses_verification_model_when_provided(session, cited_facts, tmp_path):
     settings = Settings()
     client = StructuredClient(
         settings, cassette_dir=tmp_path, model=settings.llm_model_verification

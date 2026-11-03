@@ -53,12 +53,8 @@ class CompanyRepository(BaseRepository[Company]):
 class JobRepository(BaseRepository[Job]):
     model = Job
 
-    async def get_by_source_external_id(
-        self, source_id: UUID, external_id: str
-    ) -> Job | None:
-        stmt = select(Job).where(
-            Job.source_id == source_id, Job.external_id == external_id
-        )
+    async def get_by_source_external_id(self, source_id: UUID, external_id: str) -> Job | None:
+        stmt = select(Job).where(Job.source_id == source_id, Job.external_id == external_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
     async def dedupe_candidates(
@@ -151,9 +147,7 @@ class JobEvaluationRepository(BaseRepository[JobEvaluation]):
         )
         return (await self.session.execute(stmt)).scalar_one_or_none()
 
-    async def list_for_job(
-        self, job_id: UUID, limit: int = 20
-    ) -> list[JobEvaluation]:
+    async def list_for_job(self, job_id: UUID, limit: int = 20) -> list[JobEvaluation]:
         """Full history, newest first."""
         stmt = (
             select(JobEvaluation)

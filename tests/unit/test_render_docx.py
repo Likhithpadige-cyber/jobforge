@@ -130,12 +130,8 @@ def test_text_is_not_reflowed_or_retouched() -> None:
     doc = build_document(resume_id=RESUME_ID, resume_version=1, content=odd)
     import docx
 
-    reopened_doc = docx.Document(
-        io.BytesIO(DocxResumeRenderer(TEMPLATE_VERSION).render(doc))
-    )
-    assert any(
-        p.text == "  spaced   out  text  " for p in reopened_doc.paragraphs
-    )
+    reopened_doc = docx.Document(io.BytesIO(DocxResumeRenderer(TEMPLATE_VERSION).render(doc)))
+    assert any(p.text == "  spaced   out  text  " for p in reopened_doc.paragraphs)
 
 
 def test_section_order_follows_the_canonical_document() -> None:

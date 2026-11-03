@@ -22,21 +22,43 @@ from packages.shared.errors import ValidationError
 
 REQUIRED_COLUMNS = ("title", "url")
 KNOWN_COLUMNS = (
-    "title", "url", "company_name", "external_id", "location",
-    "description", "salary_text", "posted_at", "expires_at",
+    "title",
+    "url",
+    "company_name",
+    "external_id",
+    "location",
+    "description",
+    "salary_text",
+    "posted_at",
+    "expires_at",
 )
 
 #: Common header spellings mapped onto our field names.
 COLUMN_ALIASES = {
-    "job_title": "title", "position": "title", "role": "title",
-    "job_url": "url", "link": "url", "apply_url": "url",
-    "company": "company_name", "employer": "company_name", "organisation": "company_name",
-    "organization": "company_name", "job_id": "external_id", "id": "external_id",
-    "req_id": "external_id", "requisition_id": "external_id",
-    "city": "location", "job_location": "location",
-    "job_description": "description", "summary": "description",
-    "salary": "salary_text", "compensation": "salary_text", "pay": "salary_text",
-    "date_posted": "posted_at", "posted": "posted_at", "published_at": "posted_at",
+    "job_title": "title",
+    "position": "title",
+    "role": "title",
+    "job_url": "url",
+    "link": "url",
+    "apply_url": "url",
+    "company": "company_name",
+    "employer": "company_name",
+    "organisation": "company_name",
+    "organization": "company_name",
+    "job_id": "external_id",
+    "id": "external_id",
+    "req_id": "external_id",
+    "requisition_id": "external_id",
+    "city": "location",
+    "job_location": "location",
+    "job_description": "description",
+    "summary": "description",
+    "salary": "salary_text",
+    "compensation": "salary_text",
+    "pay": "salary_text",
+    "date_posted": "posted_at",
+    "posted": "posted_at",
+    "published_at": "posted_at",
 }
 
 MAX_ROWS = 5_000
@@ -109,10 +131,13 @@ def parse_csv(content: str) -> list[RawPosting]:
     if reader.fieldnames is None:
         raise ValidationError("CSV has no header row")
 
-    headers = {COLUMN_ALIASES.get(
-        (h or "").strip().lower().replace(" ", "_").replace("-", "_"),
-        (h or "").strip().lower().replace(" ", "_").replace("-", "_"),
-    ) for h in reader.fieldnames}
+    headers = {
+        COLUMN_ALIASES.get(
+            (h or "").strip().lower().replace(" ", "_").replace("-", "_"),
+            (h or "").strip().lower().replace(" ", "_").replace("-", "_"),
+        )
+        for h in reader.fieldnames
+    }
     missing = [c for c in REQUIRED_COLUMNS if c not in headers]
     if missing:
         raise ValidationError(
@@ -155,5 +180,6 @@ def parse_json(content: str) -> list[RawPosting]:
     if not data:
         raise ValidationError("JSON contained no postings")
 
-    return [_to_posting(row, index) for index, row in enumerate(data, start=1)
-            if isinstance(row, dict)]
+    return [
+        _to_posting(row, index) for index, row in enumerate(data, start=1) if isinstance(row, dict)
+    ]

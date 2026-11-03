@@ -1,4 +1,5 @@
 """M7 bounded import, snapshot binding and shared run budget; no network."""
+
 from dataclasses import replace
 from decimal import Decimal
 from uuid import UUID
@@ -17,14 +18,23 @@ from tests.evals.test_grounding_corpus import context_for
 pytestmark = [pytest.mark.unit, pytest.mark.safety]
 
 
-@pytest.mark.parametrize("payload", [
-    {"source_label": "Synthetic", "sections": [], "profile_id": str(UUID(int=1))},
-    {"source_label": "Synthetic", "sections": []},
-    {"source_label": "Synthetic", "sections": [{"name": "skills", "entries": [
-        {"text": "AWS", "fact_ids": ["not-a-uuid"]}]}]},
-    {"source_label": "Synthetic", "sections": [{"name": "skills", "entries": [
-        {"text": "AWS", "verified": True}]}]},
-])
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"source_label": "Synthetic", "sections": [], "profile_id": str(UUID(int=1))},
+        {"source_label": "Synthetic", "sections": []},
+        {
+            "source_label": "Synthetic",
+            "sections": [
+                {"name": "skills", "entries": [{"text": "AWS", "fact_ids": ["not-a-uuid"]}]}
+            ],
+        },
+        {
+            "source_label": "Synthetic",
+            "sections": [{"name": "skills", "entries": [{"text": "AWS", "verified": True}]}],
+        },
+    ],
+)
 def test_import_rejects_unrecognized_authority_and_malformed_data(payload):
     with pytest.raises(ValidationError):
         MasterResumeData.model_validate(payload)
@@ -35,8 +45,10 @@ def test_snapshot_is_deterministic_and_binds_candidate_evidence_and_master():
     original = fingerprint(context)
     assert fingerprint(replace(context)) == original
     changes = [
-        {"profile_id": UUID(int=99)}, {"base_resume_id": UUID(int=99)},
-        {"base_resume_version": 2}, {"evaluation_id": UUID(int=99)},
+        {"profile_id": UUID(int=99)},
+        {"base_resume_id": UUID(int=99)},
+        {"base_resume_version": 2},
+        {"evaluation_id": UUID(int=99)},
         {"facts": (replace(context.facts[0], text="Changed source"),)},
         {"job": {**context.job, "description_raw": "Changed job"}},
         {"base_resume_structure": {"sections": [{"name": "projects"}]}},
@@ -56,8 +68,9 @@ async def test_budget_carries_across_first_draft_stages_and_is_per_instance(tmp_
     client = FirstDraftClient(settings, cassette_dir=tmp_path, transport=forbidden)
     first, _ = selection.prepare_request(context, client.model)
     second = drafting.prepare_request(context, chosen, client.model)
-    response = Response(body="{}", input_tokens=5, output_tokens=5,
-                        cost_usd=Decimal("0.01"), stop_reason="tool_use")
+    response = Response(
+        body="{}", input_tokens=5, output_tokens=5, cost_usd=Decimal("0.01"), stop_reason="tool_use"
+    )
     for request in (first, second):
         (tmp_path / f"{request.digest}.json").write_text(response.model_dump_json())
     await client.complete(first)

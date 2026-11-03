@@ -31,8 +31,10 @@ def test_parse_csv_requires_title_and_url() -> None:
 def test_parse_csv_rejects_a_row_missing_a_required_value() -> None:
     """Whole-file rejection: a partial import is harder to reason about."""
     with pytest.raises(ValidationError, match="row 3"):
-        parse_csv("title,url\nCloud Engineer,https://example.invalid/j/1\n,\
-https://example.invalid/j/2\n")
+        parse_csv(
+            "title,url\nCloud Engineer,https://example.invalid/j/1\n,\
+https://example.invalid/j/2\n"
+        )
 
 
 def test_parse_csv_skips_blank_lines() -> None:

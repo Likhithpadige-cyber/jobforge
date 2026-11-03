@@ -100,6 +100,7 @@ class CoverLetterClient(StructuredClient):
         self.total_spent += response.cost_usd
         return response
 
+
 #: Same cap resume rework uses (`resume_review.ReworkLimitReachedError`),
 #: reused as a value rather than a shared constant: cover-letter rework has
 #: its own rate limit and its own counted approval kind, so the two counters
@@ -136,8 +137,7 @@ class CoverLetterReworkLimitReachedError(ConflictError):
 
     def __init__(self) -> None:
         super().__init__(
-            "This application has already used its three cover-letter "
-            "request-changes cycles",
+            "This application has already used its three cover-letter " "request-changes cycles",
             code="cover_letter_rework_limit_reached",
         )
 
@@ -148,9 +148,7 @@ class CoverLetterReworkLimitReachedError(ConflictError):
 # ---------------------------------------------------------------------------
 
 
-async def latest_cover_letter(
-    session: AsyncSession, application_id: UUID
-) -> CoverLetter | None:
+async def latest_cover_letter(session: AsyncSession, application_id: UUID) -> CoverLetter | None:
     """The highest cover-letter version for this application, if any.
 
     Ordering mirrors `resume_review.latest_tailored_resume` exactly:
@@ -517,9 +515,7 @@ async def pending_cover_letter_approval(
     ).scalar_one_or_none()
 
 
-async def cover_letter_approval(
-    session: AsyncSession, application_id: UUID
-) -> Approval | None:
+async def cover_letter_approval(session: AsyncSession, application_id: UUID) -> Approval | None:
     """The most recent `COVER_LETTER` approval, if any, newest first."""
     return (
         await session.execute(
@@ -608,9 +604,7 @@ async def cover_letter_review_state(
         requested_at=approval.requested_at if approval else None,
         decided_at=approval.decided_at if approval else None,
         decided_by=approval.decided_by if approval else None,
-        decided_by_email=await _decider_email(
-            session, approval.decided_by if approval else None
-        ),
+        decided_by_email=await _decider_email(session, approval.decided_by if approval else None),
         can_approve=decidable,
         can_request_changes=decidable,
         blocked_reason=blocked,
@@ -737,9 +731,7 @@ async def request_changes_cover_letter(
     """
     instructions = (note or "").strip()
     if not instructions:
-        raise MissingNoteError(
-            "requesting changes needs a note saying what should change"
-        )
+        raise MissingNoteError("requesting changes needs a note saying what should change")
 
     application = await _load_application(session, application_id, lock=True)
     cover_letter = await latest_cover_letter(session, application_id)
@@ -754,9 +746,7 @@ async def request_changes_cover_letter(
         and cover_letter_snapshot_matches(approval.subject_snapshot, cover_letter)
         and approval.changes_requested == instructions
     ):
-        log.info(
-            "cover_letter.request_changes.idempotent", application_id=str(application_id)
-        )
+        log.info("cover_letter.request_changes.idempotent", application_id=str(application_id))
         return await cover_letter_review_state(session, application_id)
 
     cycles_used = (

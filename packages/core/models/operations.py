@@ -77,8 +77,9 @@ class Event(Base):
             "occurred_at",
             postgresql_where=sa_text("published = false"),
         ),
-        Index("idx_events_aggregate", "aggregate_type", "aggregate_id",
-              sa_text("occurred_at DESC")),
+        Index(
+            "idx_events_aggregate", "aggregate_type", "aggregate_id", sa_text("occurred_at DESC")
+        ),
         Index("idx_events_correlation", "correlation_id", "occurred_at"),
         Index("idx_events_type_time", "type", sa_text("occurred_at DESC")),
     )
@@ -121,9 +122,7 @@ class AgentRun(Base):
     steps_completed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    cost_usd: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4), nullable=False, server_default="0"
-    )
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, server_default="0")
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     error_type: Mapped[str | None] = mapped_column(Text)
     error_message: Mapped[str | None] = mapped_column(Text)
@@ -141,8 +140,9 @@ class AgentRun(Base):
             name="pipeline_allowed",
         ),
         CheckConstraint("cost_usd >= 0", name="cost_non_negative"),
-        CheckConstraint("steps_completed <= steps_total OR steps_total = 0",
-                        name="steps_consistent"),
+        CheckConstraint(
+            "steps_completed <= steps_total OR steps_total = 0", name="steps_consistent"
+        ),
         Index("ix_agent_runs_agent_started", "agent", sa_text("started_at DESC")),
         Index("ix_agent_runs_correlation_id", "correlation_id"),
     )
@@ -191,9 +191,7 @@ class LlmCall(UUIDPrimaryKeyMixin, Base):
     model: Mapped[str] = mapped_column(Text, nullable=False)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    cost_usd: Mapped[Decimal] = mapped_column(
-        Numeric(12, 4), nullable=False, server_default="0"
-    )
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False, server_default="0")
     latency_ms: Mapped[int | None] = mapped_column(Integer)
     stop_reason: Mapped[str | None] = mapped_column(String(32))
     prompt_hash: Mapped[str | None] = mapped_column(String(64))
@@ -268,11 +266,12 @@ class Alert(UUIDPrimaryKeyMixin, Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        CheckConstraint(
-            "status IN ('open', 'acknowledged', 'resolved')", name="status_allowed"
+        CheckConstraint("status IN ('open', 'acknowledged', 'resolved')", name="status_allowed"),
+        Index(
+            "idx_alerts_open",
+            sa_text("created_at DESC"),
+            postgresql_where=sa_text("status = 'open'"),
         ),
-        Index("idx_alerts_open", sa_text("created_at DESC"),
-              postgresql_where=sa_text("status = 'open'")),
     )
 
 
@@ -288,9 +287,7 @@ class Notification(UUIDPrimaryKeyMixin, Base):
     dispatched_at: Mapped[datetime | None]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now(), nullable=False)
 
-    __table_args__ = (
-        CheckConstraint("channel IN ('in_app', 'email')", name="channel_allowed"),
-    )
+    __table_args__ = (CheckConstraint("channel IN ('in_app', 'email')", name="channel_allowed"),)
 
 
 class AuditLog(UUIDPrimaryKeyMixin, Base):
@@ -312,8 +309,9 @@ class AuditLog(UUIDPrimaryKeyMixin, Base):
 
     __table_args__ = (
         CheckConstraint("action IN ('insert', 'update', 'delete')", name="action_allowed"),
-        Index("idx_audit_logs_resource", "resource_type", "resource_id",
-              sa_text("created_at DESC")),
+        Index(
+            "idx_audit_logs_resource", "resource_type", "resource_id", sa_text("created_at DESC")
+        ),
     )
 
 

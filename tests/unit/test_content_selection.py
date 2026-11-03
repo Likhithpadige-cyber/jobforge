@@ -246,6 +246,7 @@ class MemoryWriter:
     Keep the existing metadata assertions, without pretending a Mock is a SQL
     transaction or duplicating the production writer's SQL in a fake session.
     """
+
     def __init__(self, session):
         self.session = session
         self.runs = {}
@@ -255,10 +256,23 @@ class MemoryWriter:
     async def begin_stage(self, **fields):
         stage = StageHandle(uuid7(), uuid7())
         step_name, step_index = fields.pop("step_name"), fields.pop("step_index", 1)
-        run = AgentRun(id=stage.run_id, status="running", steps_completed=0,
-                       input_tokens=0, output_tokens=0, cost_usd=Decimal("0"), **fields)
-        step = AgentRunStep(id=stage.step_id, run_id=stage.run_id, step_name=step_name,
-                            step_index=step_index, status="running", guardrail_results={})
+        run = AgentRun(
+            id=stage.run_id,
+            status="running",
+            steps_completed=0,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=Decimal("0"),
+            **fields,
+        )
+        step = AgentRunStep(
+            id=stage.step_id,
+            run_id=stage.run_id,
+            step_name=step_name,
+            step_index=step_index,
+            status="running",
+            guardrail_results={},
+        )
         self.runs[stage.run_id], self.steps[stage.step_id] = run, step
         self.session.add(run)
         self.session.add(step)
@@ -287,6 +301,7 @@ class MemoryWriter:
 
     async def record_guardrail(self, stage, *, guardrail_results, event=None):
         from packages.core.models import Event
+
         self.steps[stage.step_id].guardrail_results = dict(guardrail_results)
         if event is not None:
             self.session.add(Event(**event.as_row()))
@@ -303,6 +318,7 @@ class MemoryWriter:
 @pytest.fixture
 def session(monkeypatch):
     from packages.agents.resume_optimizer import selection
+
     monkeypatch.setattr(selection, "DomainInferenceAudit", MemoryWriter)
     return Mock()
 

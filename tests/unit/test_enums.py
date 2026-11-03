@@ -62,10 +62,22 @@ def test_application_status_covers_the_state_machine() -> None:
     """ARCHITECTURE.md §7.2. Missing a status would leave the state machine
     unable to represent a real state."""
     required = {
-        "created", "resume_generating", "resume_ready", "verification_failed",
-        "questions_pending", "awaiting_approval", "changes_requested", "approved",
-        "submission_ready", "submitting", "submitted", "submission_failed",
-        "manual_handoff", "policy_blocked", "abandoned", "error",
+        "created",
+        "resume_generating",
+        "resume_ready",
+        "verification_failed",
+        "questions_pending",
+        "awaiting_approval",
+        "changes_requested",
+        "approved",
+        "submission_ready",
+        "submitting",
+        "submitted",
+        "submission_failed",
+        "manual_handoff",
+        "policy_blocked",
+        "abandoned",
+        "error",
     }
     assert {s.value for s in ApplicationStatus} == required
 

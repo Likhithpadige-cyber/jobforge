@@ -31,9 +31,7 @@ def _expected_head() -> str:
     for path in versions.glob("*.py"):
         text_content = path.read_text()
         revision = re.search(r'^revision: str = "([^"]+)"', text_content, re.M)
-        down = re.search(
-            r'^down_revision: str \| None = (?:"([^"]+)"|None)', text_content, re.M
-        )
+        down = re.search(r'^down_revision: str \| None = (?:"([^"]+)"|None)', text_content, re.M)
         if revision:
             revisions[revision.group(1)] = down.group(1) if down and down.group(1) else None
 
@@ -44,9 +42,7 @@ def _expected_head() -> str:
 
 async def test_head_revision_is_applied(session) -> None:
     """The database must be at the head the revision files define."""
-    revision = (
-        await session.execute(text("SELECT version_num FROM alembic_version"))
-    ).scalar_one()
+    revision = (await session.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
     expected = _expected_head()
     assert revision == expected, (
         f"database is at {revision}, revision files head is {expected}. "
@@ -129,9 +125,7 @@ async def test_expected_triggers_exist(session) -> None:
         "trg_resume_revision_attempts_source_immutable",
         "trg_resume_revision_attempts_transition",
     }
-    rows = await session.execute(
-        text("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal")
-    )
+    rows = await session.execute(text("SELECT tgname FROM pg_trigger WHERE NOT tgisinternal"))
     present = {row[0] for row in rows}
     assert expected <= present, f"missing triggers: {sorted(expected - present)}"
 
@@ -141,9 +135,7 @@ async def test_roles_exist_with_expected_grants(session) -> None:
     if os.getenv("JOBFORGE_SKIP_ROLE_GRANTS") == "1":
         pytest.skip("role grants intentionally skipped in this environment")
 
-    rows = await session.execute(
-        text("SELECT rolname FROM pg_roles WHERE rolname LIKE 'app\\_%'")
-    )
+    rows = await session.execute(text("SELECT rolname FROM pg_roles WHERE rolname LIKE 'app\\_%'"))
     roles = {row[0] for row in rows}
     if not roles:
         pytest.skip("roles not created - run `make db-roles`")
@@ -153,9 +145,7 @@ async def test_roles_exist_with_expected_grants(session) -> None:
     for privilege in ("INSERT", "UPDATE", "DELETE"):
         has = (
             await session.execute(
-                text(
-                    "SELECT has_table_privilege('app_agent', 'profile_facts', :priv)"
-                ),
+                text("SELECT has_table_privilege('app_agent', 'profile_facts', :priv)"),
                 {"priv": privilege},
             )
         ).scalar_one()

@@ -89,9 +89,7 @@ def test_every_rendered_string_comes_from_the_input() -> None:
     Headings are template chrome; every other string must be a value the
     persisted content already held.
     """
-    source = {
-        entry["text"] for section in CONTENT.values() for entry in section.values()
-    }
+    source = {entry["text"] for section in CONTENT.values() for entry in section.values()}
     assert set(doc().all_text()) == source
 
 

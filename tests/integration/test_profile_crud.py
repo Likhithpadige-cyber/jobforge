@@ -60,9 +60,7 @@ async def test_experience_crud_and_soft_delete(session, demo_profile) -> None:
     assert await repo.get(created.id, include_deleted=True) is not None
 
 
-async def test_in_progress_certification_is_rejected_with_issue_date(
-    session, demo_profile
-) -> None:
+async def test_in_progress_certification_is_rejected_with_issue_date(session, demo_profile) -> None:
     repo = CertificationRepository(session)
     with pytest.raises(IntegrityError, match="ck_certifications_in_progress_has_no_issue_date"):
         await repo.create_for_profile(
@@ -153,9 +151,7 @@ async def test_missing_fact_raises_not_found(session) -> None:
 
 
 # -------------------------------------------------------- fact suggestions
-async def test_suggestions_land_as_drafts_only(
-    session, demo_profile, demo_experience
-) -> None:
+async def test_suggestions_land_as_drafts_only(session, demo_profile, demo_experience) -> None:
     """Suggestion is deterministic text splitting of the human's own words.
     Nothing it produces is citable until a human verifies it."""
     created = await ProfileService(session).suggest_facts(

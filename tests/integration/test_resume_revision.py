@@ -62,7 +62,9 @@ inputs = test_tailoring_context.inputs
 
 
 pytestmark = [
-    pytest.mark.integration, pytest.mark.safety, pytest.mark.usefixtures("audit_boundary_engine")
+    pytest.mark.integration,
+    pytest.mark.safety,
+    pytest.mark.usefixtures("audit_boundary_engine"),
 ]
 
 TIGHTEN = "Tighten the summary; it over-claims scope."
@@ -78,8 +80,9 @@ def _response(body: dict) -> Response:
     )
 
 
-async def _changes_requested(session, demo_profile, demo_job, demo_application, facts,
-                             note=TIGHTEN):
+async def _changes_requested(
+    session, demo_profile, demo_job, demo_application, facts, note=TIGHTEN
+):
     """Drive C1+C2 for real until the application sits in `changes_requested`.
 
     Built through C2 review actions rather than by writing rows: the
@@ -118,9 +121,7 @@ async def _stage_cassettes(
     )
     fact_id = str(context.facts[0].id)
 
-    b1_request, _ = prepare_b1_request(
-        context, client.model, revision=guidance_payload(request)
-    )
+    b1_request, _ = prepare_b1_request(context, client.model, revision=guidance_payload(request))
     b1_body = {
         "selections": [
             {
@@ -131,9 +132,7 @@ async def _stage_cassettes(
             }
         ]
     }
-    (tmp_path / f"{b1_request.digest}.json").write_text(
-        _response(b1_body).model_dump_json()
-    )
+    (tmp_path / f"{b1_request.digest}.json").write_text(_response(b1_body).model_dump_json())
 
     selection = validate_selection(
         canonical(b1_body), context, prompt_version=b1_request.prompt_version
@@ -149,9 +148,7 @@ async def _stage_cassettes(
             }
         ]
     }
-    (tmp_path / f"{b2_request.digest}.json").write_text(
-        _response(b2_body).model_dump_json()
-    )
+    (tmp_path / f"{b2_request.digest}.json").write_text(_response(b2_body).model_dump_json())
 
     b3_request = summary.prepare_request(context, selection, client.model)
     texts = sentences or [
@@ -159,14 +156,9 @@ async def _stage_cassettes(
         "Focused on infrastructure delivery.",
     ]
     b3_body = {
-        "sentences": [
-            {"text": text, "fact_ids": [fact_id], "numerals_used": []}
-            for text in texts
-        ]
+        "sentences": [{"text": text, "fact_ids": [fact_id], "numerals_used": []} for text in texts]
     }
-    (tmp_path / f"{b3_request.digest}.json").write_text(
-        _response(b3_body).model_dump_json()
-    )
+    (tmp_path / f"{b3_request.digest}.json").write_text(_response(b3_body).model_dump_json())
 
     # B5 runs once per claim, so a cassette is needed for each.
     bullets = tuple(drafting.DraftedBullet(**b) for b in b2_body["bullets"])
@@ -194,14 +186,19 @@ async def _revise(session, tmp_path, demo_application, actor, **staging):
     request = await load_revision_request(session, app_id)
     await _stage_cassettes(session, tmp_path, client, request, **staging)
     attempt, request = await resume_rework._t1_decide_and_record(
-        session, application_id=app_id, approval_id=request.approval_id,
-        actor=actor, instructions=request.instructions,
+        session,
+        application_id=app_id,
+        approval_id=request.approval_id,
+        actor=actor,
+        instructions=request.instructions,
     )
     # Explicit T2 prerequisites; T3 must neither acquire a lease nor decide reuse.
     await resume_review._load_application(session, app_id, lock=True)
     settings = Settings()
     epoch = await RevisionAttemptRepository(session).acquire(
-        attempt.id, owner="test-t3", lease_seconds=settings.revision_lease_ttl_seconds,
+        attempt.id,
+        owner="test-t3",
+        lease_seconds=settings.revision_lease_ttl_seconds,
         max_attempts=settings.revision_max_attempts,
     )
     assert epoch is not None
@@ -210,11 +207,18 @@ async def _revise(session, tmp_path, demo_application, actor, **staging):
     )
     await session.commit()
     result = await generate_revision(
-        session, application_id=app_id, client=client, request=request,
-        writer=IndependentInferenceAudit(context=AuditContext(
-            attempt_id=attempt.id, lease_epoch=epoch, application_id=app_id,
-            approval_id=request.approval_id,
-        )),
+        session,
+        application_id=app_id,
+        client=client,
+        request=request,
+        writer=IndependentInferenceAudit(
+            context=AuditContext(
+                attempt_id=attempt.id,
+                lease_epoch=epoch,
+                application_id=app_id,
+                approval_id=request.approval_id,
+            )
+        ),
     )
     if result.application_status is ApplicationStatus.RESUME_READY:
         # M9. A reworked resume lands back at resume_ready like any other
@@ -222,24 +226,24 @@ async def _revise(session, tmp_path, demo_application, actor, **staging):
         # explicit way they did the first time (no auto mode) before review
         # can reopen. Zero questions here too - this suite tests resume
         # rework, not M9's own extraction.
-        await applications_service.prepare_application(
-            session, application_id=app_id, questions=[]
-        )
+        await applications_service.prepare_application(session, application_id=app_id, questions=[])
     return result
 
 
 async def _rework(session, tmp_path, demo_application, actor, **staging):
     """Exercise decisions and reuse through the real orchestration entry point."""
     app_id = demo_application["id"]
-    request = await load_revision_request(
-        session, app_id, require_changes_requested=False
-    )
+    request = await load_revision_request(session, app_id, require_changes_requested=False)
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
     if staging:
         await _stage_cassettes(session, tmp_path, client, request, **staging)
     return await resume_rework.request_changes_and_regenerate(
-        session, application_id=app_id, approval_id=request.approval_id,
-        actor=actor, note=request.instructions, client=client,
+        session,
+        application_id=app_id,
+        approval_id=request.approval_id,
+        actor=actor,
+        note=request.instructions,
+        client=client,
     )
 
 
@@ -259,11 +263,7 @@ async def _resumes(session, application_id) -> list[Resume]:
 
 async def _application_status(session, application_id) -> ApplicationStatus:
     return (
-        (
-            await session.execute(
-                select(Application).where(Application.id == application_id)
-            )
-        )
+        (await session.execute(select(Application).where(Application.id == application_id)))
         .scalar_one()
         .status
     )
@@ -290,9 +290,7 @@ async def test_the_reviewer_note_is_loaded_from_the_database(
     assert request.instructions == TIGHTEN
     assert request.prior_resume_version == 1
     approval = (
-        await session.execute(
-            select(Approval).where(Approval.id == request.approval_id)
-        )
+        await session.execute(select(Approval).where(Approval.id == request.approval_id))
     ).scalar_one()
     assert approval.status is ApprovalStatus.CHANGES_REQUESTED
     assert approval.subject_snapshot["resume_id"] == str(request.prior_resume_id)
@@ -336,9 +334,7 @@ async def test_a_foreign_newer_version_blocks_a_revision(
     produced, and conflating those two is what would make a retry look stale.
     """
     _base, _evaluation, facts = inputs
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     await c2._supersede_with_a_newer_version(session, demo_application["id"])
 
     # The loader still answers "what would this be built from" - that question
@@ -360,9 +356,7 @@ async def test_a_revision_produces_a_new_verified_version(
 ):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
 
     result = await _revise(
         session,
@@ -383,9 +377,7 @@ async def test_a_revision_produces_a_new_verified_version(
     assert result.reused is False
     # By the time _revise returns, M9's zero-question prepare has already
     # advanced the application past the point generate_revision left it.
-    assert (
-        await _application_status(session, app_id)
-    ) is ApplicationStatus.QUESTIONS_PENDING
+    assert (await _application_status(session, app_id)) is ApplicationStatus.QUESTIONS_PENDING
 
 
 async def test_v1_and_its_claims_survive_untouched(
@@ -394,9 +386,7 @@ async def test_v1_and_its_claims_survive_untouched(
     """Append-only means append-only. v1 is evidence of what was reviewed."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     v1 = (await _resumes(session, app_id))[0]
     before = {
         "id": v1.id,
@@ -433,9 +423,7 @@ async def test_v2_gets_its_own_claims_and_records_what_it_was_revised_from(
 ):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     request = await load_revision_request(session, app_id)
 
     result = await _revise(
@@ -450,10 +438,7 @@ async def test_v2_gets_its_own_claims_and_records_what_it_was_revised_from(
     v1_claims = await c2._claims(session, v1.id)
     v2_claims = await c2._claims(session, v2.id)
     assert {c.id for c in v1_claims}.isdisjoint({c.id for c in v2_claims})
-    assert any(
-        c.claim_text == "Delivered AWS infrastructure work, tightened."
-        for c in v2_claims
-    )
+    assert any(c.claim_text == "Delivered AWS infrastructure work, tightened." for c in v2_claims)
     provenance = v2.diff_vs_base
     assert provenance[FINGERPRINT_KEY] == revision_fingerprint(request)
     assert provenance["revised_from_version"] == 1
@@ -467,9 +452,7 @@ async def test_the_rework_transition_is_recorded(
     """changes_requested -> resume_generating -> resume_ready, all in history."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
 
     await _revise(
         session,
@@ -500,7 +483,9 @@ async def test_the_rework_transition_is_recorded(
         ApplicationStatus.RESUME_READY,
     ) in edges
     rework = next(
-        row for row in rows if row.to_status is ApplicationStatus.RESUME_GENERATING
+        row
+        for row in rows
+        if row.to_status is ApplicationStatus.RESUME_GENERATING
         and row.from_status is ApplicationStatus.CHANGES_REQUESTED
     )
     assert rework.actor_type == "human"
@@ -515,7 +500,7 @@ async def test_the_rework_transition_is_recorded(
 async def test_a_reviewer_cannot_buy_a_numeral_the_evidence_lacks(
     session, demo_profile, demo_job, demo_application, inputs, tmp_path
 ):
-    """"Add that I increased revenue by 40%" - and the model obliges.
+    """ "Add that I increased revenue by 40%" - and the model obliges.
 
     The note is honoured all the way into B2's output, and the numeral guard
     still refuses it, because the guard compares against the cited fact's
@@ -564,9 +549,7 @@ async def test_a_reviewer_cannot_buy_a_numeral_the_evidence_lacks(
         .all()
     )
     failures = [e.payload.get("failure", e.payload) for e in violations]
-    assert any(
-        f.get("kind") == "fabrication" and f.get("step") == "B2" for f in failures
-    ), failures
+    assert any(f.get("kind") == "fabrication" and f.get("step") == "B2" for f in failures), failures
 
 
 async def test_an_unsupported_claim_fails_verification_rather_than_passing(
@@ -602,15 +585,11 @@ async def test_an_unsupported_claim_fails_verification_rather_than_passing(
     assert result.application_status is ApplicationStatus.VERIFICATION_FAILED
     v2 = (await _resumes(session, app_id))[1]
     assert v2.verification_status == "failed"
-    assert any(
-        c.verdict is ClaimVerdict.UNSUPPORTED for c in await c2._claims(session, v2.id)
-    )
+    assert any(c.verdict is ClaimVerdict.UNSUPPORTED for c in await c2._claims(session, v2.id))
     # v1 is untouched and the human's decision still stands.
     assert (await _resumes(session, app_id))[0].verification_status == "passed"
     approval = (
-        await session.execute(
-            select(Approval).where(Approval.application_id == app_id)
-        )
+        await session.execute(select(Approval).where(Approval.application_id == app_id))
     ).scalar_one()
     assert approval.status is ApprovalStatus.CHANGES_REQUESTED
 
@@ -652,9 +631,7 @@ async def test_the_note_reaches_b1_and_nothing_downstream(
     """
     _base, _evaluation, facts = inputs
     note = "Lead with the infrastructure work."
-    await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts, note=note
-    )
+    await _changes_requested(session, demo_profile, demo_job, demo_application, facts, note=note)
     request = await load_revision_request(session, demo_application["id"])
     client = StructuredClient(Settings(), cassette_dir=tmp_path)
     context, selection = await _stage_cassettes(
@@ -665,9 +642,7 @@ async def test_the_note_reaches_b1_and_nothing_downstream(
         bullet_text="Delivered AWS infrastructure work.",
     )
 
-    b1_request, _ = prepare_b1_request(
-        context, client.model, revision=guidance_payload(request)
-    )
+    b1_request, _ = prepare_b1_request(context, client.model, revision=guidance_payload(request))
     assert "infrastructure work" in b1_request.user
 
     b2_request = drafting.prepare_request(context, selection, client.model)
@@ -689,9 +664,7 @@ async def test_a_retried_revision_returns_the_same_version(
     """The retry finds its own earlier result rather than producing v3."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     first = await _rework(
         session,
         tmp_path,
@@ -711,9 +684,7 @@ async def test_a_retry_adds_no_history_or_events(
 ):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     await _rework(
         session,
         tmp_path,
@@ -723,9 +694,7 @@ async def test_a_retry_adds_no_history_or_events(
     )
     history = await c2._history_count(session, app_id)
     events = (
-        await session.execute(
-            select(func.count(Event.id)).where(Event.aggregate_id == app_id)
-        )
+        await session.execute(select(func.count(Event.id)).where(Event.aggregate_id == app_id))
     ).scalar_one()
 
     reused = await _rework(session, tmp_path, demo_application, actor)
@@ -733,9 +702,7 @@ async def test_a_retry_adds_no_history_or_events(
 
     assert await c2._history_count(session, app_id) == history
     assert (
-        await session.execute(
-            select(func.count(Event.id)).where(Event.aggregate_id == app_id)
-        )
+        await session.execute(select(func.count(Event.id)).where(Event.aggregate_id == app_id))
     ).scalar_one() == events
 
 
@@ -750,9 +717,7 @@ async def test_the_fingerprint_is_what_recognises_a_retry(
     """
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     request = await load_revision_request(session, app_id)
     await _rework(
         session,
@@ -786,9 +751,7 @@ async def test_v2_inherits_no_approval_and_needs_a_fresh_review(
     """A new version is un-reviewed, whatever was decided about the old one."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     await _revise(
         session,
         tmp_path,
@@ -813,9 +776,7 @@ async def test_starting_review_again_binds_a_new_approval_to_v2(
     """The old decision stays bound to v1; the new one is about v2 alone."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     v1 = (await _resumes(session, app_id))[0]
     old_approval = (await c2._approvals(session, app_id))[0]
     old_snapshot = dict(old_approval.subject_snapshot)
@@ -847,9 +808,7 @@ async def test_v2_can_be_approved_independently(
 ):
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
     result = await _revise(
         session,
         tmp_path,
@@ -878,9 +837,7 @@ async def test_a_failed_revision_leaves_no_claims_marked_passed(
     """Defence in depth on the one thing that must never be wrong."""
     _base, _evaluation, facts = inputs
     app_id = demo_application["id"]
-    actor = await _changes_requested(
-        session, demo_profile, demo_job, demo_application, facts
-    )
+    actor = await _changes_requested(session, demo_profile, demo_job, demo_application, facts)
 
     await _revise(
         session,

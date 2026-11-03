@@ -1,4 +1,5 @@
 """M5 unknown evidence never becomes numeric credit or a mismatch."""
+
 from datetime import date
 from uuid import uuid4
 
@@ -17,13 +18,20 @@ def requirement(text="Experience with AWS", years=None):
 
 
 def alignments(value=True):
-    return {name: Alignment(value, "explicit fixture evidence")
-            for name in ("seniority", "domain", "location")}
+    return {
+        name: Alignment(value, "explicit fixture evidence")
+        for name in ("seniority", "domain", "location")
+    }
 
 
 def evaluate(reqs, facts, dimensions=None):
-    return assess(reqs, facts, today=TODAY, extraction_confident=True,
-                  alignments=alignments() if dimensions is None else dimensions)
+    return assess(
+        reqs,
+        facts,
+        today=TODAY,
+        extraction_confident=True,
+        alignments=alignments() if dimensions is None else dimensions,
+    )
 
 
 def test_empty_requirements_are_unresolved_not_100():
@@ -63,8 +71,10 @@ def test_explicit_alignment_mismatches_are_distinct_from_unknown():
     result = evaluate([requirement()], [FactView(uuid4(), "AWS")], alignments(False))
     assert result.status == "assessed"
     assert result.breakdown.score < 55
-    assert all(row["status"] == "mismatch"
-               for row in result.evidence()["assessment"]["alignments"].values())
+    assert all(
+        row["status"] == "mismatch"
+        for row in result.evidence()["assessment"]["alignments"].values()
+    )
 
 
 def test_dated_partial_support_is_assessable_but_missing_dates_are_unknown():
@@ -78,20 +88,39 @@ def test_dated_partial_support_is_assessable_but_missing_dates_are_unknown():
 
 
 def test_no_preferences_are_inferred_from_default_constraints():
-    result = align([], seniority="senior", title="Cloud Engineer", target_roles=[],
-                   is_remote=True, is_hybrid=False, location_state=None)
+    result = align(
+        [],
+        seniority="senior",
+        title="Cloud Engineer",
+        target_roles=[],
+        is_remote=True,
+        is_hybrid=False,
+        location_state=None,
+    )
     assert all(row.value is None for row in result.values())
 
 
 def test_conflicting_verified_preferences_are_unknown():
     facts = [FactView(uuid4(), "preference", {"accepts_remote": value}) for value in (True, False)]
-    result = align(facts, seniority="unknown", title="", target_roles=[],
-                   is_remote=True, is_hybrid=False, location_state=None)
+    result = align(
+        facts,
+        seniority="unknown",
+        title="",
+        target_roles=[],
+        is_remote=True,
+        is_hybrid=False,
+        location_state=None,
+    )
     assert result["location"].value is None
 
 
 def test_low_confidence_extraction_is_not_completed_by_inference():
-    result = assess([requirement()], [FactView(uuid4(), "AWS")], today=TODAY,
-                    extraction_confident=False, alignments=alignments())
+    result = assess(
+        [requirement()],
+        [FactView(uuid4(), "AWS")],
+        today=TODAY,
+        extraction_confident=False,
+        alignments=alignments(),
+    )
     assert result.status == "insufficient_evidence"
     assert result.breakdown is None

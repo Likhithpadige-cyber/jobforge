@@ -47,7 +47,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.safety]
 
 @pytest.fixture
 async def scenario(
-    session, engine, demo_profile, demo_job, demo_application, inputs, tmp_path,
+    session,
+    engine,
+    demo_profile,
+    demo_job,
+    demo_application,
+    inputs,
+    tmp_path,
     audit_boundary_engine,
 ):
     _, _, facts = inputs
@@ -109,9 +115,7 @@ async def _stage_next_cycle(scenario, tmp_path):
     # owner re-triggers question preparation before review can reopen for
     # this new version, the same explicit way as after the first generation.
     async with maker() as db:
-        await applications_service.prepare_application(
-            db, application_id=app_id, questions=[]
-        )
+        await applications_service.prepare_application(db, application_id=app_id, questions=[])
         await db.commit()
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
     assert opened.status_code == 200, opened.text
@@ -122,9 +126,7 @@ async def _stage_next_cycle(scenario, tmp_path):
         actor = await db.get(User, first.decided_by)
         assert actor is not None
         savepoint = await db.begin_nested()
-        await resume_review.request_changes(
-            db, application_id=app_id, actor=actor, note=c3.TIGHTEN
-        )
+        await resume_review.request_changes(db, application_id=app_id, actor=actor, note=c3.TIGHTEN)
         request = await load_revision_request(db, app_id)
         await c3._stage_cassettes(
             db, tmp_path, model, request, bullet_text="Built infrastructure with AWS."
@@ -135,10 +137,14 @@ async def _stage_next_cycle(scenario, tmp_path):
 
 
 async def _cycle_count(db, app_id):
-    approvals = (await db.scalars(select(Approval).where(
-        Approval.application_id == app_id,
-        Approval.status == ApprovalStatus.CHANGES_REQUESTED,
-    ))).all()
+    approvals = (
+        await db.scalars(
+            select(Approval).where(
+                Approval.application_id == app_id,
+                Approval.status == ApprovalStatus.CHANGES_REQUESTED,
+            )
+        )
+    ).all()
     return len(approvals)
 
 
@@ -203,7 +209,7 @@ async def test_three_human_cycles_survive_failures_and_third_revision_is_approva
             await c2._history_count(db, app_id),
         )
     redis = http._transport.app.dependency_overrides[get_redis]()
-    revision_key, = (key for key in redis.counters if key.startswith("rl:revision:"))
+    (revision_key,) = (key for key in redis.counters if key.startswith("rl:revision:"))
     assert redis.counters[revision_key] == 6
     # Isolate completed-revision replay/idempotency from M3's independent hourly
     # abuse-control policy by advancing exactly to the next rate-limit window.
@@ -227,9 +233,7 @@ async def test_three_human_cycles_survive_failures_and_third_revision_is_approva
     # suite is about C3 rework, not M9 extraction) the same explicit way as
     # after the first generation, before review can reopen.
     async with maker() as db:
-        await applications_service.prepare_application(
-            db, application_id=app_id, questions=[]
-        )
+        await applications_service.prepare_application(db, application_id=app_id, questions=[])
         await db.commit()
 
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
@@ -262,9 +266,7 @@ async def test_three_human_cycles_survive_failures_and_third_revision_is_approva
         await c2._complete_cover_letter_approval(db, app_id, actor, facts[0].id)
         await db.commit()
 
-    approved = await http.post(
-        f"/api/v1/applications/{app_id}/resume-review/approve", json={}
-    )
+    approved = await http.post(f"/api/v1/applications/{app_id}/resume-review/approve", json={})
     assert approved.status_code == 200, approved.text
     assert approved.json()["application_status"] == "approved"
     later = await http.post(endpoint, json=fourth_body)
@@ -303,9 +305,14 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
         attempt = attempts[0]
         # The successful T2 lease produced B1, B2, B3 and one B5 per claim.
         # The identical HTTP retry must add no stage or run.
-        steps = (await db.scalars(select(AgentRunStep).where(
-            AgentRunStep.guardrail_results["c3_execution"]["application_id"].astext == str(app_id)
-        ))).all()
+        steps = (
+            await db.scalars(
+                select(AgentRunStep).where(
+                    AgentRunStep.guardrail_results["c3_execution"]["application_id"].astext
+                    == str(app_id)
+                )
+            )
+        ).all()
         assert sorted(step.step_name for step in steps) == ["B1", "B2", "B3", "B5", "B5", "B5"]
         b5_steps = [step for step in steps if step.step_name == "B5"]
         assert {step.guardrail_results["claim_index"] for step in b5_steps} == {0, 1, 2}
@@ -315,8 +322,10 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
         assert len(runs) == 6
         assert all(run.status == "succeeded" for run in runs)
         execution = {
-            "attempt_id": str(attempt.id), "lease_epoch": attempt.lease_epoch,
-            "application_id": str(app_id), "approval_id": str(approval_id),
+            "attempt_id": str(attempt.id),
+            "lease_epoch": attempt.lease_epoch,
+            "application_id": str(app_id),
+            "approval_id": str(approval_id),
         }
         assert all(step.guardrail_results["c3_execution"] == execution for step in steps)
     assert (await post(scenario, note="Different instructions")).status_code == 409
@@ -324,9 +333,7 @@ async def test_http_regenerates_and_retries_without_another_version(scenario):
     # M9. As above: the owner re-triggers question preparation for the
     # regenerated version before review can reopen.
     async with maker() as db:
-        await applications_service.prepare_application(
-            db, application_id=app_id, questions=[]
-        )
+        await applications_service.prepare_application(db, application_id=app_id, questions=[])
         await db.commit()
     opened = await http.post(f"/api/v1/applications/{app_id}/resume-review", json={})
     assert opened.status_code == 200
@@ -423,8 +430,7 @@ async def _status_events(db, application_id, edge):
     return [
         e
         for e in rows
-        if e.payload.get("from_status") == str(source)
-        and e.payload.get("to_status") == str(target)
+        if e.payload.get("from_status") == str(source) and e.payload.get("to_status") == str(target)
     ]
 
 
@@ -474,9 +480,7 @@ async def _claim_count(db, application_id) -> int:
     )
 
 
-async def test_http_failure_keeps_decision_and_attempt_then_retry_reuses_it(
-    scenario, monkeypatch
-):
+async def test_http_failure_keeps_decision_and_attempt_then_retry_reuses_it(scenario, monkeypatch):
     """PO-4: a failed generation preserves evidence instead of erasing it.
 
     This test replaces an earlier one that asserted the opposite - that a
@@ -586,9 +590,7 @@ async def test_http_failure_keeps_decision_and_attempt_then_retry_reuses_it(
         assert len(await c3._resumes(db, app_id)) == 2
 
 
-async def test_http_terminal_failure_recovers_and_refuses_an_automatic_retry(
-    scenario, monkeypatch
-):
+async def test_http_terminal_failure_recovers_and_refuses_an_automatic_retry(scenario, monkeypatch):
     """The other half of T5, and it must NOT look like the retryable half.
 
     An unretryable class closes the attempt for good. The application is still
@@ -619,9 +621,7 @@ async def test_http_terminal_failure_recovers_and_refuses_an_automatic_retry(
         assert attempt.recovered_at is not None
         assert attempt.finished_at is not None
         # The decision survives and the application is actionable again.
-        assert (await db.get(Approval, approval_id)).status == (
-            ApprovalStatus.CHANGES_REQUESTED
-        )
+        assert (await db.get(Approval, approval_id)).status == (ApprovalStatus.CHANGES_REQUESTED)
         assert (await db.get(Application, app_id)).status == "changes_requested"
         assert len(await _history(db, app_id, RECOVERY_EDGE)) == 1
         assert len(await _status_events(db, app_id, RECOVERY_EDGE)) == 1
@@ -690,9 +690,7 @@ async def test_a_fenced_out_failure_report_is_durable_not_just_logged(
         assert len(not_recorded) == 1
 
         # And the human decision is untouched by any of it.
-        assert (await db.get(Approval, approval_id)).status == (
-            ApprovalStatus.CHANGES_REQUESTED
-        )
+        assert (await db.get(Approval, approval_id)).status == (ApprovalStatus.CHANGES_REQUESTED)
 
 
 # =====================================================================
@@ -1033,8 +1031,7 @@ async def test_concurrent_http_retries_create_one_revision(scenario, monkeypatch
             # failed acquisition. Neither may hold the application lock.
             async with maker() as db:
                 await db.execute(
-                    select(Application).where(Application.id == app_id)
-                    .with_for_update(nowait=True)
+                    select(Application).where(Application.id == app_id).with_for_update(nowait=True)
                 )
                 await db.execute(
                     select(ResumeRevisionAttempt)
@@ -1076,8 +1073,11 @@ async def test_application_lock_precedes_attempt_access(
         actor = await c2._actor(setup, demo_application)
         actor_id = actor.id
         attempt, request = await resume_rework._t1_decide_and_record(
-            setup, application_id=app_id, approval_id=approval_id,
-            actor=actor, instructions=c3.TIGHTEN,
+            setup,
+            application_id=app_id,
+            approval_id=approval_id,
+            actor=actor,
+            instructions=c3.TIGHTEN,
         )
         attempt_id = attempt.id
 
@@ -1096,11 +1096,17 @@ async def test_application_lock_precedes_attempt_access(
                 blocker, application_id=app_id, request=request, actor_id=actor_id
             )
             await repo.fail(
-                attempt_id, owner="failed-worker", epoch=epoch,
-                failure_class=(RevisionFailureClass.BUDGET_EXCEEDED
-                               if phase == "terminal"
-                               else RevisionFailureClass.PERSISTENCE_FAILED),
-                detail="lock-order regression", max_attempts=3, evidence_stale_budget=1,
+                attempt_id,
+                owner="failed-worker",
+                epoch=epoch,
+                failure_class=(
+                    RevisionFailureClass.BUDGET_EXCEEDED
+                    if phase == "terminal"
+                    else RevisionFailureClass.PERSISTENCE_FAILED
+                ),
+                detail="lock-order regression",
+                max_attempts=3,
+                evidence_stale_budget=1,
             )
 
         touched = []
@@ -1118,9 +1124,13 @@ async def test_application_lock_precedes_attempt_access(
         async def run():
             if phase == "acquire":
                 acquired_epoch = await resume_rework._acquire_or_wait(
-                    worker, attempts=RevisionAttemptRepository(worker),
-                    attempt_id=attempt_id, application_id=app_id,
-                    approval_id=approval_id, owner="winner", settings=Settings(),
+                    worker,
+                    attempts=RevisionAttemptRepository(worker),
+                    attempt_id=attempt_id,
+                    application_id=app_id,
+                    approval_id=approval_id,
+                    owner="winner",
+                    settings=Settings(),
                 )
                 assert acquired_epoch == 1
                 await resume_revision.begin_generation(
@@ -1131,8 +1141,10 @@ async def test_application_lock_precedes_attempt_access(
                 await resume_rework._t5_recover(
                     worker,
                     context=AuditContext(
-                        attempt_id=attempt_id, application_id=app_id,
-                        approval_id=approval_id, lease_epoch=epoch,
+                        attempt_id=attempt_id,
+                        application_id=app_id,
+                        approval_id=approval_id,
+                        lease_epoch=epoch,
                     ),
                     actor_id=actor_id,
                 )
@@ -1151,14 +1163,18 @@ async def test_application_lock_precedes_attempt_access(
                 if phase == "retryable":
                     # A new owner wins while recovery waits. T5 must inspect
                     # eligibility after the lock and leave that owner alone.
-                    assert await repo.acquire(
-                        attempt_id, owner="new-owner", lease_seconds=300, max_attempts=3
-                    ) == 2
+                    assert (
+                        await repo.acquire(
+                            attempt_id, owner="new-owner", lease_seconds=300, max_attempts=3
+                        )
+                        == 2
+                    )
                 else:
                     # Duplicate T1's unique-conflict check must finish while
                     # the other session waits for this application.
                     duplicate = await repo.resolve_or_create(
-                        request, requested_by=actor_id,
+                        request,
+                        requested_by=actor_id,
                         instructions_digest=resume_rework.instructions_digest(c3.TIGHTEN),
                     )
                     assert duplicate.id == attempt_id

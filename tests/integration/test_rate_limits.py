@@ -115,9 +115,7 @@ async def registered_email(engine):  # type: ignore[no-untyped-def]
         yield email
     finally:
         async with maker() as teardown:
-            await teardown.execute(
-                text("DELETE FROM users WHERE id = :id"), {"id": user_id}
-            )
+            await teardown.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
             await teardown.commit()
 
 
@@ -209,9 +207,7 @@ async def test_limiting_does_not_reveal_whether_an_email_exists(
     assert known[-1][0] == 429
 
 
-async def test_a_refusal_does_not_mint_a_session(
-    app_client, limiter_redis, small_limits
-) -> None:
+async def test_a_refusal_does_not_mint_a_session(app_client, limiter_redis, small_limits) -> None:
     """429 must not be a side door: no cookie, no session record."""
     email = f"d-{uuid7()}@{EMAIL_DOMAIN}"
     for _ in range(3):
@@ -275,9 +271,9 @@ def test_the_login_schema_refuses_special_use_domains() -> None:
     with pytest.raises(pydantic.ValidationError):
         LoginRequest(email="someone@example.invalid", password=KNOWN_PASSWORD)
 
-    assert LoginRequest(
-        email=f"someone@{EMAIL_DOMAIN}", password=KNOWN_PASSWORD
-    ).email.endswith(EMAIL_DOMAIN)
+    assert LoginRequest(email=f"someone@{EMAIL_DOMAIN}", password=KNOWN_PASSWORD).email.endswith(
+        EMAIL_DOMAIN
+    )
 
 
 # ================================================ authenticated expensive work
@@ -285,9 +281,7 @@ def _revision_path(application_id) -> str:  # type: ignore[no-untyped-def]
     return f"/api/v1/applications/{application_id}/resume-review/request-changes"
 
 
-async def test_request_changes_is_limited_per_user(
-    api_sessions, small_limits
-) -> None:
+async def test_request_changes_is_limited_per_user(api_sessions, small_limits) -> None:
     """The budget is spent before the application is even looked up.
 
     A random id would normally answer 404. Once the budget is gone the answer
@@ -308,9 +302,7 @@ async def test_request_changes_is_limited_per_user(
     assert "Retry-After" in refused.headers
 
 
-async def test_one_users_revision_budget_is_not_anothers(
-    api_sessions, small_limits
-) -> None:
+async def test_one_users_revision_budget_is_not_anothers(api_sessions, small_limits) -> None:
     owner = await api_sessions("owner")
     reviewer = await api_sessions("reviewer")
     body = {"approval_id": str(uuid7()), "note": "please revise the summary"}
@@ -353,9 +345,7 @@ async def test_anonymous_callers_are_refused_before_any_budget(
     assert limiter_redis.counters == {}
 
 
-async def test_a_reviewer_is_refused_by_role_before_any_budget(
-    api_sessions, small_limits
-) -> None:
+async def test_a_reviewer_is_refused_by_role_before_any_budget(api_sessions, small_limits) -> None:
     """403 for the wrong role, and the owner's import budget is untouched."""
     reviewer = await api_sessions("reviewer")
     for _ in range(5):
@@ -368,9 +358,7 @@ async def test_a_reviewer_is_refused_by_role_before_any_budget(
     assert allowed.status_code != 429, "a refused reviewer spent the owner's budget"
 
 
-async def test_csrf_is_still_enforced_ahead_of_the_limiter(
-    api_sessions, small_limits
-) -> None:
+async def test_csrf_is_still_enforced_ahead_of_the_limiter(api_sessions, small_limits) -> None:
     """A session without a token is refused for CSRF, not for rate limiting,
     and the missing token does not consume the budget either."""
     owner = await api_sessions("owner")

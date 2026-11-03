@@ -209,9 +209,7 @@ async def test_s3_put_sends_content_type_and_no_acl(
     await s3_store.put(KEY, DATA, content_type=TEXT)
 
 
-async def test_s3_get_round_trips_exact_bytes(
-    s3_store: S3ArtifactStore, stubber: Stubber
-) -> None:
+async def test_s3_get_round_trips_exact_bytes(s3_store: S3ArtifactStore, stubber: Stubber) -> None:
     body = StreamingBody(io.BytesIO(DATA), len(DATA))
     stubber.add_response(
         "get_object",
@@ -232,9 +230,7 @@ async def test_s3_exists_false_for_a_missing_object(
     s3_store: S3ArtifactStore, stubber: Stubber
 ) -> None:
     """A 404 HeadObject answers "no", not "unavailable"."""
-    stubber.add_client_error(
-        "head_object", service_error_code="404", http_status_code=404
-    )
+    stubber.add_client_error("head_object", service_error_code="404", http_status_code=404)
     assert await s3_store.exists(KEY) is False
 
 
@@ -242,9 +238,7 @@ async def test_s3_get_of_a_missing_object_fails_closed(
     s3_store: S3ArtifactStore, stubber: Stubber
 ) -> None:
     """A missing GetObject is the store's own "unavailable", never b""."""
-    stubber.add_client_error(
-        "get_object", service_error_code="NoSuchKey", http_status_code=404
-    )
+    stubber.add_client_error("get_object", service_error_code="NoSuchKey", http_status_code=404)
     with pytest.raises(ArtifactStoreUnavailableError):
         await s3_store.get(KEY)
 
@@ -257,9 +251,7 @@ async def test_s3_verify_accepts_a_matching_checksum(
     await s3_store.verify(KEY, sha256=DIGEST)
 
 
-async def test_s3_verify_refuses_a_mismatch(
-    s3_store: S3ArtifactStore, stubber: Stubber
-) -> None:
+async def test_s3_verify_refuses_a_mismatch(s3_store: S3ArtifactStore, stubber: Stubber) -> None:
     """Re-hashes the object rather than trusting ETag.
 
     ETag is MD5 for a single-part upload and not a content hash at all for a

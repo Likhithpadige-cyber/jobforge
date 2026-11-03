@@ -177,8 +177,10 @@ def test_no_salary_text() -> None:
 
 def test_implausible_parse_is_rejected() -> None:
     """A phone number or a year must not become a salary."""
-    assert parse_salary("call 555 - 1234").period != "yearly" or \
-           parse_salary("call 555 - 1234").minimum is None
+    assert (
+        parse_salary("call 555 - 1234").period != "yearly"
+        or parse_salary("call 555 - 1234").minimum is None
+    )
 
 
 # ------------------------------------------------------------- description

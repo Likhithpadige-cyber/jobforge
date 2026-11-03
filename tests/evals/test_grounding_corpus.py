@@ -2,6 +2,7 @@
 
 This measures safety-contract enforcement, not a live model's semantic accuracy.
 """
+
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -45,33 +46,56 @@ def offline_only(monkeypatch):
 
 def context_for(case):
     fact = TailoringFact(
-        id=UUID(int=1), text=case.get("fact", "Maintained AWS infrastructure."),
-        structured=case.get("structured", {}), fact_type=FactType.EXPERIENCE,
+        id=UUID(int=1),
+        text=case.get("fact", "Maintained AWS infrastructure."),
+        structured=case.get("structured", {}),
+        fact_type=FactType.EXPERIENCE,
         status=FactStatus(case.get("status", "verified")),
     )
     context = TailoringContext(
-        profile_id=UUID(int=10), base_resume_id=UUID(int=11), base_resume_version=1,
-        base_resume_structure={"sections": []}, facts=(fact,),
+        profile_id=UUID(int=10),
+        base_resume_id=UUID(int=11),
+        base_resume_version=1,
+        base_resume_structure={"sections": []},
+        facts=(fact,),
         job={"id": UUID(int=12), "title": "Cloud Engineer", "description_raw": ""},
-        evaluation_id=UUID(int=13), profile_version=1, match_matrix={"requirements": []},
-        score=Decimal("70"), recommendation=Recommendation.MODERATE,
-        score_breakdown={}, rationale="Synthetic persisted rationale", gaps=(),
+        evaluation_id=UUID(int=13),
+        profile_version=1,
+        match_matrix={"requirements": []},
+        score=Decimal("70"),
+        recommendation=Recommendation.MODERATE,
+        score_breakdown={},
+        rationale="Synthetic persisted rationale",
+        gaps=(),
     )
     selected = selection.SelectionResult(
-        selections=(selection.Selection(fact_id=str(fact.id), section="experience",
-                                        order=1, emphasis="normal"),),
-        evaluation_gaps=(), material_gaps=(), requires_human_review=False,
+        selections=(
+            selection.Selection(
+                fact_id=str(fact.id), section="experience", order=1, emphasis="normal"
+            ),
+        ),
+        evaluation_gaps=(),
+        material_gaps=(),
+        requires_human_review=False,
         prompt_version="offline-fixture",
     )
     return context, selected
 
 
 def drafted_body(case):
-    return canonical({"bullets": [{
-        "text": case.get("claim", "Maintained AWS infrastructure."),
-        "fact_ids": [] if case.get("no_citations") else [str(UUID(int=case.get("citation", 1)))],
-        "numerals_used": [],
-    }]})
+    return canonical(
+        {
+            "bullets": [
+                {
+                    "text": case.get("claim", "Maintained AWS infrastructure."),
+                    "fact_ids": []
+                    if case.get("no_citations")
+                    else [str(UUID(int=case.get("citation", 1)))],
+                    "numerals_used": [],
+                }
+            ]
+        }
+    )
 
 
 @pytest.mark.parametrize("case", cases(), ids=lambda case: f'{case["category"]}.{case["id"]}')
@@ -79,17 +103,24 @@ async def test_grounding_case(case, tmp_path):
     context, selected = context_for(case)
     kind = case["kind"]
     if kind == "draft_guard":
-        errors = {cls.__name__: cls for cls in (
-            ModelOutputError, PiiInPromptError, drafting.UnapprovedFactError,
-            drafting.NumeralGuardError,
-        )}
+        errors = {
+            cls.__name__: cls
+            for cls in (
+                ModelOutputError,
+                PiiInPromptError,
+                drafting.UnapprovedFactError,
+                drafting.NumeralGuardError,
+            )
+        }
         if case["expected_error"]:
             with pytest.raises(errors[case["expected_error"]]):
-                drafting.validate_drafting(drafted_body(case), context, selected,
-                                           prompt_version="offline")
+                drafting.validate_drafting(
+                    drafted_body(case), context, selected, prompt_version="offline"
+                )
         else:
-            result = drafting.validate_drafting(drafted_body(case), context, selected,
-                                                prompt_version="offline")
+            result = drafting.validate_drafting(
+                drafted_body(case), context, selected, prompt_version="offline"
+            )
             assert result.bullets[0].text == case["claim"]
     elif kind == "schema":
         with pytest.raises(ModelOutputError):
@@ -97,26 +128,38 @@ async def test_grounding_case(case, tmp_path):
     elif kind == "verifier_replay":
         # Passing deterministic guards is not semantic proof. Exercise the actual
         # independent verifier and audit path with an explicitly scripted verdict.
-        result = drafting.validate_drafting(drafted_body(case), context, selected,
-                                            prompt_version="offline")
+        result = drafting.validate_drafting(
+            drafted_body(case), context, selected, prompt_version="offline"
+        )
         calls = []
 
         async def transport(request):
             calls.append(request)
             raise AssertionError("Replay must never invoke a live transport")
 
-        client = StructuredClient(Settings(llm_mode="replay", anthropic_api_key=""),
-                                  cassette_dir=tmp_path, transport=transport)
+        client = StructuredClient(
+            Settings(llm_mode="replay", anthropic_api_key=""),
+            cassette_dir=tmp_path,
+            transport=transport,
+        )
         request = verification.prepare_request(case["claim"], list(context.facts), client.model)
-        reply = Response(body=canonical({"verdict": case["verdict"],
-                                         "explanation": "Scripted corpus verdict."}),
-                         input_tokens=40, output_tokens=20, cost_usd=Decimal("0"),
-                         stop_reason="tool_use")
+        reply = Response(
+            body=canonical({"verdict": case["verdict"], "explanation": "Scripted corpus verdict."}),
+            input_tokens=40,
+            output_tokens=20,
+            cost_usd=Decimal("0"),
+            stop_reason="tool_use",
+        )
         (tmp_path / f"{request.digest}.json").write_text(reply.model_dump_json())
         session = Mock()
         writer = FakeInferenceAudit(session)
-        kwargs = {"claim_text": result.bullets[0].text, "cited_facts": list(context.facts),
-                  "aggregate_id": context.job["id"], "client": client, "writer": writer}
+        kwargs = {
+            "claim_text": result.bullets[0].text,
+            "cited_facts": list(context.facts),
+            "aggregate_id": context.job["id"],
+            "client": client,
+            "writer": writer,
+        }
         if case["verdict"] == "supported":
             verdict = await verification.verify_claim(session, **kwargs)
             assert verdict.verdict == ClaimVerdict.SUPPORTED
@@ -141,16 +184,29 @@ async def test_grounding_case(case, tmp_path):
         from datetime import date
 
         extracted = extract_requirements(case["description"])
-        result = assess(extracted.requirements, [FactView(UUID(int=1), "AWS")],
-                        alignments={name: Alignment(True, "explicit fixture comparison")
-                                    for name in ("seniority", "domain", "location")},
-                        today=date(2026, 1, 1),
-                        extraction_confident=not extracted.needs_llm_fallback)
+        result = assess(
+            extracted.requirements,
+            [FactView(UUID(int=1), "AWS")],
+            alignments={
+                name: Alignment(True, "explicit fixture comparison")
+                for name in ("seniority", "domain", "location")
+            },
+            today=date(2026, 1, 1),
+            extraction_confident=not extracted.needs_llm_fallback,
+        )
         assert result.status == "insufficient_evidence"
         assert result.breakdown is None
     elif kind == "rationale":
-        matrix = {"requirements": [{"requirement_text": "AWS", "necessity": "required",
-                                    "status": "met", "fact_ids": ["f1"] if case["cited"] else []}]}
+        matrix = {
+            "requirements": [
+                {
+                    "requirement_text": "AWS",
+                    "necessity": "required",
+                    "status": "met",
+                    "fact_ids": ["f1"] if case["cited"] else [],
+                }
+            ]
+        }
         before = canonical(matrix)
         first = build_rationale(matrix, score=70, recommendation="moderate")
         second = build_rationale(matrix, score=70, recommendation="moderate")
@@ -185,23 +241,39 @@ async def test_grounding_case(case, tmp_path):
         from packages.core.services.applications import draft_answer
 
         profile_fields: dict[str, object] = {
-            "id": uuid4(), "user_id": uuid4(), "full_name": "Offline Candidate",
-            "email": "offline@example.invalid", "phone": "555-0100",
-            "location_city": "Austin", "location_state": "Texas",
-            "location_country": "USA", "willing_to_relocate": True,
-            "target_roles": [], "accepted_employment_types": None, "links": {},
+            "id": uuid4(),
+            "user_id": uuid4(),
+            "full_name": "Offline Candidate",
+            "email": "offline@example.invalid",
+            "phone": "555-0100",
+            "location_city": "Austin",
+            "location_state": "Texas",
+            "location_country": "USA",
+            "willing_to_relocate": True,
+            "target_roles": [],
+            "accepted_employment_types": None,
+            "links": {},
         }
         profile_fields.update(case.get("profile_overrides", {}))
         profile = Profile(**profile_fields)  # type: ignore[arg-type]
         facts = [
-            ProfileFact(id=uuid4(), profile_id=profile.id, fact_type=f["fact_type"],
-                       text=f["text"], source_table="certifications", source_id=uuid4(),
-                       status="verified")  # type: ignore[arg-type]
+            ProfileFact(
+                id=uuid4(),
+                profile_id=profile.id,
+                fact_type=f["fact_type"],
+                text=f["text"],
+                source_table="certifications",
+                source_id=uuid4(),
+                status="verified",
+            )  # type: ignore[arg-type]
             for f in case.get("facts", [])
         ]
         drafted = draft_answer(
-            case["question_text"], QuestionClass(case["question_class"]),
-            profile=profile, experiences=[], facts=facts,
+            case["question_text"],
+            QuestionClass(case["question_class"]),
+            profile=profile,
+            experiences=[],
+            facts=facts,
         )
         assert drafted.source is AnswerSource(case["expected_source"])
         assert (drafted.value is None) == case["expected_value_is_none"]
@@ -231,10 +303,15 @@ async def test_grounding_case(case, tmp_path):
         # against the cover-letter paragraph schema instead.
         from packages.agents.cover_letter import drafting as cl_drafting
 
-        cl_errors = {cls.__name__: cls for cls in (
-            ModelOutputError, PiiInPromptError, cl_drafting.UnapprovedFactError,
-            cl_drafting.NumeralGuardError,
-        )}
+        cl_errors = {
+            cls.__name__: cls
+            for cls in (
+                ModelOutputError,
+                PiiInPromptError,
+                cl_drafting.UnapprovedFactError,
+                cl_drafting.NumeralGuardError,
+            )
+        }
         # `CoverLetterDraftOutput` requires 3-6 paragraphs (Decision 1's whole-
         # letter shape) - unlike resume bullets, one paragraph alone never
         # validates, so two always-grounded filler paragraphs isolate the
@@ -247,9 +324,9 @@ async def test_grounding_case(case, tmp_path):
         }
         under_test = {
             "text": case.get("claim", "I bring verified AWS experience."),
-            "fact_ids": [] if case.get("no_citations") else [
-                str(UUID(int=case.get("citation", 1)))
-            ],
+            "fact_ids": []
+            if case.get("no_citations")
+            else [str(UUID(int=case.get("citation", 1)))],
             "numerals_used": case.get("numerals_used", []),
         }
         body = canonical({"paragraphs": [under_test, filler, filler]})
@@ -268,10 +345,20 @@ def test_corpus_inventory_and_positive_controls():
     corpus = cases()
     assert len({case["id"] for case in corpus}) == len(corpus)
     assert {case["category"] for case in corpus} == {
-        "fabricated_experience", "fabricated_employers", "fabricated_dates",
-        "fabricated_certifications", "fabricated_education", "unsupported_skills",
-        "work_authorization", "verified_facts", "evidence_citations", "structured_output",
-        "prompt_injection", "unknown_evidence", "rationale_grounding", "unsupported_numerals",
+        "fabricated_experience",
+        "fabricated_employers",
+        "fabricated_dates",
+        "fabricated_certifications",
+        "fabricated_education",
+        "unsupported_skills",
+        "work_authorization",
+        "verified_facts",
+        "evidence_citations",
+        "structured_output",
+        "prompt_injection",
+        "unknown_evidence",
+        "rationale_grounding",
+        "unsupported_numerals",
         # M9.
         "sensitive_question_auto_answer_attempt",
         "deterministic_sensitive_classifier_vs_deescalation",
@@ -292,11 +379,14 @@ def test_corpus_inventory_and_positive_controls():
     assert sum(case.get("verdict") in ("unsupported", "overreach") for case in corpus) >= 5
 
 
-@pytest.mark.parametrize("body", [
-    '{"verdict":"supported","explanation":"x","approved":true}',
-    '{"verdict":"unsupported","verdict":"supported","explanation":"x"}',
-    '{"verdict":"supported","explanation":42}',
-])
+@pytest.mark.parametrize(
+    "body",
+    [
+        '{"verdict":"supported","explanation":"x","approved":true}',
+        '{"verdict":"unsupported","verdict":"supported","explanation":"x"}',
+        '{"verdict":"supported","explanation":42}',
+    ],
+)
 def test_verifier_structured_output_cannot_override_contract(body):
     with pytest.raises(ModelOutputError):
         verification.validate_verdict(body, prompt_version="offline")
@@ -311,8 +401,11 @@ async def test_missing_replay_never_falls_back_to_a_provider(tmp_path):
         calls.append(request)
         raise AssertionError("No paid fallback")
 
-    client = StructuredClient(Settings(llm_mode="replay", anthropic_api_key=""),
-                              cassette_dir=tmp_path, transport=forbidden)
+    client = StructuredClient(
+        Settings(llm_mode="replay", anthropic_api_key=""),
+        cassette_dir=tmp_path,
+        transport=forbidden,
+    )
     context, _ = context_for({})
     request = verification.prepare_request("Maintained AWS.", list(context.facts), client.model)
     with pytest.raises(ReplayMissError):
@@ -324,8 +417,7 @@ async def test_missing_replay_never_falls_back_to_a_provider(tmp_path):
 def test_report_never_passes_missing_or_failed_cases(outcome):
     from scripts.run_offline_evals import summarize
 
-    results = {f'test_grounding_case[{case["category"]}.{case["id"]}]': True
-               for case in cases()}
+    results = {f'test_grounding_case[{case["category"]}.{case["id"]}]': True for case in cases()}
     assert summarize(results)["passed"] is True
     key = next(iter(results))
     if outcome == "missing":

@@ -162,9 +162,7 @@ def build_document(
 
         if entries:
             entries.sort(key=lambda e: (e.order, e.text))
-            sections.append(
-                DocumentSection(key=key, heading=_heading(key), entries=tuple(entries))
-            )
+            sections.append(DocumentSection(key=key, heading=_heading(key), entries=tuple(entries)))
 
     return ResumeDocument(
         resume_id=str(resume_id),

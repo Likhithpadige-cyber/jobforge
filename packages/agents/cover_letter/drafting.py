@@ -96,9 +96,7 @@ class CoverLetterDraftResult:
     prompt_version: str
 
 
-def prepare_request(
-    context: TailoringContext, *, model: str, note: str | None = None
-) -> Request:
+def prepare_request(context: TailoringContext, *, model: str, note: str | None = None) -> Request:
     """Build the drafting request from every verified, citable fact.
 
     `note` carries a reviewer's request-changes instructions on a
@@ -111,9 +109,7 @@ def prepare_request(
         (f for f in context.facts if f.status == FactStatus.VERIFIED),
         key=lambda f: str(f.id),
     )
-    facts_payload = [
-        {"fact_id": str(f.id), "text": prompt_text(f.text)} for f in verified
-    ]
+    facts_payload = [{"fact_id": str(f.id), "text": prompt_text(f.text)} for f in verified]
     normalized_title = prompt_text(str(context.job.get("normalized_title") or ""))
     seniority = str(context.job.get("seniority") or "")
     system = PROMPT.read_text()
@@ -169,9 +165,7 @@ def validate_draft(
             "paragraphs, without extra prose"
         ) from None
 
-    verified = {
-        str(fact.id): fact for fact in context.facts if fact.status == FactStatus.VERIFIED
-    }
+    verified = {str(fact.id): fact for fact in context.facts if fact.status == FactStatus.VERIFIED}
 
     for paragraph in output.paragraphs:
         for fid in paragraph.fact_ids:
@@ -190,9 +184,7 @@ def validate_draft(
             try:
                 value = _numeral_value(token)
             except ValueError:
-                raise NumeralGuardError(
-                    "A reported numeral is not a valid number"
-                ) from None
+                raise NumeralGuardError("A reported numeral is not a valid number") from None
             if value not in pool:
                 raise NumeralGuardError(
                     "A numeral in generated text is absent from every cited fact's "
@@ -282,9 +274,7 @@ async def draft_cover_letter(
                     }
                 )
                 continue
-            safe_output = {
-                "paragraphs": [item.model_dump() for item in result.paragraphs]
-            }
+            safe_output = {"paragraphs": [item.model_dump() for item in result.paragraphs]}
             await writer.record_call_output(stage, call, response_redacted=canonical(safe_output))
             await writer.record_step_output(stage, output=safe_output)
             client.record(request, response.model_copy(update={"body": canonical(safe_output)}))
@@ -340,13 +330,9 @@ async def draft_cover_letter(
                     steps_completed=1 if succeeded else 0,
                     duration_ms=int((monotonic() - started) * 1000),
                     error_type=type(primary).__name__ if primary is not None else None,
-                    error_message=(
-                        "cover-letter drafting failed" if primary is not None else None
-                    ),
+                    error_message=("cover-letter drafting failed" if primary is not None else None),
                 )
             except Exception:
                 if primary is None:
                     raise
-                log.warning(
-                    "cover_letter_draft.outcome_evidence_failed", run_id=str(stage.run_id)
-                )
+                log.warning("cover_letter_draft.outcome_evidence_failed", run_id=str(stage.run_id))

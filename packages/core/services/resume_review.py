@@ -189,9 +189,7 @@ def evaluate_readiness(
 
     unverified = [claim.path for claim in claims if claim.verified_at is None]
     if unverified:
-        return Readiness(
-            False, f"{len(unverified)} claim(s) carry no verification timestamp"
-        )
+        return Readiness(False, f"{len(unverified)} claim(s) carry no verification timestamp")
 
     claimed = {claim.path for claim in claims}
     rendered = content_paths(content)
@@ -295,9 +293,7 @@ async def _load_application(
     return application
 
 
-async def latest_tailored_resume(
-    session: AsyncSession, application_id: UUID
-) -> Resume | None:
+async def latest_tailored_resume(session: AsyncSession, application_id: UUID) -> Resume | None:
     """The highest tailored version - the same rule the read endpoint uses."""
     return (
         await session.execute(
@@ -310,9 +306,7 @@ async def latest_tailored_resume(
     ).scalar_one_or_none()
 
 
-async def resume_approval(
-    session: AsyncSession, application_id: UUID
-) -> Approval | None:
+async def resume_approval(session: AsyncSession, application_id: UUID) -> Approval | None:
     """The most recent RESUME approval for this application, if any.
 
     Ordered newest-first so a superseded predecessor never shadows the row the
@@ -331,9 +325,7 @@ async def resume_approval(
     ).scalar_one_or_none()
 
 
-async def pending_resume_approval(
-    session: AsyncSession, application_id: UUID
-) -> Approval | None:
+async def pending_resume_approval(session: AsyncSession, application_id: UUID) -> Approval | None:
     """The single pending RESUME approval, if one is open.
 
     ``uq_one_pending_approval`` guarantees at most one per (application, kind),
@@ -350,18 +342,14 @@ async def pending_resume_approval(
     ).scalar_one_or_none()
 
 
-async def _context(
-    session: AsyncSession, application_id: UUID, *, lock: bool
-) -> ReviewContext:
+async def _context(session: AsyncSession, application_id: UUID, *, lock: bool) -> ReviewContext:
     application = await _load_application(session, application_id, lock=lock)
     resume = await latest_tailored_resume(session, application_id)
     if resume is None:
         raise NotFoundError(f"no resume has been generated for {application_id}")
     claims = list(resume.claims)
     approval = await resume_approval(session, application_id)
-    return ReviewContext(
-        application=application, resume=resume, claims=claims, approval=approval
-    )
+    return ReviewContext(application=application, resume=resume, claims=claims, approval=approval)
 
 
 # ---------------------------------------------------------------------------
@@ -408,9 +396,7 @@ APPROVED = "approved"
 CHANGES_REQUESTED = "changes_requested"
 
 
-def _review_status(
-    application: Application, approval: Approval | None
-) -> str:
+def _review_status(application: Application, approval: Approval | None) -> str:
     if application.status is ApplicationStatus.AWAITING_APPROVAL:
         return IN_REVIEW
     if application.status is ApplicationStatus.APPROVED:
@@ -444,18 +430,14 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
         context.resume,
         context.approval,
     )
-    current = approval is not None and snapshot_matches(
-        approval.subject_snapshot, resume
-    )
+    current = approval is not None and snapshot_matches(approval.subject_snapshot, resume)
     readiness = evaluate_readiness(
         verification_status=resume.verification_status,
         claims=context.claims,
         content=resume.content,
     )
 
-    can_start = (
-        application.status is ApplicationStatus.QUESTIONS_PENDING and readiness.ready
-    )
+    can_start = application.status is ApplicationStatus.QUESTIONS_PENDING and readiness.ready
     decidable = (
         application.status is ApplicationStatus.AWAITING_APPROVAL
         and approval is not None
@@ -486,9 +468,7 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
         requested_at=approval.requested_at if approval else None,
         decided_at=approval.decided_at if approval else None,
         decided_by=approval.decided_by if approval else None,
-        decided_by_email=await _decider_email(
-            session, approval.decided_by if approval else None
-        ),
+        decided_by_email=await _decider_email(session, approval.decided_by if approval else None),
         can_start_review=can_start,
         can_approve=decidable,
         can_request_changes=decidable,
@@ -501,9 +481,7 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
 # ---------------------------------------------------------------------------
 
 
-async def enter_review(
-    session: AsyncSession, *, application_id: UUID, actor: User
-) -> ReviewState:
+async def enter_review(session: AsyncSession, *, application_id: UUID, actor: User) -> ReviewState:
     """Open human review: `questions_pending -> awaiting_approval` (M9).
 
     Requires `questions_pending`, not `resume_ready`: M9's
@@ -534,9 +512,7 @@ async def enter_review(
 
     if application.status is ApplicationStatus.AWAITING_APPROVAL:
         existing = await pending_resume_approval(session, application_id)
-        if existing is not None and snapshot_matches(
-            existing.subject_snapshot, resume
-        ):
+        if existing is not None and snapshot_matches(existing.subject_snapshot, resume):
             log.info(
                 "resume_review.enter.idempotent",
                 application_id=str(application_id),
@@ -728,9 +704,7 @@ async def approve(
         status=ApprovalStatus.APPROVED,
         application_status=None,
     ):
-        log.info(
-            "resume_review.approve.idempotent", application_id=str(application_id)
-        )
+        log.info("resume_review.approve.idempotent", application_id=str(application_id))
         return await review_state(session, application_id)
 
     approval = await _decidable_approval(context, session, application_id)
@@ -832,9 +806,7 @@ async def request_changes(
     """
     instructions = (note or "").strip()
     if not instructions:
-        raise MissingNoteError(
-            "requesting changes needs a note saying what should change"
-        )
+        raise MissingNoteError("requesting changes needs a note saying what should change")
 
     context = await _context(session, application_id, lock=True)
     if _already_decided(
