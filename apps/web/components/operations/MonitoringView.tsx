@@ -81,7 +81,7 @@ export function MonitoringView() {
       </div>
       {error && (
         <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">
-          The latest refresh failed ({error.message}). Showing the previous data.
+          The latest refresh failed: {error.message} Showing the previous data.
         </p>
       )}
 

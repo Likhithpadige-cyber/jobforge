@@ -13,7 +13,9 @@ FULL := --profile full
         test-integration test-cov \
         lint fmt typecheck check web-install web-test web-lint web-build \
         verify secrets-scan secrets-baseline audit db-roles db-grants db-reset \
-        verify-schema check-shadowing test-security diagnose-roles db-verify-roles
+        verify-schema check-shadowing test-security diagnose-roles db-verify-roles \
+        demo-env demo-up demo-migrate demo-init demo-seed demo-workers demo-status \
+        demo-logs demo-down demo-web-host
 
 ## ----------------------------------------------------------------- meta ---
 help:  ## Show this help
@@ -197,6 +199,57 @@ secrets-baseline:  ## Developer action: regenerate .secrets.baseline (review the
 
 audit:  ## Dependency vulnerability audit
 	pip-audit -r requirements.txt
+
+## ----------------------------------------------------------------- demo ---
+# Isolated demo stack (docs/DEMO_ENVIRONMENT.md): Compose project
+# `jobforge-demo`, its own containers, ports, volumes and `.env.demo`.
+# Nothing here touches the development stack, and no target removes volumes.
+DEMO_COMPOSE := docker compose -p jobforge-demo -f docker-compose.demo.yml --env-file .env.demo
+DEMO_GUARD := @grep -qx 'JOBFORGE_DEMO_ENVIRONMENT=1' .env.demo 2>/dev/null \
+	|| { echo "refusing: .env.demo missing or not a demo env (run 'make demo-env')"; exit 2; }
+
+demo-env:  ## Demo: create .env.demo with fresh local-only secrets (never overwrites)
+	python3 scripts/demo_env.py write-env
+
+demo-up:  ## Demo: build and start postgres, redis, api and web
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) up -d --build postgres redis api web
+
+demo-migrate:  ## Demo: verify identity, then apply migrations to jobforge_demo
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) exec -T api python -m scripts.demo_env check
+	$(DEMO_COMPOSE) exec -T api alembic upgrade head
+
+demo-init:  ## Demo: verify identity, mark the database, set demo role passwords
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) exec -T api python -m scripts.demo_env init
+
+demo-seed:  ## Demo: verify identity and marker, then load fictional demo data
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) exec -T api python -m scripts.demo_env seed
+
+demo-workers:  ## Demo: start the outbox, scheduler and monitor workers only
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) up -d --build worker-outbox worker-scheduler worker-monitor
+
+demo-status:  ## Demo: show the demo containers
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) ps
+
+demo-logs:  ## Demo: tail logs. Usage: make demo-logs SVC=api
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) logs -f --tail=100 $(SVC)
+
+demo-down:  ## Demo: stop and remove demo containers; volumes are kept
+	$(DEMO_GUARD)
+	$(DEMO_COMPOSE) down
+
+demo-web-host:  ## Demo: run the web dev server on the host instead of the container
+	$(DEMO_GUARD)
+	-$(DEMO_COMPOSE) stop web
+	cd apps/web && API_PROXY_TARGET=http://127.0.0.1:8100 \
+	  NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3100 NEXT_TELEMETRY_DISABLED=1 \
+	  npx next dev -H 127.0.0.1 -p 3100
 
 ## ------------------------------------------------------------- frontend ---
 web-install:  ## Install frontend dependencies

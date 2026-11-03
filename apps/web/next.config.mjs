@@ -4,10 +4,13 @@ const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
   async rewrites() {
+    // Server-side only (never sent to the browser). Defaults to the local API;
+    // the isolated demo stack points it at its own API container.
+    const target = process.env.API_PROXY_TARGET || "http://localhost:8000";
     return process.env.NODE_ENV === "development"
       ? [
-          { source: "/api/v1/:path*", destination: "http://localhost:8000/api/v1/:path*" },
-          { source: "/health", destination: "http://localhost:8000/health" },
+          { source: "/api/v1/:path*", destination: `${target}/api/v1/:path*` },
+          { source: "/health", destination: `${target}/health` },
         ]
       : [];
   },

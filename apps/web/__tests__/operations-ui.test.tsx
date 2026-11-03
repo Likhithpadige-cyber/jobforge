@@ -336,6 +336,30 @@ describe("monitoring dashboard", () => {
     expect(screen.getAllByText(/Not available/).length).toBeGreaterThan(0);
   });
 
+  it("keeps previous data when a refresh fails, with a well-formed message", async () => {
+    const summarySpy = vi.spyOn(operations, "summary").mockResolvedValueOnce(
+      summary({
+        latest_snapshot: {
+          bucket_start: "2026-11-03T10:00:00Z",
+          grain: "5min",
+          job_counts: {},
+          operations: { evaluated_at: recent(), pending_approvals: 7 },
+        },
+      }),
+    );
+    render(<MonitoringView />);
+    const [pending] = await screen.findAllByText("Pending approvals");
+    expect(pending!.parentElement).toHaveTextContent("7");
+    summarySpy.mockRejectedValueOnce(new ApiError("down", 500));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(
+      await screen.findByText(
+        "The latest refresh failed: The API returned an error (500). Showing the previous data.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Pending approvals")[0]!.parentElement).toHaveTextContent("7");
+  });
+
   it("explains when monitoring has never run", async () => {
     vi.spyOn(operations, "summary").mockResolvedValue(summary());
     render(<MonitoringView />);
