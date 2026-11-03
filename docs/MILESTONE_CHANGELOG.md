@@ -1115,3 +1115,39 @@ configured remote.
 
 No remote push occurred for this milestone; this repository has no
 configured remote.
+
+## M12 Phase 1 — COMPLETE, verified 2026-11-03
+
+Commit `4ade88b`. Details: [M12_PHASE1.md](M12_PHASE1.md).
+
+### Generation auto-pause
+
+- A critical-severity `guardrail.violation.detected` of kind `fabrication`, `numeral_invented` or `sensitive_auto_answer_attempt` is consumed by the existing `cg.monitor` worker and opens a durable `alerts` row with `auto_paused = true`. Other recognized guardrails open non-pausing alerts; unknown kinds or severities are ignored.
+- Alert identity is `uuid5(source event id)` inserted with `ON CONFLICT DO NOTHING`, so duplicate, concurrent or post-restart delivery cannot create a second incident or reopen a resolved one.
+- Generation is paused iff any `auto_paused` alert is not `resolved` (open and acknowledged both pause). There is no cached, Redis or process-local flag.
+- Fail-closed checks run at `StructuredClient.complete` and `AnthropicTransport` (a missing session also refuses), and at first-draft, cover-letter and revision entry points.
+- Paused worker deliveries roll back all domain writes, are recorded as `blocked:generation_paused:<attempt>` and acknowledged (no poison loop), and are replayed by reconciliation only after the final resolution.
+- Revision: the pause is re-checked after lease acquisition (rolling back the uncommitted T2), and a pause during T3 releases the attempt `running -> accepted` through a fenced `release_for_generation_pause` (current owner and epoch only), with no failure class and no retry-budget charge. The same review completes after resolution with exactly one new version.
+
+### Human resolution API
+
+- Owner-only `GET /api/v1/alerts/generation-pause`, `GET /api/v1/alerts`, `GET /api/v1/alerts/{id}` and `POST /api/v1/alerts/{id}/resolve`, behind the existing session, CSRF and role checks; reviewers cannot enumerate incident IDs.
+- Responses are typed and omit raw alert detail, titles and entity references. Resolution keeps the row as history.
+
+### Explicit limitations
+
+- Pause checks govern admission to each provider call; they do not cancel a request already in flight. The monitor is asynchronous.
+- `numeral_invented` and `sensitive_auto_answer_attempt` have no current producer (numeral violations are emitted as `fabrication`).
+- No heartbeat, DLQ, submission-failure, stall or metrics monitoring yet (M12 Phase 2). No frontend for alerts yet (M12 Phase 3).
+- No migration, grant change or new event type.
+
+### Final verification counts
+
+- ruff check: clean. mypy: 160 source files, no issues.
+- verify-schema: 12 passed, 0 failed; head 0010_submission_retry_schedule.
+- check-shadowing: clean. Down migration up to date.
+- Unit: 1922 passed. Integration: 1143 passed.
+- Safety: 1280 passed, 0 skipped, under REQUIRE_SECURITY_TESTS=1.
+- Offline evals: 61 passed, 51 corpus cases, 0 provider calls.
+- pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
+- `ruff format --check .`: 174 pre-existing files; M12 added no new violations.
