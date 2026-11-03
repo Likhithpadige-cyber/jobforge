@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.models import Alert, User
@@ -27,6 +27,18 @@ async def generation_is_paused(session: AsyncSession) -> bool:
                 )
             )
         )
+    )
+
+
+async def unresolved_auto_pause_count(session: AsyncSession) -> int:
+    """How many incidents still hold the pause; zero iff generation is enabled."""
+    return int(
+        await session.scalar(
+            select(func.count())
+            .select_from(Alert)
+            .where(Alert.auto_paused.is_(True), Alert.status != "resolved")
+        )
+        or 0
     )
 
 

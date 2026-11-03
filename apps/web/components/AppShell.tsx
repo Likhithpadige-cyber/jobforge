@@ -6,6 +6,8 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { SignOutButton } from "./SignOutButton";
 import { MobileNav } from "./MobileNav";
+import { GenerationPauseBanner } from "./operations/GenerationPauseBanner";
+import { OperationsProvider } from "./operations/OperationsProvider";
 
 /**
  * Desktop-first two-column shell. Below `lg` the sidebar becomes a drawer
@@ -27,6 +29,7 @@ export function AppShell({
   // shell and is therefore reachable signed out.
   return (
     <AuthGuard>
+    <OperationsProvider>
     <div className="min-h-screen lg:grid lg:grid-cols-[15rem_1fr]">
       <aside className="hidden lg:block">
         <div className="sticky top-0 h-screen">
@@ -54,6 +57,7 @@ export function AppShell({
           description={description}
           onOpenNav={() => setNavOpen(true)}
         />
+        <GenerationPauseBanner />
         <main className="animate-page-in px-5 py-7 pb-28 lg:px-9 lg:py-9">{children}</main>
         <div className="px-5 pb-28 lg:px-9 lg:pb-6">
           <SignOutButton />
@@ -61,6 +65,7 @@ export function AppShell({
       </div>
       <MobileNav onOpenMore={() => setNavOpen(true)} />
     </div>
+    </OperationsProvider>
     </AuthGuard>
   );
 }

@@ -147,7 +147,15 @@ export function readCsrfToken(): string | null {
   return match ? decodeURIComponent(match.slice(CSRF_COOKIE.length + 1)) : null;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+interface RequestOptions {
+  /**
+   * Only the readiness probe opts in: its 503 body says which dependency is
+   * down. Everywhere else a 503 is an error, never data.
+   */
+  allowServiceUnavailable?: boolean;
+}
+
+async function request<T>(path: string, init?: RequestInit, options: RequestOptions = {}): Promise<T> {
   // In local development, use the Next.js same-origin API proxy. This keeps
   // browser requests on the current host and port, including when dev runs on
   // a port other than the API's configured CORS origin.
@@ -177,19 +185,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   const text = await response.text();
-  const body: unknown = text ? JSON.parse(text) : null;
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      // A proxy error page is not JSON; it must still surface as ApiError.
+      if (response.ok) throw new ApiError("Malformed API response", response.status);
+      body = null;
+    }
+  }
 
-  // 503 from the readiness endpoint still carries a useful body, so it is
-  // returned rather than thrown.
-  if (!response.ok && response.status !== 503) {
+  // 503 from the readiness endpoint still carries a useful body, so that one
+  // caller may receive it; every other caller gets an ApiError.
+  if (!response.ok && !(response.status === 503 && options.allowServiceUnavailable)) {
     throw new ApiError(`Request failed: ${response.status}`, response.status, body);
   }
   return body as T;
 }
 
+/** Shared transport for feature clients such as lib/operations.ts. */
+export const apiRequest = request;
+
 export const api = {
   liveness: () => request<Liveness>("/health"),
-  readiness: () => request<Readiness>(`${env.apiPrefix}/health`),
+  readiness: () =>
+    request<Readiness>(`${env.apiPrefix}/health`, undefined, { allowServiceUnavailable: true }),
 
   /**
    * GET /api/v1/jobs

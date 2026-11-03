@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "./Icon";
 import { PRIMARY_NAV, SECONDARY_NAV } from "@/lib/navigation";
+import { useOperations } from "./operations/OperationsProvider";
 
 const SEARCH_PAGES = [...PRIMARY_NAV, ...SECONDARY_NAV];
 
@@ -15,6 +16,7 @@ export function Header({ title, description, onOpenNav }: { title: string; descr
   const [focused, setFocused] = useState(false);
   const results = query.trim() ? SEARCH_PAGES.filter(item => item.label.toLowerCase().includes(query.trim().toLowerCase())) : [];
   const segment = pathname.split("/").filter(Boolean);
+  const { enabled: isOwner, openAlerts } = useOperations();
 
   return (
     <header className="sticky top-0 z-30 border-b border-edge bg-canvas/95 backdrop-blur-md">
@@ -35,9 +37,29 @@ export function Header({ title, description, onOpenNav }: { title: string; descr
             {results.length ? results.map(item => <Link key={item.href} role="option" aria-selected="false" href={item.href} onClick={() => { setFocused(false); setQuery(""); }} className="flex items-center gap-2 rounded-chip px-3 py-2 text-sm text-ink hover:bg-violet-soft"><Icon name={item.icon} />{item.label}</Link>) : <p className="px-3 py-2 text-sm text-ink-soft">No pages found</p>}
           </div>}
         </div>
-        <Link href="/approvals" className="relative rounded-chip border border-edge bg-surface p-2.5 text-ink-soft transition-colors hover:text-violet" aria-label="Notifications: 4 items need your attention"><Icon name="bell" className="h-5 w-5" /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-violet" aria-hidden="true" /></Link>
+        {isOwner && <AlertBell count={openAlerts} />}
         <Link href="/profile" className="flex h-10 w-10 items-center justify-center rounded-full border border-violet/15 bg-violet-soft text-xs font-semibold text-violet-deep" aria-label="Profile">LS</Link>
       </div>
     </header>
+  );
+}
+
+/** The real unresolved alert count from the API; no number until it is known. */
+function AlertBell({ count }: { count: number | null }) {
+  const label =
+    count === null
+      ? "Alerts"
+      : count === 0
+        ? "Alerts: none unresolved"
+        : `Alerts: ${count} unresolved`;
+  return (
+    <Link href="/alerts" data-testid="alert-bell" className="relative rounded-chip border border-edge bg-surface p-2.5 text-ink-soft transition-colors hover:text-violet" aria-label={label}>
+      <Icon name="bell" className="h-5 w-5" />
+      {count !== null && count > 0 && (
+        <span aria-hidden="true" className="absolute -right-1.5 -top-1.5 min-w-5 rounded-full bg-signal-risk px-1.5 text-center text-[11px] font-semibold leading-5 text-white">
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
+    </Link>
   );
 }

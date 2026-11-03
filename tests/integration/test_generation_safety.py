@@ -446,7 +446,10 @@ async def test_owner_api_safe_inspection_and_idempotent_resolution(scenario, inc
     create, _, _ = incidents
     alert_id, _ = await create()
     http = scenario[0]
-    assert (await http.get("/api/v1/alerts/generation-pause")).json() == {"generation_paused": True}
+    assert (await http.get("/api/v1/alerts/generation-pause")).json() == {
+        "generation_paused": True,
+        "unresolved_auto_pause_count": 1,
+    }
     listed = await http.get("/api/v1/alerts")
     assert listed.status_code == 200
     assert str(alert_id) in listed.text
@@ -457,7 +460,8 @@ async def test_owner_api_safe_inspection_and_idempotent_resolution(scenario, inc
     assert first_response.json()["status"] == "resolved"
     assert (await http.post(f"/api/v1/alerts/{alert_id}/resolve")).json() == first_response.json()
     assert (await http.get("/api/v1/alerts/generation-pause")).json() == {
-        "generation_paused": False
+        "generation_paused": False,
+        "unresolved_auto_pause_count": 0,
     }
     assert (await http.get(f"/api/v1/alerts/{alert_id}")).status_code == 200
 

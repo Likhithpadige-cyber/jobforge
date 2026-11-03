@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, Wordmark } from "./Icon";
-import { PRIMARY_NAV, SECONDARY_NAV, isNavActive, type NavItem } from "@/lib/navigation";
+import { OPERATIONS_NAV, PRIMARY_NAV, SECONDARY_NAV, isNavActive, type NavItem } from "@/lib/navigation";
+import { useAuth } from "./AuthGuard";
 
 function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
   return (
@@ -18,6 +19,7 @@ function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean;
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { user } = useAuth();
   return (
     <div className="flex h-full flex-col border-r border-edge bg-surface">
       <div className="px-6 pb-8 pt-7">
@@ -30,6 +32,12 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <p className="px-3.5 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">Workspace</p>
           <div className="space-y-1">{SECONDARY_NAV.map(item => <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />)}</div>
         </div>
+        {user?.role === "owner" && (
+          <div className="border-t border-edge pt-5">
+            <p className="px-3.5 pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-soft">Operations</p>
+            <div className="space-y-1">{OPERATIONS_NAV.map(item => <NavLink key={item.href} item={item} active={isNavActive(pathname, item.href)} onNavigate={onNavigate} />)}</div>
+          </div>
+        )}
       </nav>
       <div className="m-3 rounded-card border border-violet/10 bg-violet-soft/60 p-4">
         <p className="text-xs font-semibold text-violet-deep">Your next step</p>

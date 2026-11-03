@@ -18,6 +18,12 @@ export const SECONDARY_NAV: NavItem[] = [
   { href: "/profile", label: "Profile & Facts", icon: "profile" },
 ];
 
+/** Owner-only operator views (M12 Phase 3). The API enforces the same rule. */
+export const OPERATIONS_NAV: NavItem[] = [
+  { href: "/monitoring", label: "Monitoring", icon: "analytics" },
+  { href: "/alerts", label: "Alerts", icon: "bell" },
+];
+
 export const MOBILE_NAV = PRIMARY_NAV.filter(item => ["/", "/applications", "/resume-studio", "/agent-activity"].includes(item.href));
 
 export function isNavActive(pathname: string, href: string) {
