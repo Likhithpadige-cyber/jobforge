@@ -27,6 +27,7 @@ from apps.api.routers import (
     first_draft,
     health,
     jobs,
+    monitoring,
     profile,
     resume_review,
     resumes,
@@ -158,6 +159,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     app.include_router(alerts.router, prefix=settings.api_prefix)
+    app.include_router(monitoring.router, prefix=settings.api_prefix)
     app.include_router(health.router)
     app.include_router(health.api_router, prefix=settings.api_prefix)
     app.include_router(auth.router, prefix=settings.api_prefix)

@@ -23,7 +23,8 @@ Each alert has a deterministic UUID derived from the immutable source event ID.
 The primary key plus INSERT ON CONFLICT DO NOTHING prevents duplicate incidents,
 even outside DeliveryRuntime. Redelivery cannot reopen a resolved incident.
 DeliveryRuntime's existing advisory lock and ProcessedEvent transaction remain
-responsible for delivery idempotency. The monitor does not resolve alerts.
+responsible for delivery idempotency. The monitor never resolves a guardrail or
+generation-pause alert (M12 Phase 2 auto-resolves only its own operational kinds).
 
 Only kind, severity, a fixed category/title, source event UUID, a valid optional
 run UUID, the envelope's entity reference, and timestamps are retained. Raw detail,

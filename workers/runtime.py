@@ -27,8 +27,11 @@ from packages.agents.resume_optimizer.first_draft import FirstDraftClient, gener
 from packages.agents.resume_optimizer.persistence import Thresholds
 from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
 from packages.core.events.guardrail_alerts import open_guardrail_alert
-from packages.core.events.monitoring import schedule_snapshot, snapshot_jobs
+from packages.core.events.monitoring import schedule_snapshot
+from packages.core.events.operational_monitoring import Thresholds as MonitorThresholds
+from packages.core.events.operational_monitoring import monitor_tick_handler
 from packages.core.events.runtime import DeliveryRuntime, OutboxRelay, RetryPolicy, StreamConsumer
+from packages.core.heartbeats import HeartbeatWriter, RedisOperationsProbe
 from packages.core.models import Event
 from packages.core.services.applications import (
     prepare_application,
@@ -107,41 +110,63 @@ async def verify_role(engine: AsyncEngine, expected: str) -> None:
             raise RuntimeError(f"Worker requires the unprivileged {expected} role")
 
 
+async def _pulse(heartbeat: HeartbeatWriter) -> None:
+    while True:
+        await asyncio.sleep(max(heartbeat.interval, 0.01))
+        await heartbeat.beat()
+
+
 async def serve(
     step: Callable[[], Awaitable[object]],
     stop: asyncio.Event,
     *,
     interval: float = 0.25,
     shutdown_timeout: float = 30,
+    heartbeat: HeartbeatWriter | None = None,
 ) -> None:
     """Stop intake on a signal, drain briefly, then cancel (rolling back work)."""
-    while not stop.is_set():
-        running = asyncio.ensure_future(step())
-        stopping = asyncio.create_task(stop.wait())
-        try:
-            done, _ = await asyncio.wait((running, stopping), return_when=asyncio.FIRST_COMPLETED)
-            if stopping in done and not running.done():
-                try:
-                    await asyncio.wait_for(running, timeout=shutdown_timeout)
-                except TimeoutError:
-                    log.warning("worker.shutdown_cancelled_inflight")
-            else:
-                await running
-        except asyncio.CancelledError:
-            running.cancel()
+    pulse = None
+    if heartbeat is not None:
+        # Register before the first step, then keep beating while steps run:
+        # the heartbeat reports liveness, not progress, so a long generation
+        # step is never mistaken for a missing worker. Never raises.
+        await heartbeat.beat()
+        pulse = asyncio.create_task(_pulse(heartbeat))
+    try:
+        while not stop.is_set():
+            running = asyncio.ensure_future(step())
+            stopping = asyncio.create_task(stop.wait())
+            try:
+                done, _ = await asyncio.wait(
+                    (running, stopping), return_when=asyncio.FIRST_COMPLETED
+                )
+                if stopping in done and not running.done():
+                    try:
+                        await asyncio.wait_for(running, timeout=shutdown_timeout)
+                    except TimeoutError:
+                        log.warning("worker.shutdown_cancelled_inflight")
+                else:
+                    await running
+            except asyncio.CancelledError:
+                running.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await running
+                raise
+            except Exception as exc:
+                # Error text may contain DSNs or provider content; record class only.
+                log.error("worker.step_failed", error_type=type(exc).__name__)
+            finally:
+                stopping.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await stopping
+            if not stop.is_set():
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=interval)
+    finally:
+        if pulse is not None:
+            pulse.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await running
-            raise
-        except Exception as exc:
-            # Error text may contain DSNs or provider content; record class only.
-            log.error("worker.step_failed", error_type=type(exc).__name__)
-        finally:
-            stopping.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await stopping
-        if not stop.is_set():
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(stop.wait(), timeout=interval)
+                await pulse
 
 
 async def run(
@@ -159,6 +184,8 @@ async def run(
         socket_timeout=settings.redis_socket_timeout_seconds,
     )
     stop = asyncio.Event()
+    instance = f"{socket.gethostname()}-{uuid4().hex[:8]}"
+    heartbeat: HeartbeatWriter | None = None
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop.set)
@@ -179,8 +206,15 @@ async def run(
             else "app_monitor",
         )
         sessions = async_sessionmaker(engine, expire_on_commit=False)
+        # M12 Phase 2: registered only once the worker is verified and serving.
+        heartbeat = HeartbeatWriter(
+            redis,
+            kind=kind,
+            instance=instance,
+            interval=settings.worker_heartbeat_interval_seconds,
+        )
         if kind == "relay":
-            await serve(OutboxRelay(sessions, redis).step, stop)
+            await serve(OutboxRelay(sessions, redis).step, stop, heartbeat=heartbeat)
         elif kind == "scheduler":
 
             async def schedule() -> None:
@@ -188,7 +222,7 @@ async def run(
                     await schedule_snapshot(session)
                     await schedule_due_retries(session)
 
-            await serve(schedule, stop, interval=30)
+            await serve(schedule, stop, interval=30, heartbeat=heartbeat)
         else:
             if kind == "first-draft":
                 # Never inherit the API owner's DSN for this worker's audit pool.
@@ -373,11 +407,15 @@ async def run(
                     sessions,
                     "cg.monitor",
                     {
-                        "schedule.tick": snapshot_jobs,
+                        # M12 Phase 2: job snapshot plus non-pausing operational rules.
+                        "schedule.tick": monitor_tick_handler(
+                            RedisOperationsProbe(redis),
+                            MonitorThresholds.from_settings(settings),
+                        ),
                         "guardrail.violation.detected": open_guardrail_alert,
                     },
                 )
-            consumer = StreamConsumer(redis, runtime, f"{socket.gethostname()}-{uuid4().hex[:8]}")
+            consumer = StreamConsumer(redis, runtime, instance)
             initialized = False
             reconcile_at = 0.0
 
@@ -393,10 +431,14 @@ async def run(
                     initialized = False
                     raise
 
-            await serve(step, stop)
+            await serve(step, stop, heartbeat=heartbeat)
     finally:
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.remove_signal_handler(sig)
+        if heartbeat is not None and stop.is_set():
+            # Only a signalled, clean stop deregisters. A crash (exception or
+            # kill) leaves the registration to go stale and be reported.
+            await heartbeat.deregister()
         if kind in {"first-draft", "cover-letter"}:
             await dispose_audit_engine()
         await redis.aclose()

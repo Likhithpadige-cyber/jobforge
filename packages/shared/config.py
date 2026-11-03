@@ -162,6 +162,19 @@ class Settings(BaseSettings):
     fit_score_shortlist_threshold: float = 65.0
     fit_score_review_floor: float = 55.0
 
+    # ------------------------------------------------- operational monitoring
+    # M12 Phase 2. Detection thresholds only: no value here can pause
+    # generation, start a submission, or resolve a human-only alert.
+    worker_heartbeat_interval_seconds: int = Field(default=15, ge=1)
+    monitor_heartbeat_missing_seconds: int = Field(default=90, ge=1)
+    monitor_submission_failure_window: int = Field(default=10, ge=1)
+    monitor_submission_failure_rate: float = Field(default=0.30, ge=0, lt=1)
+    monitor_stall_seconds: int = Field(default=86_400, ge=60)
+    monitor_approval_backlog: int = Field(default=30, ge=0)
+    monitor_consumer_lag: int = Field(default=500, ge=0)
+    monitor_consumer_lag_sustained_seconds: int = Field(default=600, ge=0)
+    monitor_stale_tick_seconds: int = Field(default=900, ge=60)
+
     # ------------------------------------------------------------ storage
     s3_endpoint_url: str = "http://localhost:9000"
     s3_bucket: str = "jobforge-artifacts"
@@ -324,6 +337,16 @@ class Settings(BaseSettings):
                 f"submission_retry_delays_seconds length "
                 f"({len(self.submission_retry_delays_seconds)}) "
                 f"must equal submission_max_attempts - 1 ({self.submission_max_attempts - 1})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_heartbeats(self) -> Settings:
+        """A worker must miss at least two beats before it is reported (M12 Phase 2)."""
+        if self.monitor_heartbeat_missing_seconds < 2 * self.worker_heartbeat_interval_seconds:
+            raise ValueError(
+                "monitor_heartbeat_missing_seconds must be at least twice "
+                "worker_heartbeat_interval_seconds"
             )
         return self
 

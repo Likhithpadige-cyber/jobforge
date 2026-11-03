@@ -273,6 +273,8 @@ OWNER_ONLY = frozenset(
         ("GET", "/api/v1/alerts/generation-pause"),
         ("GET", "/api/v1/alerts/{alert_id}"),
         ("POST", "/api/v1/alerts/{alert_id}/resolve"),
+        ("GET", "/api/v1/monitoring/summary"),
+        ("GET", "/api/v1/monitoring/snapshots"),
         ("POST", "/api/v1/profiles/{profile_id}/master-resumes"),
         ("POST", "/api/v1/jobs/{job_id}/first-draft"),
         # M9. Preparation is the one cost-shaped, pipeline-triggering action,
