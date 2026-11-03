@@ -216,7 +216,7 @@ Same discipline, different shape (AGENT_DESIGN.md §4.2). Every question is clas
 
 ### 4.7 Auto-pause
 
-A `guardrail.violation.detected` with kind `fabrication`, `numeral_invented`, or `sensitive_auto_answer_attempt` raises a **critical** alert and **pauses resume generation system-wide** until a human acknowledges it. The correct response to "the grounding layer caught an invention" is to stop and look, not to log a warning and keep going.
+A **critical**-severity `guardrail.violation.detected` with kind `fabrication`, `numeral_invented`, or `sensitive_auto_answer_attempt` raises a critical alert and **pauses resume and cover-letter generation system-wide** until an authorized owner explicitly resolves every unresolved auto-pause alert. Acknowledgment alone does not resume generation. The correct response to "the grounding layer caught an invention" is to stop and look, not to log a warning and keep going.
 
 ---
 

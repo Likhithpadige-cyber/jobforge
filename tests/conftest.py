@@ -76,3 +76,13 @@ def redis_available() -> bool:
     return _service_available(
         os.getenv("REDIS_HOST", "localhost"), int(os.getenv("REDIS_PORT", "6379"))
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_external_llm_provider(monkeypatch):  # type: ignore[no-untyped-def]
+    """Normal tests must use replay or an explicitly injected fake transport."""
+
+    async def forbidden(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("Real external LLM provider calls are forbidden in tests")
+
+    monkeypatch.setattr("packages.agents.llm.runtime.AnthropicTransport.__call__", forbidden)

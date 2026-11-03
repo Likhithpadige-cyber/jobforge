@@ -207,7 +207,11 @@ async def verify_claim(
         )
         for attempt in range(2):
             try:
-                response = await client.complete(request, spent=writer.spent(stage))
+                response = await client.complete(
+                    request,
+                    spent=writer.spent(stage),
+                    session=session,
+                )
             except ReplayMissError:
                 if attempt:
                     raise ModelOutputError("B5 schema repair has no recorded response") from None

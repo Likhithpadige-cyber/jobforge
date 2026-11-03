@@ -28,6 +28,7 @@ from packages.core.events.envelope import (
     SUPPORTED_EVENT_VERSIONS,
 )
 from packages.core.events.outbox import claim_event, emit, record_claim_result
+from packages.core.generation_safety import GenerationPausedError, generation_is_paused
 from packages.core.models import Event, ProcessedEvent
 from packages.shared.clock import utc_now
 from packages.shared.logging import get_logger
@@ -125,7 +126,16 @@ class DeliveryRuntime:
             if event is None:
                 # A reference to no committed source must never be treated as done.
                 raise MissingEventReferenceError("Stream reference has no authoritative event")
-            if await session.get(ProcessedEvent, (event_id, self.group)) is not None:
+            processed = await session.get(ProcessedEvent, (event_id, self.group))
+            blocked_attempt = None
+            if processed is not None and (processed.result or "").startswith(
+                "blocked:generation_paused:",
+            ):
+                blocked_attempt = int((processed.result or "").rsplit(":", 1)[1])
+            resuming_pause = blocked_attempt is not None
+            if processed is not None and (
+                not resuming_pause or await generation_is_paused(session)
+            ):
                 return "duplicate"
             if event.type not in KNOWN_EVENT_TYPES:
                 raise InvalidEventError("Unknown event type")
@@ -145,7 +155,11 @@ class DeliveryRuntime:
                 ).order_by(Event.occurred_at.desc(), Event.id.desc()).limit(1)
             )
             attempts = int(started.payload["attempt"]) if started else 0
-            if started and (last is None or attempts > int(last.payload["attempt"])):
+            if (
+                (not resuming_pause or attempts != blocked_attempt)
+                and started
+                and (last is None or attempts > int(last.payload["attempt"]))
+            ):
                 # The previous process disappeared before it could finish/record
                 # failure. Its durable start still consumes the bounded budget.
                 return await self._failure(session, event, attempts, "WorkerInterruptedError", last)
@@ -166,7 +180,7 @@ class DeliveryRuntime:
                 )
             try:
                 async with session.begin_nested():
-                    if not await claim_event(session, event_id, self.group):
+                    if not resuming_pause and not await claim_event(session, event_id, self.group):
                         return "duplicate"
                     if event.version not in SUPPORTED_EVENT_VERSIONS[event.type]:
                         raise InvalidEventError("Unsupported event version")
@@ -176,6 +190,17 @@ class DeliveryRuntime:
                         result = await self.handlers[event.type](session, event)
                     await record_claim_result(session, event_id, self.group, result)
                     await session.flush()
+            except GenerationPausedError:
+                # The domain savepoint has rolled back. A deliberate operational
+                # block is completed, not retried or sent to the DLQ.
+                await claim_event(session, event_id, self.group)
+                await record_claim_result(
+                    session,
+                    event_id,
+                    self.group,
+                    f"blocked:generation_paused:{attempt}",
+                )
+                return "completed"
             except Exception as exc:
                 # The savepoint removed all domain writes and the completion claim.
                 return await self._failure(
@@ -237,6 +262,13 @@ class DeliveryRuntime:
         async with self.sessions() as session:
             done = exists().where(ProcessedEvent.event_id == Event.id,
                                   ProcessedEvent.consumer_group == self.group)
+            if not await generation_is_paused(session):
+                # Paused deliveries are acknowledged while blocked; only a durable
+                # human resolution makes them eligible for reconciliation again.
+                done = done.where(
+                    ProcessedEvent.result.is_(None)
+                    | ~ProcessedEvent.result.startswith("blocked:generation_paused:"),
+                )
             query = select(Event).where(Event.published.is_(True),
                                         Event.type.in_(self.handlers), ~done)
             if event_ids is not None:

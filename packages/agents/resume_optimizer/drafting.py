@@ -294,7 +294,11 @@ async def draft_content(
         )
         for attempt in range(2):
             try:
-                response = await client.complete(request, spent=writer.spent(stage))
+                response = await client.complete(
+                    request,
+                    spent=writer.spent(stage),
+                    session=session,
+                )
             except ReplayMissError:
                 if attempt:
                     raise ModelOutputError("B2 schema repair has no recorded response") from None

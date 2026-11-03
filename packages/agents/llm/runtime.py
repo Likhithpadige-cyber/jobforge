@@ -18,8 +18,10 @@ from typing import Any, Protocol, cast
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as SchemaError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.agents.base.pii import assert_prompt_safe
+from packages.core.generation_safety import require_generation_enabled
 from packages.shared.config import LLMMode, Settings
 from packages.shared.errors import DependencyUnavailableError, ValidationError
 
@@ -97,7 +99,13 @@ class AnthropicTransport:
     def __init__(self, api_key: str):
         self.api_key = api_key
 
-    async def __call__(self, request: Request) -> dict[str, Any]:
+    async def __call__(
+        self,
+        request: Request,
+        *,
+        session: AsyncSession | None = None,
+    ) -> dict[str, Any]:
+        await require_generation_enabled(session)
         if not self.api_key:
             raise ModelCallError("LLM API key is not configured")
         try:
@@ -155,8 +163,13 @@ class StructuredClient:
             raise CostLimitError("A positive finite run budget is required")
 
     async def complete(
-        self, request: Request, *, spent: Decimal = Decimal(0)
+        self,
+        request: Request,
+        *,
+        spent: Decimal = Decimal(0),
+        session: AsyncSession | None = None,
     ) -> Response:
+        await require_generation_enabled(session)
         # Check even replay/repair requests: bypassing the prompt builder must
         # never allow residual PII to reach an injected or real transport.
         assert_prompt_safe(request.system, request.user, canonical(request.schema))
@@ -184,7 +197,10 @@ class StructuredClient:
         upper_input = len(canonical(request.__dict__).encode()) + 4096
         if spent + self.prices.cost(upper_input, request.max_tokens) > self.max_cost:
             raise CostLimitError("Insufficient budget for the bounded B1 call")
-        raw = await self.transport(request)
+        if isinstance(self.transport, AnthropicTransport):
+            raw = await self.transport(request, session=session)
+        else:
+            raw = await self.transport(request)
         # Validate usage separately from model content. Once usable usage is
         # available, always return it so the calling stage audits and budgets
         # the charged attempt before rejecting malformed content.

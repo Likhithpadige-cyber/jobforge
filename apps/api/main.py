@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from apps.api.routers import (
+    alerts,
     applications,
     artifacts,
     auth,
@@ -156,6 +157,7 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
 
+    app.include_router(alerts.router, prefix=settings.api_prefix)
     app.include_router(health.router)
     app.include_router(health.api_router, prefix=settings.api_prefix)
     app.include_router(auth.router, prefix=settings.api_prefix)

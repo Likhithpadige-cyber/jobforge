@@ -40,6 +40,9 @@ from packages.shared.ids import uuid7
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from packages.agents.resume_optimizer.revision import RevisionRequest
 
+#: Fixed diagnostic written only by `release_for_generation_pause`.
+GENERATION_PAUSE_DETAIL = "GenerationPausedError: released for operational pause"
+
 
 class AttemptSourceConflictError(ConflictError):
     """A live attempt exists for this approval, bound to a different source.
@@ -176,6 +179,9 @@ class RevisionAttemptRepository(BaseRepository[ResumeRevisionAttempt]):
         there makes the whole class of mistake unrepresentable: there is no
         ORM instance in the protocol to go stale.
         """
+        # An attempt handed back by `release_for_generation_pause` resumes the
+        # acquisition the pause interrupted: no new count, no ceiling check.
+        # Fencing (epoch + 1, live-lease predicate) is unchanged.
         row = (
             await self.session.execute(
                 text(
@@ -184,12 +190,16 @@ class RevisionAttemptRepository(BaseRepository[ResumeRevisionAttempt]):
                     "  lease_owner = :owner,"
                     "  lease_epoch = lease_epoch + 1,"
                     "  lease_expires_at = now() + make_interval(secs => :lease_seconds),"
-                    "  attempt_count = attempt_count + 1,"
+                    "  attempt_count = attempt_count + CASE WHEN status = 'accepted'"
+                    "    AND failure_detail = :paused THEN 0 ELSE 1 END,"
+                    "  failure_detail = CASE WHEN status = 'accepted'"
+                    "    AND failure_detail = :paused THEN NULL ELSE failure_detail END,"
                     "  started_at = COALESCE(started_at, now()) "
                     "WHERE id = :id "
                     "  AND status IN ('accepted', 'running') "
                     "  AND (lease_expires_at IS NULL OR lease_expires_at < now()) "
-                    "  AND attempt_count < :max_attempts "
+                    "  AND (attempt_count < :max_attempts"
+                    "       OR (status = 'accepted' AND failure_detail = :paused)) "
                     "RETURNING id, lease_epoch"
                 ),
                 {
@@ -197,6 +207,7 @@ class RevisionAttemptRepository(BaseRepository[ResumeRevisionAttempt]):
                     "owner": owner,
                     "lease_seconds": lease_seconds,
                     "max_attempts": max_attempts,
+                    "paused": GENERATION_PAUSE_DETAIL,
                 },
             )
         ).one_or_none()
@@ -336,6 +347,38 @@ class RevisionAttemptRepository(BaseRepository[ResumeRevisionAttempt]):
             )
         ).one_or_none()
         return None if row is None else str(row[0])
+
+    async def release_for_generation_pause(
+        self, attempt_id: UUID, *, owner: str, epoch: int
+    ) -> bool:
+        """Hand a running attempt back to `accepted` for an M12 generation pause.
+
+        Not a failure report: an operational pause says nothing about the
+        provider, the content or the request, so no `failure_class` is written
+        and no retry budget is decided. Fenced exactly like `fail()` - only the
+        current owner at the current epoch matches; a stale worker matches 0
+        rows. The fixed `failure_detail` marks the row so the next `acquire()`
+        continues this acquisition instead of charging a new one.
+        """
+        result = await self.session.execute(
+            text(
+                "UPDATE resume_revision_attempts SET "
+                "  status = 'accepted',"
+                "  failure_detail = :paused,"
+                "  lease_owner = NULL,"
+                "  lease_expires_at = NULL "
+                "WHERE id = :id AND status = 'running' "
+                "  AND lease_owner = :owner AND lease_epoch = :epoch "
+                "RETURNING id"
+            ),
+            {
+                "id": attempt_id,
+                "owner": owner,
+                "epoch": epoch,
+                "paused": GENERATION_PAUSE_DETAIL,
+            },
+        )
+        return result.scalar_one_or_none() is not None
 
     # --------------------------------------------- T3/T4 reconciliation
     async def reconcile_succeeded(

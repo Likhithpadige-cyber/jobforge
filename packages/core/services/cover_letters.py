@@ -51,6 +51,7 @@ from packages.agents.resume_optimizer.resume_persistence import (
 )
 from packages.core.db.inference_audit import CoverLetterInferenceAudit
 from packages.core.events import emit
+from packages.core.generation_safety import require_generation_enabled
 from packages.core.models import (
     Application,
     ApplicationStatus,
@@ -84,8 +85,18 @@ class CoverLetterClient(StructuredClient):
 
     total_spent: Decimal = Decimal("0")
 
-    async def complete(self, request: Request, *, spent: Decimal = Decimal("0")) -> Response:
-        response = await super().complete(request, spent=max(spent, self.total_spent))
+    async def complete(
+        self,
+        request: Request,
+        *,
+        spent: Decimal = Decimal("0"),
+        session: AsyncSession | None = None,
+    ) -> Response:
+        response = await super().complete(
+            request,
+            spent=max(spent, self.total_spent),
+            session=session,
+        )
         self.total_spent += response.cost_usd
         return response
 
@@ -271,6 +282,7 @@ async def generate_cover_letter(
     in front of a human, mirroring the same "only a passing resume is
     reviewable" rule `resume_review.evaluate_readiness` enforces for resumes.
     """
+    await require_generation_enabled(session)
     application = await _load_application(session, application_id, lock=True)
     if application.status is not ApplicationStatus.AWAITING_APPROVAL:
         raise CoverLetterStateError(

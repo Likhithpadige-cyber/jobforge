@@ -26,6 +26,7 @@ from packages.agents.resume_optimizer.evaluation import evaluation_handler
 from packages.agents.resume_optimizer.first_draft import FirstDraftClient, generate_first_draft
 from packages.agents.resume_optimizer.persistence import Thresholds
 from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
+from packages.core.events.guardrail_alerts import open_guardrail_alert
 from packages.core.events.monitoring import schedule_snapshot, snapshot_jobs
 from packages.core.events.runtime import DeliveryRuntime, OutboxRelay, RetryPolicy, StreamConsumer
 from packages.core.models import Event
@@ -325,7 +326,14 @@ async def run(
                     sessions, "cg.optimizer", {"job.normalized": handler}
                 )
             else:
-                runtime = DeliveryRuntime(sessions, "cg.monitor", {"schedule.tick": snapshot_jobs})
+                runtime = DeliveryRuntime(
+                    sessions,
+                    "cg.monitor",
+                    {
+                        "schedule.tick": snapshot_jobs,
+                        "guardrail.violation.detected": open_guardrail_alert,
+                    },
+                )
             consumer = StreamConsumer(redis, runtime, f"{socket.gethostname()}-{uuid4().hex[:8]}")
             initialized = False
             reconcile_at = 0.0

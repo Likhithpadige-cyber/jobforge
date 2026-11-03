@@ -739,3 +739,184 @@ async def test_case_5_reconciliation_creates_no_second_version(
         outcome=RevisionOutcome.PASSED,
     )
     assert await _versions() == before
+
+
+# =====================================================================
+# M12 Phase 1 - operational generation pause
+# =====================================================================
+async def _expire(session, attempt_id) -> None:  # type: ignore[no-untyped-def]
+    await session.execute(
+        text(
+            "UPDATE resume_revision_attempts SET lease_expires_at = now() - "
+            "interval '1 second' WHERE id = :id"
+        ),
+        {"id": attempt_id},
+    )
+
+
+async def _pause_fields(session, attempt_id):  # type: ignore[no-untyped-def]
+    return (
+        await session.execute(
+            text(
+                "SELECT status, lease_owner, lease_expires_at, lease_epoch, attempt_count, "
+                "       failure_class, failure_detail, finished_at "
+                "  FROM resume_revision_attempts WHERE id = :id"
+            ),
+            {"id": attempt_id},
+        )
+    ).one()
+
+
+async def test_pause_release_returns_to_accepted_without_a_failure_or_new_count(
+    session, revision_attempt
+) -> None:
+    repo = await _repo(session)
+    epoch = await repo.acquire(
+        revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+    )
+    assert epoch == 1
+    assert await repo.release_for_generation_pause(revision_attempt["id"], owner="w1", epoch=1)
+    status, owner, expires, epoch, count, failure, detail, finished = await _pause_fields(
+        session, revision_attempt["id"]
+    )
+    assert (status, owner, expires, epoch, count, failure, finished) == (
+        "accepted",
+        None,
+        None,
+        1,
+        1,
+        None,
+        None,
+    )
+    assert detail is not None
+
+    # The resumed acquisition continues the paused one: fenced as usual (epoch
+    # advances), but no second count is charged and the marker is consumed.
+    assert (
+        await repo.acquire(
+            revision_attempt["id"], owner="w2", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+        )
+        == 2
+    )
+    status, owner, _, epoch, count, failure, detail, _ = await _pause_fields(
+        session, revision_attempt["id"]
+    )
+    assert (status, owner, epoch, count, failure, detail) == (
+        "running",
+        "w2",
+        2,
+        1,
+        None,
+        None,
+    )
+
+    # Ordinary retryable failures are still charged on the next acquisition.
+    assert (
+        await repo.fail(
+            revision_attempt["id"],
+            owner="w2",
+            epoch=2,
+            failure_class=RevisionFailureClass.MODEL_TIMEOUT,
+            detail="timeout",
+            max_attempts=MAX_ATTEMPTS,
+            evidence_stale_budget=BUDGET,
+        )
+        == "accepted"
+    )
+    assert (
+        await repo.acquire(
+            revision_attempt["id"], owner="w3", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+        )
+        == 3
+    )
+    *_, count, _, _, _ = await _pause_fields(session, revision_attempt["id"])
+    assert count == 2
+
+
+async def test_pause_release_rejects_stale_owner_and_epoch(session, revision_attempt) -> None:
+    repo = await _repo(session)
+    await repo.acquire(
+        revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+    )
+    assert not await repo.release_for_generation_pause(
+        revision_attempt["id"], owner="intruder", epoch=1
+    )
+    assert not await repo.release_for_generation_pause(revision_attempt["id"], owner="w1", epoch=7)
+    # w1 is taken over mid-flight; its pause cleanup must not touch w2's lease.
+    await _expire(session, revision_attempt["id"])
+    assert (
+        await repo.acquire(
+            revision_attempt["id"], owner="w2", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+        )
+        == 2
+    )
+    assert not await repo.release_for_generation_pause(revision_attempt["id"], owner="w1", epoch=1)
+    status, owner, expires, epoch, count, failure, detail, _ = await _pause_fields(
+        session, revision_attempt["id"]
+    )
+    assert (status, owner, epoch, count, failure, detail) == (
+        "running",
+        "w2",
+        2,
+        2,
+        None,
+        None,
+    )
+    assert expires is not None
+
+
+async def test_pause_release_happens_once_and_never_after_an_outcome(
+    session, revision_attempt, demo_resume
+) -> None:
+    repo = await _repo(session)
+    await repo.acquire(
+        revision_attempt["id"], owner="w1", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+    )
+    assert await repo.release_for_generation_pause(revision_attempt["id"], owner="w1", epoch=1)
+    # A duplicate cleanup by the same owner finds no running lease.
+    assert not await repo.release_for_generation_pause(revision_attempt["id"], owner="w1", epoch=1)
+    assert (
+        await repo.acquire(
+            revision_attempt["id"], owner="w2", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+        )
+        == 2
+    )
+    assert await repo.succeed(
+        revision_attempt["id"],
+        owner="w2",
+        epoch=2,
+        result_resume_id=demo_resume,
+        result_version=2,
+        outcome=RevisionOutcome.PASSED,
+    )
+    assert not await repo.release_for_generation_pause(revision_attempt["id"], owner="w2", epoch=2)
+    status, *_ = await _row(session, revision_attempt["id"])
+    assert status == "succeeded"
+
+
+async def test_a_pause_on_the_last_permitted_acquisition_stays_recoverable(
+    session, revision_attempt
+) -> None:
+    repo = await _repo(session)
+    for i in range(MAX_ATTEMPTS - 1):
+        await repo.acquire(
+            revision_attempt["id"],
+            owner=f"w{i}",
+            lease_seconds=TTL,
+            max_attempts=MAX_ATTEMPTS,
+        )
+        await _expire(session, revision_attempt["id"])
+    last = await repo.acquire(
+        revision_attempt["id"], owner="last", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+    )
+    assert last == MAX_ATTEMPTS
+    assert await repo.release_for_generation_pause(revision_attempt["id"], owner="last", epoch=last)
+    # Without the pause marker an accepted row at the ceiling is unacquirable.
+    assert (
+        await repo.acquire(
+            revision_attempt["id"], owner="resumed", lease_seconds=TTL, max_attempts=MAX_ATTEMPTS
+        )
+        == MAX_ATTEMPTS + 1
+    )
+    status, owner, _, _, count, *_ = await _pause_fields(session, revision_attempt["id"])
+    assert (status, owner, count) == ("running", "resumed", MAX_ATTEMPTS)

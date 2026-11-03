@@ -44,6 +44,11 @@ from packages.agents.resume_optimizer.revision import (
 )
 from packages.core.db.audit_boundary import AuditBoundary, AuditContext
 from packages.core.db.inference_audit import IndependentInferenceAudit
+from packages.core.generation_safety import (
+    GenerationPausedError,
+    generation_is_paused,
+    require_generation_enabled,
+)
 from packages.core.models import (
     ApplicationStatus,
     ApprovalStatus,
@@ -124,6 +129,7 @@ async def request_changes_and_regenerate(
     client: StructuredClient,
 ) -> resume_review.ReviewState:
     """Record the decision, then run the revision against a durable attempt."""
+    await require_generation_enabled(session)
     instructions = note.strip()
     if not instructions:
         raise resume_review.MissingNoteError("requesting changes needs a note")
@@ -360,6 +366,11 @@ async def _run_attempt(
             "a revision for this review is already running and did not finish "
             "within the wait window; reload the review and retry"
         )
+    if await generation_is_paused(session):
+        # Closes the race between the pre-T1 check and the lease. T2 is still
+        # uncommitted, so rolling back undoes the acquisition and its count.
+        await session.rollback()
+        raise GenerationPausedError("Generation is paused pending human incident resolution")
     context = AuditContext(
         attempt_id=attempt_id,
         application_id=application_id,
@@ -381,6 +392,14 @@ async def _run_attempt(
             writer=IndependentInferenceAudit(context=context),
         )
         await session.commit()
+    except GenerationPausedError:
+        # An operational barrier, not a technical failure: hand the attempt
+        # back recoverable instead of classifying it (M12 Phase 1).
+        await session.rollback()
+        await _t4_release_for_pause(
+            session, context=context, owner=owner, epoch=epoch, actor_id=actor_id
+        )
+        raise
     except BaseException as exc:
         await session.rollback()
         if not await _t4_prime_record_failure(
@@ -605,6 +624,58 @@ async def _t4_prime_record_failure(
         failure_class=failure_class.value,
         status=status,
     )
+    return True
+
+
+async def _t4_release_for_pause(
+    session: AsyncSession,
+    *,
+    context: AuditContext,
+    owner: str,
+    epoch: int,
+    actor_id: UUID,
+) -> bool:
+    """T4 for an M12 generation pause: release the lease and the application.
+
+    One transaction, application lock first (same order as T1/T2/T5). The
+    attempt returns to `accepted` with no failure class, and the application
+    returns to `changes_requested` with the human decision intact, so the same
+    request can be re-driven after the final auto-pause incident is resolved.
+    A fenced-out caller (stale owner or epoch) changes nothing: whoever holds
+    the lease now owns the outcome.
+    """
+    attempt_id, application_id = context.attempt_id, context.application_id
+    try:
+        application = await resume_review._load_application(session, application_id, lock=True)
+        released = await RevisionAttemptRepository(session).release_for_generation_pause(
+            attempt_id, owner=owner, epoch=epoch
+        )
+        if not released:
+            await session.rollback()
+            log.warning(
+                "resume_rework.fenced_out_before_pause_release",
+                attempt_id=str(attempt_id),
+                owner=owner,
+                epoch=epoch,
+            )
+            return False
+        if application.status is ApplicationStatus.RESUME_GENERATING:
+            await resume_revision.recover_to_changes_requested(
+                session,
+                application=application,
+                actor_id=actor_id,
+                attempt_id=attempt_id,
+                reason=f"revision attempt {attempt_id} paused by an operational "
+                "safety incident; returned for retry",
+            )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        # The lease still expires and the existing takeover rules apply.
+        log.exception("resume_rework.pause_release_failed", attempt_id=str(attempt_id))
+        await audit.try_record("revision.attempt.recovery_failed", context=context)
+        return False
+    log.info("resume_rework.attempt_released_for_pause", attempt_id=str(attempt_id))
     return True
 
 

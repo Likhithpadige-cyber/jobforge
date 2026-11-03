@@ -276,10 +276,12 @@ async def recover_to_changes_requested(
     application: Application,
     actor_id: UUID,
     attempt_id: UUID,
+    reason: str | None = None,
 ) -> None:
     """T5. Return a stranded application to `changes_requested` (G.6, PO-1).
 
-    Technical failures only. A semantic negative never reaches here: it is a
+    Technical failures and M12 operational pauses (with their own `reason`)
+    only. A semantic negative never reaches here: it is a
     SUCCEEDED attempt whose content did not verify, and its application ends
     at `verification_failed` by B6's own route.
 
@@ -295,7 +297,7 @@ async def recover_to_changes_requested(
         ApplicationStatus.CHANGES_REQUESTED,
         actor_type="human",
         actor_id=str(actor_id),
-        reason=f"revision attempt {attempt_id} failed technically; returned for retry",
+        reason=reason or f"revision attempt {attempt_id} failed technically; returned for retry",
         correlation_id=application.id,
     )
     log.info(

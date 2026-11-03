@@ -16,6 +16,7 @@ from packages.agents.resume_optimizer.handoff import (
 )
 from packages.agents.resume_optimizer.resume_persistence import persist_resume
 from packages.core.db.inference_audit import FirstDraftInferenceAudit
+from packages.core.generation_safety import require_generation_enabled
 from packages.core.models import Application, ApplicationStatus, Event, Resume, User
 from packages.core.services.first_draft import fingerprint, load_inputs
 from packages.core.state_machines.application import transition_application
@@ -27,8 +28,18 @@ class FirstDraftClient(StructuredClient):
 
     total_spent: Decimal = Decimal("0")
 
-    async def complete(self, request: Request, *, spent: Decimal = Decimal("0")) -> Response:
-        response = await super().complete(request, spent=max(spent, self.total_spent))
+    async def complete(
+        self,
+        request: Request,
+        *,
+        spent: Decimal = Decimal("0"),
+        session: AsyncSession | None = None,
+    ) -> Response:
+        response = await super().complete(
+            request,
+            spent=max(spent, self.total_spent),
+            session=session,
+        )
         self.total_spent += response.cost_usd
         # The stage must record actual usage before handling an over-budget result.
         return response
@@ -36,6 +47,7 @@ class FirstDraftClient(StructuredClient):
 
 async def generate_first_draft(session: AsyncSession, event: Event,
                                client: FirstDraftClient) -> str:
+    await require_generation_enabled(session)
     application = await session.scalar(select(Application).where(
         Application.id == event.aggregate_id,
     ).with_for_update())
