@@ -1301,3 +1301,44 @@ Commit `7e0e481`.
   - The switch dialog's dry-run wording is correct. It was cancelled with Escape, the switch was left off, and focus returned to the trigger.
   - No horizontal overflow at 375 px.
 - Secrets scan: no unbaselined secrets, and the baseline is unchanged.
+
+## M13 Phase 3 — COMPLETE, verified 2026-11-04
+
+Commit `89256f1`.
+
+### Real dashboard and agent activity
+
+- Backend, read-only, owner and reviewer, in `READ ONLY` transactions:
+  - `GET /api/v1/agent-runs`: filters for `agent`, `status` and `application_id`, `limit` up to 100, `offset`, newest first.
+  - `GET /api/v1/agent-runs/summary?days=1..90`.
+  - `GET /api/v1/agent-runs/{id}`: the run plus its step names, statuses and timings.
+  - Run metadata only. Error messages, step outputs, guardrail results and LLM prompts or responses are never returned. `error_type` is echoed only when it is a class name, otherwise "Error". An unknown run returns 404.
+- Frontend:
+  - The dashboard reads approvals, applications, job counts, agent runs and the fact summary.
+    - Each source degrades on its own: an unknown count shows "—" with a retry, never 0.
+    - The priority card never says nothing is waiting when the inbox could not be read.
+    - Only the owner is greeted by name, taken from the profile; reviewers never trigger a profile read.
+  - `/agent-activity`: a 7-day summary, filters, pagination, and steps loaded on demand.
+- Removed:
+  - `lib/demo-data.ts` and the components only it fed: `DemoDataNotice`, `JobRow`, `ActivityItem`, `ReviewAlert` and `FitDistribution`.
+  - `PlaceholderPage`, and the Interviews and Analytics pages and navigation items, because no data source exists for either.
+  - Tests now assert that no app, component or library source references demo fixtures.
+
+### Explicit limitations
+
+- The dashboard reads up to 200 applications for its pipeline counts. A server-side count endpoint is a candidate once volumes grow.
+- Analytics stays hidden until there is real analytics data to show.
+
+### Final verification counts
+
+- Integration:
+  - Authorization matrix plus agent-runs and review-status APIs: 362 passed, with the 3 new routes classified.
+  - Agent-runs API: 4 tests (redaction, filters and pagination, detail, summary).
+  - The full backend suite last ran for Phase 2. The Phase 3 backend change is additive: one new router and its registration.
+- ruff check and format: clean. mypy: 167 source files, no issues. check-shadowing: clean.
+- Frontend: 290 tests passed, typecheck and lint clean, production build succeeded.
+- Browser checks in the isolated demo:
+  - The dashboard shows real counts: 2 jobs, 2 applications, 1 waiting, and a pipeline with 1 needing attention and 1 ready.
+  - Agent activity lists 9 replay runs at $0.00. The failed seed run shows only `ModelOutputError`.
+  - No horizontal overflow at 375 px.
+- Secrets scan: no unbaselined secrets, and the baseline is unchanged.
