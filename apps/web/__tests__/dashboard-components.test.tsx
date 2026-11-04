@@ -2,9 +2,15 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MetricCard } from "@/components/MetricCard";
 import { PipelineTrack } from "@/components/PipelineTrack";
-import { FitDistribution } from "@/components/FitDistribution";
 import { EmptyState } from "@/components/EmptyState";
-import { DEMO_FIT_DISTRIBUTION, DEMO_PIPELINE } from "@/lib/demo-data";
+import type { PipelineStage } from "@/lib/dashboard-priority";
+
+const STAGES: PipelineStage[] = [
+  { key: "jobs", label: "Jobs found", count: 12 },
+  { key: "Preparing", label: "Preparing", count: 1 },
+  { key: "Needs attention", label: "Needs attention", count: 2, note: "waiting on you" },
+  { key: "Submitted", label: "Applied", count: 3 },
+];
 
 describe("MetricCard", () => {
   it("renders value and label", () => {
@@ -21,32 +27,16 @@ describe("MetricCard", () => {
 
 describe("PipelineTrack", () => {
   it("renders every stage in order", () => {
-    render(<PipelineTrack stages={DEMO_PIPELINE} />);
+    render(<PipelineTrack stages={STAGES} />);
     const items = screen.getAllByRole("listitem");
-    expect(items).toHaveLength(DEMO_PIPELINE.length);
-    expect(screen.getByText("Discovered")).toBeInTheDocument();
-    expect(screen.getByText("Interview")).toBeInTheDocument();
+    expect(items).toHaveLength(STAGES.length);
+    expect(screen.getByText("Jobs found")).toBeInTheDocument();
+    expect(screen.getByText("Applied")).toBeInTheDocument();
   });
 
   it("marks the stage that is waiting on the person", () => {
-    render(<PipelineTrack stages={DEMO_PIPELINE} />);
+    render(<PipelineTrack stages={STAGES} />);
     expect(screen.getByText("waiting on you")).toBeInTheDocument();
-  });
-});
-
-describe("FitDistribution", () => {
-  it("prints counts as well as drawing them", () => {
-    render(<FitDistribution bands={DEMO_FIT_DISTRIBUTION} />);
-    expect(screen.getByText("Strong")).toBeInTheDocument();
-    expect(screen.getByText("31")).toBeInTheDocument();
-  });
-
-  it("describes the chart for screen readers", () => {
-    render(<FitDistribution bands={DEMO_FIT_DISTRIBUTION} />);
-    expect(screen.getByRole("img")).toHaveAttribute(
-      "aria-label",
-      expect.stringContaining("Strong 31"),
-    );
   });
 });
 

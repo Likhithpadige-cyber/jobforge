@@ -14,7 +14,7 @@ function localGreeting(): string {
   }
 }
 
-export function DashboardGreeting({ name }: { name: string }) {
+export function DashboardGreeting({ name }: { name?: string | null }) {
   const [greeting, setGreeting] = useState("Welcome back");
 
   useEffect(() => {
@@ -24,5 +24,5 @@ export function DashboardGreeting({ name }: { name: string }) {
     return () => window.clearInterval(timer);
   }, []);
 
-  return <>{greeting}, {name}.</>;
+  return <>{name ? `${greeting}, ${name}.` : `${greeting}.`}</>;
 }

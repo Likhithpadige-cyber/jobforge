@@ -6,9 +6,7 @@ export const PRIMARY_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: "overview" },
   { href: "/applications", label: "Applications", icon: "applications" },
   { href: "/resume-studio", label: "Resume", icon: "resume" },
-  { href: "/interviews", label: "Interviews", icon: "interviews" },
   { href: "/agent-activity", label: "AI Agents", icon: "activity" },
-  { href: "/analytics", label: "Analytics", icon: "analytics" },
   { href: "/settings", label: "Settings", icon: "settings" },
 ];
 

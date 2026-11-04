@@ -1,4 +1,4 @@
-import type { DemoStage } from "@/lib/demo-data";
+import type { PipelineStage } from "@/lib/dashboard-priority";
 
 /**
  * Where everything stands.
@@ -8,11 +8,11 @@ import type { DemoStage } from "@/lib/demo-data";
  * "waiting on you" line - rather than by flooding the cell with colour. Every
  * other stage stays neutral so the one that matters is the one that stands out.
  */
-export function PipelineTrack({ stages }: { stages: DemoStage[] }) {
+export function PipelineTrack({ stages }: { stages: PipelineStage[] }) {
   const peak = Math.max(...stages.map((s) => s.count), 1);
 
   return (
-    <ol className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-edge bg-edge sm:grid-cols-4 lg:grid-cols-7">
+    <ol className="grid grid-cols-2 gap-px overflow-hidden rounded-card border border-edge bg-edge sm:grid-cols-3 lg:grid-cols-6">
       {stages.map((stage, index) => {
         const needsYou = Boolean(stage.note);
         return (
