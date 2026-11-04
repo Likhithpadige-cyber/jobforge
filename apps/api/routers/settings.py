@@ -12,10 +12,20 @@ never taken from the request.
 
 from __future__ import annotations
 
+from typing import Literal, cast
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict
 
-from apps.api.deps import CsrfProtected, DbSession, RequireOwner, authenticated_api, require_owner
+from apps.api.deps import (
+    AppSettings,
+    CsrfProtected,
+    DbSession,
+    RequireOwner,
+    authenticated_api,
+    require_owner,
+)
+from apps.api.schemas.review_status import SubmissionGate
 from packages.core.services.settings import (
     set_submission_dispatch_enabled,
     submission_dispatch_enabled,
@@ -32,6 +42,17 @@ class SubmissionEnabledInput(BaseModel):
 @router.get("/settings/submission-enabled")
 async def get_submission_enabled(session: DbSession) -> dict[str, bool]:
     return {"submission_enabled": await submission_dispatch_enabled(session)}
+
+
+@router.get("/settings/submission-gate", response_model=SubmissionGate)
+async def get_submission_gate(session: DbSession, settings: AppSettings) -> SubmissionGate:
+    """Both switches, so a person can see that the persisted one alone sends nothing."""
+    persisted = await submission_dispatch_enabled(session)
+    return SubmissionGate(
+        submission_mode=cast(Literal["dry_run", "enabled"], str(settings.submission_mode)),
+        persisted_enabled=persisted,
+        live=settings.submission_enabled and persisted,
+    )
 
 
 @router.put("/settings/submission-enabled", dependencies=[Depends(require_owner)])

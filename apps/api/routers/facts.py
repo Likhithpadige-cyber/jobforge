@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 
 from apps.api.deps import (
     DbSession,
+    RequireOwner,
     authenticated_api,
     fact_suggest_limit,
     rate_limited,
@@ -44,6 +45,24 @@ router = APIRouter(
     tags=["profile-facts"],
     dependencies=[Depends(authenticated_api)],
 )
+
+
+async def _saved(session: DbSession, entity: Any) -> Any:
+    """Commit, then reload server-generated columns (e.g. `updated_at`).
+
+    `updated_at` is set by the database on UPDATE, so after a flush the ORM
+    attribute is expired; reading it while serialising would need IO outside
+    the async context. Refreshing here keeps the response complete.
+    """
+    await session.commit()
+    await session.refresh(entity)
+    return entity
+
+
+def _require_self(claimed: UUID | None, actor: UUID, field: str) -> None:
+    """Human attribution comes from the session, never from the request."""
+    if claimed is not None and claimed != actor:
+        raise ValidationError(f"{field} must be the signed-in user")
 
 
 async def _profile_id(session: DbSession) -> UUID:
@@ -102,8 +121,7 @@ async def create_fact(payload: FactCreate, session: DbSession) -> Any:
         fact.valid_from = payload.valid_from
         fact.valid_to = payload.valid_to
         await session.flush()
-    await session.commit()
-    return fact
+    return await _saved(session, fact)
 
 
 @router.get("/{fact_id}", response_model=FactRead)
@@ -128,8 +146,7 @@ async def update_fact(fact_id: UUID, payload: FactUpdate, session: DbSession) ->
             "edit, then verify again"
         )
     updated = await repo.update(fact, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 @router.post(
@@ -138,10 +155,12 @@ async def update_fact(fact_id: UUID, payload: FactUpdate, session: DbSession) ->
     summary="Verify a fact (human action)",
     dependencies=[Depends(require_owner)],
 )
-async def verify_fact(fact_id: UUID, payload: FactVerifyRequest, session: DbSession) -> Any:
-    fact = await FactRepository(session).verify(fact_id, verified_by=payload.verified_by)
-    await session.commit()
-    return fact
+async def verify_fact(
+    fact_id: UUID, payload: FactVerifyRequest, session: DbSession, owner: RequireOwner
+) -> Any:
+    _require_self(payload.verified_by, owner.id, "verified_by")
+    fact = await FactRepository(session).verify(fact_id, verified_by=owner.id)
+    return await _saved(session, fact)
 
 
 @router.post(
@@ -152,8 +171,7 @@ async def verify_fact(fact_id: UUID, payload: FactVerifyRequest, session: DbSess
 )
 async def unverify_fact(fact_id: UUID, session: DbSession) -> Any:
     fact = await FactRepository(session).unverify(fact_id)
-    await session.commit()
-    return fact
+    return await _saved(session, fact)
 
 
 @router.post(
@@ -164,8 +182,7 @@ async def unverify_fact(fact_id: UUID, session: DbSession) -> Any:
 )
 async def retire_fact(fact_id: UUID, session: DbSession) -> Any:
     fact = await FactRepository(session).retire(fact_id)
-    await session.commit()
-    return fact
+    return await _saved(session, fact)
 
 
 @router.delete(
@@ -198,8 +215,7 @@ async def suggest_facts(payload: FactSuggestRequest, session: DbSession) -> Any:
     created = await ProfileService(session).suggest_facts(
         await _profile_id(session), payload.source_table, payload.source_id
     )
-    await session.commit()
-    return created
+    return await _saved(session, created)
 
 
 # ---------------------------------------------------------------- evidence
@@ -215,10 +231,14 @@ async def list_evidence(fact_id: UUID, session: DbSession) -> Any:
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(require_owner)],
 )
-async def add_evidence(fact_id: UUID, payload: FactEvidenceCreate, session: DbSession) -> Any:
+async def add_evidence(
+    fact_id: UUID, payload: FactEvidenceCreate, session: DbSession, owner: RequireOwner
+) -> Any:
+    _require_self(payload.added_by, owner.id, "added_by")
     await FactRepository(session).get_or_404(fact_id)
     if not any((payload.url, payload.note, payload.artifact_id)):
         raise ValidationError("evidence needs at least a url, a note, or an artifact")
-    evidence = await FactEvidenceRepository(session).create(fact_id=fact_id, **payload.model_dump())
-    await session.commit()
-    return evidence
+    evidence = await FactEvidenceRepository(session).create(
+        fact_id=fact_id, **(payload.model_dump() | {"added_by": owner.id})
+    )
+    return await _saved(session, evidence)

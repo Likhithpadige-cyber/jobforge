@@ -376,6 +376,7 @@ OWNER_AND_REVIEWER = frozenset(
         # shared, same as every other read in this workspace; only changing
         # it is owner-only (OWNER_ONLY above).
         ("GET", "/api/v1/settings/submission-enabled"),
+        ("GET", "/api/v1/settings/submission-gate"),
         # M13 Phase 1: read-only review and submission status. Reviewers may
         # read readiness and redacted history; only the owner may submit.
         ("GET", "/api/v1/approvals"),

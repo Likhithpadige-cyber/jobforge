@@ -57,6 +57,12 @@ describe("errors", () => {
     expect(error.message).toBe("Real submission is disabled");
   });
 
+  it("names the first invalid field", () => {
+    const body = { detail: "The request body or parameters failed validation.", errors: [{ loc: ["body", "max_salary"], msg: "Value error, max_salary must be greater than or equal to min_salary" }] };
+    expect(reviewError(new ApiError("x", 422, body)).message).toBe("max salary: max_salary must be greater than or equal to min_salary");
+    expect(reviewError(new ApiError("x", 422, { detail: "verified_by must be the signed-in user" })).message).toBe("verified_by must be the signed-in user");
+  });
+
   it("never echoes an unexpected error", () => {
     expect(reviewError(new Error("SECRET stack trace")).message).not.toMatch(/SECRET/);
   });

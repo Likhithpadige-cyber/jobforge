@@ -82,9 +82,9 @@ class FactRead(BaseModel):
 
 
 class FactVerifyRequest(StrictModel):
-    #: In Phase 2 there is no session yet, so the verifying user is explicit.
-    #: Phase 6 replaces this with the authenticated user (SECURITY.md §3.1).
-    verified_by: UUID
+    #: The verifier is always the authenticated owner. The field remains only
+    #: so older clients keep working; any other value is refused.
+    verified_by: UUID | None = None
     note: str | None = Field(default=None, max_length=1000)
 
 
@@ -107,6 +107,7 @@ class FactEvidenceCreate(StrictModel):
     url: str | None = None
     note: str | None = Field(default=None, max_length=2000)
     artifact_id: UUID | None = None
+    #: Always the authenticated owner; any other value is refused.
     added_by: UUID | None = None
 
 

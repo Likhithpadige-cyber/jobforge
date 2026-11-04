@@ -321,10 +321,22 @@ export function reviewError(cause: unknown): ReviewError {
     case 409:
       return { kind: "conflict", message: detail ?? "The state changed. Reload and try again." };
     case 422:
-      return { kind: "invalid", message: detail ?? "Some of the information is not valid." };
+      return { kind: "invalid", message: fieldError(cause.detail) ?? detail ?? "Some of the information is not valid." };
     case 429:
       return { kind: "rate_limited", message: "Too many requests. Wait a moment and try again." };
     default:
       return { kind: "failed", message: `The API returned an error (${cause.status}).` };
   }
+}
+
+/** The first field-level validation message, e.g. "end_date: must not be before start_date". */
+function fieldError(body: unknown): string | null {
+  if (typeof body !== "object" || body === null || !("errors" in body)) return null;
+  const first = (body as { errors: unknown }).errors;
+  if (!Array.isArray(first) || first.length === 0) return null;
+  const { loc, msg } = first[0] as { loc?: unknown; msg?: unknown };
+  if (typeof msg !== "string") return null;
+  const field = Array.isArray(loc) ? loc.filter((part) => part !== "body").join(".") : "";
+  const text = msg.replace(/^Value error, /, "");
+  return field ? `${field.replaceAll("_", " ")}: ${text}` : text;
 }

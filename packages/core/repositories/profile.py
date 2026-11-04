@@ -47,7 +47,8 @@ class ProfileRepository(BaseRepository[Profile]):
 
     async def get_singleton(self) -> Profile:
         """This is a single-candidate system: there is one profile."""
-        stmt = select(Profile).limit(1)
+        # Ordered so the answer is stable: an UPDATE moves a row in the heap.
+        stmt = select(Profile).order_by(Profile.created_at, Profile.id).limit(1)
         profile = (await self.session.execute(stmt)).scalar_one_or_none()
         if profile is None:
             raise NotFoundError("no profile exists yet")

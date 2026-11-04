@@ -11,7 +11,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response, status
 
-from apps.api.deps import DbSession, authenticated_api, require_owner
+from apps.api.deps import CurrentUser, DbSession, authenticated_api, require_owner
 from apps.api.schemas.profile import (
     CertificationCreate,
     CertificationRead,
@@ -46,14 +46,23 @@ from packages.shared.errors import NotFoundError
 router = APIRouter(prefix="/profile", tags=["profile"], dependencies=[Depends(authenticated_api)])
 
 
+#: Profile fields only the owner may read.
+OWNER_ONLY_PROFILE_FIELDS = ("email", "phone", "work_authorization", "min_salary", "max_salary")
+
+
 @router.get("", response_model=ProfileDetail, summary="Get the profile")
-async def get_profile(session: DbSession) -> Any:
+async def get_profile(session: DbSession, user: CurrentUser) -> Any:
     repo = ProfileRepository(session)
     profile = await repo.get_singleton()
     detailed = await repo.get_with_children(profile.id)
     if detailed is None:  # pragma: no cover - the row was just read
         raise NotFoundError("profile not found")
-    return detailed
+    view = ProfileDetail.model_validate(detailed)
+    if user.role == "owner":
+        return view
+    # Reviewers check materials against facts; they never need the
+    # candidate's contact details, work authorization or salary range.
+    return view.model_copy(update=dict.fromkeys(OWNER_ONLY_PROFILE_FIELDS))
 
 
 @router.put(
@@ -66,8 +75,7 @@ async def update_profile(payload: ProfileUpdate, session: DbSession) -> Any:
     service = ProfileService(session)
     profile = await service.profiles.get_singleton()
     updated = await service.update_profile(profile.id, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +83,18 @@ async def update_profile(payload: ProfileUpdate, session: DbSession) -> Any:
 # than generated, because explicit routes give correct OpenAPI schemas - and
 # the frontend types are generated from that schema.
 # ---------------------------------------------------------------------------
+
+
+async def _saved(session: DbSession, entity: Any) -> Any:
+    """Commit, then reload server-generated columns (e.g. `updated_at`).
+
+    `updated_at` is set by the database on UPDATE, so after a flush the ORM
+    attribute is expired; reading it while serialising would need IO outside
+    the async context. Refreshing here keeps the response complete.
+    """
+    await session.commit()
+    await session.refresh(entity)
+    return entity
 
 
 async def _profile_id(session: DbSession) -> UUID:
@@ -97,8 +117,7 @@ async def create_experience(payload: ExperienceCreate, session: DbSession) -> An
     entity = await ExperienceRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
     )
-    await session.commit()
-    return entity
+    return await _saved(session, entity)
 
 
 @router.patch(
@@ -110,8 +129,7 @@ async def update_experience(entity_id: UUID, payload: ExperienceUpdate, session:
     repo = ExperienceRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 @router.delete(
@@ -142,8 +160,7 @@ async def create_education(payload: EducationCreate, session: DbSession) -> Any:
     entity = await EducationRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
     )
-    await session.commit()
-    return entity
+    return await _saved(session, entity)
 
 
 @router.patch(
@@ -155,8 +172,7 @@ async def update_education(entity_id: UUID, payload: EducationUpdate, session: D
     repo = EducationRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 @router.delete(
@@ -187,8 +203,7 @@ async def create_certification(payload: CertificationCreate, session: DbSession)
     entity = await CertificationRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
     )
-    await session.commit()
-    return entity
+    return await _saved(session, entity)
 
 
 @router.patch(
@@ -202,8 +217,7 @@ async def update_certification(
     repo = CertificationRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 @router.delete(
@@ -234,8 +248,7 @@ async def create_skill(payload: SkillCreate, session: DbSession) -> Any:
     entity = await SkillRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
     )
-    await session.commit()
-    return entity
+    return await _saved(session, entity)
 
 
 @router.patch(
@@ -247,8 +260,7 @@ async def update_skill(entity_id: UUID, payload: SkillUpdate, session: DbSession
     repo = SkillRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 @router.delete(
@@ -279,8 +291,7 @@ async def create_project(payload: ProjectCreate, session: DbSession) -> Any:
     entity = await ProjectRepository(session).create_for_profile(
         await _profile_id(session), **payload.model_dump()
     )
-    await session.commit()
-    return entity
+    return await _saved(session, entity)
 
 
 @router.patch(
@@ -292,8 +303,7 @@ async def update_project(entity_id: UUID, payload: ProjectUpdate, session: DbSes
     repo = ProjectRepository(session)
     entity = await repo.get_or_404(entity_id)
     updated = await repo.update(entity, **payload.model_dump(exclude_unset=True))
-    await session.commit()
-    return updated
+    return await _saved(session, updated)
 
 
 @router.delete(
