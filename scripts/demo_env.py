@@ -208,7 +208,11 @@ async def seed() -> int:
             return 1
     engine = await _guarded_engine(require_marker=True)
     try:
-        await _seed_accounts_and_incidents(engine)
+        # Accounts first; the review workflow runs before the synthetic
+        # pausing incidents exist, because those pause generation.
+        await _seed_accounts(engine)
+        await _seed_review_workflow()
+        await _seed_incidents(engine)
     finally:
         await engine.dispose()
     print("demo seed complete")
@@ -219,17 +223,11 @@ def _id(name: str) -> UUID:
     return uuid5(NAMESPACE_URL, f"jobforge-demo:{name}")
 
 
-async def _seed_accounts_and_incidents(engine: Any) -> None:
-    from typing import cast
-
-    from sqlalchemy import Table, func, select, text
-    from sqlalchemy.dialects.postgresql import insert
+async def _seed_accounts(engine: Any) -> None:
+    from sqlalchemy import text
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from packages.core.auth import hash_password
-    from packages.core.events.envelope import EventEnvelope
-    from packages.core.events.guardrail_alerts import open_guardrail_alert
-    from packages.core.models import Alert, Event, ProcessedEvent
 
     owner_password = os.environ.get("DEMO_OWNER_PASSWORD", "")
     reviewer_password = os.environ.get("DEMO_REVIEWER_PASSWORD", "")
@@ -256,6 +254,22 @@ async def _seed_accounts_and_incidents(engine: Any) -> None:
             {"id": _id("reviewer"), "e": REVIEWER_EMAIL, "h": hash_password(reviewer_password)},
         )
 
+    print(f"accounts: {OWNER_EMAIL} (owner), {REVIEWER_EMAIL} (reviewer)")
+
+
+async def _seed_incidents(engine: Any) -> None:
+    from typing import cast
+
+    from sqlalchemy import Table, func, select
+    from sqlalchemy.dialects.postgresql import insert
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from packages.core.events.envelope import EventEnvelope
+    from packages.core.events.guardrail_alerts import open_guardrail_alert
+    from packages.core.models import Alert, Event, ProcessedEvent
+
+    async with AsyncSession(engine, expire_on_commit=False) as session, session.begin():
+        await check_database(await session.connection(), require_marker=True)
         # Two synthetic generation-pause incidents through the real Phase 1 path.
         for index in (1, 2):
             envelope = EventEnvelope(
@@ -326,8 +340,238 @@ async def _seed_accounts_and_incidents(engine: Any) -> None:
             .on_conflict_do_nothing(index_elements=["id"])
         )
         total = await session.scalar(select(func.count()).select_from(Alert))
-        print(f"accounts: {OWNER_EMAIL} (owner), {REVIEWER_EMAIL} (reviewer)")
         print(f"alerts in demo database: {total}")
+
+
+REVIEW_JOB_URL = "mailto:careers@demo-cloud.example"
+REVIEW_DOMAIN = "demo-cloud.example"  # reserved .example TLD: undeliverable by design
+DEMO_QUESTIONS = (
+    ("Are you legally authorized to work in the United States?", "boolean", True, None),
+    ("Which cloud platform have you used most?", "text", True, 200),
+    ("Why are you interested in this role?", "textarea", False, 1000),
+)
+
+
+async def _replay_cover_letter(session: Any, application_id: UUID) -> None:
+    """Generate a verified cover letter through the real pipeline, replayed.
+
+    The same offline technique the integration tests use: cassettes for the
+    drafting call and each paragraph's B5 verification are written to a
+    temporary directory, and `generate_cover_letter` runs end to end in
+    replay mode. No provider is configured, so nothing can leave the machine.
+    """
+    import tempfile
+    from decimal import Decimal
+    from pathlib import Path
+
+    from packages.agents.cover_letter.drafting import prepare_request as draft_request
+    from packages.agents.llm.runtime import Response, canonical
+    from packages.agents.resume_optimizer import verification as b5
+    from packages.agents.resume_optimizer.context import load_tailoring_context
+    from packages.core.models import Application
+    from packages.core.services import cover_letters
+    from packages.shared.config import get_settings
+
+    application = await session.get(Application, application_id)
+    context = await load_tailoring_context(
+        session, profile_id=application.profile_id, job_id=application.job_id
+    )
+    by_text = {fact.text.lower(): fact for fact in context.facts}
+    aws = next(fact for text, fact in by_text.items() if "aws" in text)
+    paragraphs = [
+        {
+            "text": "I design and run cloud infrastructure on AWS, defined as code.",
+            "fact_ids": [str(aws.id)],
+            "numerals_used": [],
+        },
+        {
+            "text": "My verified work covers the AWS foundations this role relies on.",
+            "fact_ids": [str(aws.id)],
+            "numerals_used": [],
+        },
+        {
+            "text": "I would bring that same evidence-backed approach to this team.",
+            "fact_ids": [str(aws.id)],
+            "numerals_used": [],
+        },
+    ]
+    with tempfile.TemporaryDirectory(prefix="jobforge-demo-replay-") as directory:
+        client = cover_letters.CoverLetterClient(get_settings(), cassette_dir=Path(directory))
+        draft = draft_request(context, model=client.model, note=None)
+        (Path(directory) / f"{draft.digest}.json").write_text(
+            Response(
+                body=canonical({"paragraphs": paragraphs}),
+                input_tokens=0,
+                output_tokens=0,
+                cost_usd=Decimal("0"),
+                stop_reason="tool_use",
+            ).model_dump_json()
+        )
+        for paragraph in paragraphs:
+            verify = b5.prepare_request(str(paragraph["text"]), [aws], client.model)
+            (Path(directory) / f"{verify.digest}.json").write_text(
+                Response(
+                    body=canonical(
+                        {"verdict": "supported", "explanation": "Synthetic replay verdict."}
+                    ),
+                    input_tokens=0,
+                    output_tokens=0,
+                    cost_usd=Decimal("0"),
+                    stop_reason="tool_use",
+                ).model_dump_json()
+            )
+        await cover_letters.generate_cover_letter(
+            session,
+            application_id=application_id,
+            event_id=_id(f"cover:{application_id}"),
+            client=client,
+        )
+
+
+async def _seed_review_workflow() -> None:
+    """Two fictional applications that show the review and submission flow.
+
+    * A (the Resume Studio application): questions prepared, resume review
+      opened and a verified cover letter generated - awaiting review.
+    * B (a second fictional job): everything approved, the resume rendered,
+      an EMAIL policy for a reserved `.example` domain, and readiness
+      computed - `submission_ready`, which dry-run mode then blocks.
+
+    Everything runs through the real services. Idempotent by state.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import select
+
+    from packages.core.db import dispose_engine, init_engine, session_scope
+    from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
+    from packages.core.models import (
+        Application,
+        ApplicationStatus,
+        Event,
+        Job,
+        SitePolicy,
+        SubmissionMethod,
+        User,
+    )
+    from packages.core.services import cover_letters, resume_review
+    from packages.core.services.applications import RawQuestion, prepare_application
+    from packages.core.services.artifacts import render_resume
+    from packages.core.services.submission_readiness import check_readiness_on_approval
+    from packages.services.rendering import production_renderers
+    from packages.services.rendering.store import FilesystemArtifactStore
+    from packages.shared.clock import utc_today
+    from scripts import seed_resume_studio_demo as studio
+
+    settings = check_settings()
+    await init_engine(settings)
+    await init_audit_engine(settings)
+    store = FilesystemArtifactStore(settings.artifact_storage_root)
+    try:
+        async with session_scope() as session:
+            await check_database(await session.connection(), require_marker=True)
+            owner = await session.scalar(select(User).where(User.email == OWNER_EMAIL))
+            profile = await studio._demo_profile(session)
+            if owner is None or profile is None:
+                raise DemoGuardError("the base seed did not create the demo owner and profile")
+            profile_id, user_id = profile
+
+            # ---- A: awaiting review --------------------------------------
+            job_a = await session.scalar(select(Job).where(Job.url == studio.DEMO_JOB_URL))
+            app_a = (
+                await session.scalar(select(Application).where(Application.job_id == job_a.id))
+                if job_a
+                else None
+            )
+            if app_a is not None and app_a.status is ApplicationStatus.RESUME_READY:
+                await prepare_application(
+                    session,
+                    application_id=app_a.id,
+                    questions=[
+                        RawQuestion(
+                            question_text=question,
+                            input_type=kind,
+                            is_required=required,
+                            max_length=limit,
+                        )
+                        for question, kind, required, limit in DEMO_QUESTIONS
+                    ],
+                )
+                await session.flush()
+                await resume_review.enter_review(session, application_id=app_a.id, actor=owner)
+                await session.flush()
+                await _replay_cover_letter(session, app_a.id)
+                print(f"review demo (A): {app_a.id} -> awaiting review")
+            else:
+                print("review demo (A): already prepared; nothing to do")
+
+            # ---- B: submission ready (blocked by dry-run) ----------------
+            if await session.scalar(select(Job.id).where(Job.url == REVIEW_JOB_URL)) is None:
+                facts = await studio._facts(session, profile_id, user_id)
+                app_b, _ = await studio.build_tailored_application(
+                    session,
+                    profile_id=profile_id,
+                    facts=facts,
+                    source=await studio._source(session),
+                    company=await studio._company(session),
+                    url=REVIEW_JOB_URL,
+                    title="Platform Engineer",
+                    description=(
+                        "Fictional demo posting. Platform Engineer for AWS infrastructure "
+                        "and CI/CD. Applications by email to the posting address."
+                    ),
+                    actor_id="demo_seed",
+                )
+                if (
+                    await session.scalar(
+                        select(SitePolicy.id).where(SitePolicy.domain == REVIEW_DOMAIN)
+                    )
+                    is None
+                ):
+                    session.add(
+                        SitePolicy(
+                            id=_id("policy:review-domain"),
+                            domain=REVIEW_DOMAIN,
+                            submission_method=SubmissionMethod.EMAIL,
+                            automation_allowed=False,
+                            next_review_due=utc_today() + timedelta(days=180),
+                        )
+                    )
+                await prepare_application(session, application_id=app_b.id, questions=[])
+                await session.flush()
+                await resume_review.enter_review(session, application_id=app_b.id, actor=owner)
+                await session.flush()
+                await _replay_cover_letter(session, app_b.id)
+                await cover_letters.approve_cover_letter(
+                    session, application_id=app_b.id, actor=owner
+                )
+                resume = await resume_review.latest_tailored_resume(session, app_b.id)
+                if resume is None:
+                    raise DemoGuardError("the submission demo has no tailored resume")
+                await resume_review.approve(session, application_id=app_b.id, actor=owner)
+                await render_resume(
+                    session, store=store, renderers=production_renderers(), resume_id=resume.id
+                )
+                await session.flush()
+                granted = await session.scalar(
+                    select(Event)
+                    .where(Event.type == "approval.granted", Event.correlation_id == app_b.id)
+                    .order_by(Event.occurred_at.desc(), Event.id.desc())
+                    .limit(1)
+                )
+                if granted is None:
+                    raise DemoGuardError("approving the submission demo emitted no approval")
+                await check_readiness_on_approval(session, granted, store=store)
+                await session.flush()
+                status = await session.scalar(
+                    select(Application.status).where(Application.id == app_b.id)
+                )
+                print(f"submission demo (B): {app_b.id} -> {status}")
+            else:
+                print("submission demo (B): already present; nothing to do")
+    finally:
+        await dispose_audit_engine()
+        await dispose_engine()
 
 
 def _alert(

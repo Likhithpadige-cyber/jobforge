@@ -1,11 +1,14 @@
-import { PlaceholderPage } from "@/components/PlaceholderPage";
+"use client";
+
+import { AppShell } from "@/components/AppShell";
+import { ApprovalsInbox } from "@/components/review/ApprovalsInbox";
 
 export default function Page() {
   return (
-    <PlaceholderPage
-      title="Approvals"
-      description="Nothing leaves JobForge without your sign-off."
-      body="This is where you will read a tailored resume beside the requirements it claims to meet, and approve or send it back."
-    />
+    <AppShell title="Approvals" description="Nothing leaves JobForge without your sign-off.">
+      <div id="content" className="mx-auto max-w-[72rem]">
+        <ApprovalsInbox />
+      </div>
+    </AppShell>
   );
 }

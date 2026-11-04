@@ -15,8 +15,9 @@ Fundamental execution invariant:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import Table, select
@@ -105,6 +106,242 @@ def extract_and_validate_authoritative_email(
     return from_url
 
 
+@dataclass(frozen=True)
+class PreconditionCheck:
+    """One submit precondition. `summary` is fixed, recipient-free text."""
+
+    key: str
+    passed: bool
+    summary: str
+    error: Exception | None = None
+
+
+@dataclass(frozen=True)
+class SubmitPreconditions:
+    """Every submit precondition, evaluated by the one authoritative routine."""
+
+    checks: tuple[PreconditionCheck, ...]
+    submission: Submission | None = None
+    destination: str | None = None
+    destination_domain: str | None = None
+
+    @property
+    def satisfied(self) -> bool:
+        return bool(self.checks) and all(check.passed for check in self.checks)
+
+
+async def evaluate_submit_preconditions(
+    session: AsyncSession,
+    application: Application,
+    settings: Settings,
+    *,
+    stop_at_first_failure: bool = False,
+) -> SubmitPreconditions:
+    """The single definition of "may this application be submitted now".
+
+    `validate_submit_preconditions` (the Submit action, and therefore every
+    execution) runs this with `stop_at_first_failure=True`, which preserves the
+    original order, call sequence and error of each refusal. The read-only
+    readiness view runs it to completion so a person can see every unmet
+    condition at once; there a check whose inputs cannot be read fails closed.
+    Nothing here writes.
+    """
+    checks: list[PreconditionCheck] = []
+    submission: Submission | None = None
+    destination: str | None = None
+    destination_domain: str | None = None
+
+    def record(key: str, passed: bool, summary: str, error: Exception | None = None) -> bool:
+        checks.append(PreconditionCheck(key, passed, summary, None if passed else error))
+        return passed
+
+    def report() -> SubmitPreconditions:
+        return SubmitPreconditions(tuple(checks), submission, destination, destination_domain)
+
+    async def read(call: Any) -> Any:
+        # Full evaluation only: an unreadable input is an unmet condition.
+        if stop_at_first_failure:
+            return await call
+        try:
+            return await call
+        except Exception as exc:  # fail closed, reported per check
+            return exc
+
+    # 1. Application status.
+    ready = application.status is ApplicationStatus.SUBMISSION_READY
+    if (
+        not record(
+            "application_status",
+            ready,
+            "Application is ready to submit"
+            if ready
+            else f"Application is {application.status}, not ready to submit",
+            ConflictError(
+                f"Application {application.id} is not submission_ready "
+                f"(currently {application.status})"
+            ),
+        )
+        and stop_at_first_failure
+    ):
+        return report()
+
+    # 2. System-wide submission gate (both switches).
+    enabled = await read(real_submission_enabled(session, settings))
+    if (
+        not record(
+            "submission_enabled",
+            enabled is True,
+            "Live submission is enabled"
+            if enabled is True
+            else "Live submission is disabled (dry-run mode or the submission switch is off)",
+            ConflictError(
+                "Real submission is disabled in system configuration or operational settings"
+            ),
+        )
+        and stop_at_first_failure
+    ):
+        return report()
+
+    # 3. Review completeness.
+    complete = await read(review_is_complete(session, application))
+    if (
+        not record(
+            "review_complete",
+            complete is True,
+            "All required materials are approved"
+            if complete is True
+            else "Not all required materials are approved",
+            ConflictError(
+                f"Application {application.id} materials do not satisfy all required approvals"
+            ),
+        )
+        and stop_at_first_failure
+    ):
+        return report()
+
+    # 4. Site policy allows EMAIL.
+    verdict_result = await read(policy_verdict(session, application))
+    policy_row: SitePolicy | None = None
+    if isinstance(verdict_result, Exception):
+        record("policy_allows_email", False, "Site policy could not be read", verdict_result)
+        allowed = False
+    else:
+        verdict, snapshot, policy_row, domain = verdict_result
+        destination_domain = domain
+        allowed = (
+            verdict.decision is PolicyDecision.ALLOWED
+            and snapshot.submission_method is SubmissionMethod.EMAIL
+        )
+        record(
+            "policy_allows_email",
+            allowed,
+            f"Site policy for {domain} permits email submission"
+            if allowed
+            else f"Site policy for {domain} does not permit email submission",
+            ConflictError(
+                f"Site policy for {domain} does not permit automated email submission "
+                f"({verdict.reason or snapshot.submission_method})"
+            ),
+        )
+    if not allowed and stop_at_first_failure:
+        return report()
+
+    # 5. Policy review not expired. Submit refuses only an expired review (the
+    # original rule); the readiness view also reports a missing policy row.
+    expired = bool(
+        policy_row is not None
+        and policy_row.next_review_due
+        and policy_row.next_review_due < utc_today()
+    )
+    current = not expired if stop_at_first_failure else policy_row is not None and not expired
+    if (
+        not record(
+            "policy_review_current",
+            current,
+            "Site policy review is current"
+            if current
+            else "Site policy review has expired or no policy is recorded",
+            ConflictError(
+                f"Site policy review for {destination_domain} expired on "
+                f"{policy_row.next_review_due if policy_row is not None else None}"
+            ),
+        )
+        and stop_at_first_failure
+    ):
+        return report()
+
+    # 6. The attempt-1 record exists and has not been executed.
+    found = await read(existing_submission(session, application.id))
+    submission = found if isinstance(found, Submission) else None
+    if (
+        not record(
+            "attempt_recorded",
+            submission is not None,
+            "Submission attempt is prepared"
+            if submission is not None
+            else "No prepared submission attempt",
+            ConflictError(f"Application {application.id} has no attempt-1 submission record"),
+        )
+        and stop_at_first_failure
+    ):
+        return report()
+    pending = (
+        submission is not None
+        and submission.result is SubmissionResult.PENDING
+        and submission.started_at is None
+    )
+    if (
+        not record(
+            "attempt_not_executed",
+            pending,
+            "Submission has not been sent yet"
+            if pending
+            else "Submission attempt has already been executed or is unavailable",
+            ConflictError(
+                f"Application {application.id} submission attempt has already been executed "
+                f"(result={submission.result if submission is not None else None})"
+            ),
+        )
+        and stop_at_first_failure
+    ):
+        return report()
+
+    # 7. Authoritative destination from persisted job data.
+    job = await read(session.get(Job, application.job_id))
+    if not isinstance(job, Job):
+        record(
+            "destination_authoritative",
+            False,
+            "Job record is missing",
+            ConflictError(
+                f"Application {application.id} references missing job {application.job_id}"
+            ),
+        )
+        return report()
+    if stop_at_first_failure:
+        assert policy_row is not None
+    try:
+        if policy_row is None:
+            raise ValidationError("No site policy row to validate the destination against")
+        destination = extract_and_validate_authoritative_email(job, policy_row)
+    except ValidationError as exc:
+        destination = None
+        record(
+            "destination_authoritative",
+            False,
+            "Job has no authoritative email destination matching the site policy",
+            exc,
+        )
+        return report()
+    record(
+        "destination_authoritative",
+        True,
+        f"Destination is an authoritative address at {extract_domain(destination)}",
+    )
+    destination_domain = extract_domain(destination)
+    return report()
+
+
 async def validate_submit_preconditions(
     session: AsyncSession,
     application: Application,
@@ -112,7 +349,7 @@ async def validate_submit_preconditions(
 ) -> tuple[Submission, str]:
     """Validate all preconditions before accepting a human Submit action.
 
-    Revalidates:
+    Revalidates, in order, and raises the first refusal:
       - application is SUBMISSION_READY
       - submission safety gate (both switches)
       - review completeness (all required materials approved)
@@ -120,60 +357,15 @@ async def validate_submit_preconditions(
       - attempt 1 submission row exists in PENDING state
       - destination email is authoritative and matches policy domain
     """
-    if application.status is not ApplicationStatus.SUBMISSION_READY:
-        raise ConflictError(
-            f"Application {application.id} is not submission_ready "
-            f"(currently {application.status})"
-        )
-
-    if not await real_submission_enabled(session, settings):
-        raise ConflictError(
-            "Real submission is disabled in system configuration or operational settings"
-        )
-
-    if not await review_is_complete(session, application):
-        raise ConflictError(
-            f"Application {application.id} materials do not satisfy all required approvals"
-        )
-
-    verdict, snapshot, policy_row, domain = await policy_verdict(session, application)
-    if (
-        verdict.decision is not PolicyDecision.ALLOWED
-        or snapshot.submission_method is not SubmissionMethod.EMAIL
-    ):
-        raise ConflictError(
-            f"Site policy for {domain} does not permit automated email submission "
-            f"({verdict.reason or snapshot.submission_method})"
-        )
-
-    if (
-        policy_row is not None
-        and policy_row.next_review_due
-        and policy_row.next_review_due < utc_today()
-    ):
-        raise ConflictError(
-            f"Site policy review for {domain} expired on {policy_row.next_review_due}"
-        )
-
-    submission = await existing_submission(session, application.id)
-    if submission is None:
-        raise ConflictError(f"Application {application.id} has no attempt-1 submission record")
-
-    if submission.result is not SubmissionResult.PENDING or submission.started_at is not None:
-        raise ConflictError(
-            f"Application {application.id} submission attempt has already been executed "
-            f"(result={submission.result})"
-        )
-
-    job = await session.get(Job, application.job_id)
-    if job is None:
-        raise ConflictError(
-            f"Application {application.id} references missing job {application.job_id}"
-        )
-    assert policy_row is not None
-    dest = extract_and_validate_authoritative_email(job, policy_row)
-
-    return submission, dest
+    result = await evaluate_submit_preconditions(
+        session, application, settings, stop_at_first_failure=True
+    )
+    for check in result.checks:
+        if not check.passed:
+            assert check.error is not None
+            raise check.error
+    assert result.submission is not None and result.destination is not None
+    return result.submission, result.destination
 
 
 async def request_submission(

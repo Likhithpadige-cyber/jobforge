@@ -381,6 +381,107 @@ def _verdicts(bullets, sentences, selection, context):
     )
 
 
+async def build_tailored_application(
+    session,
+    *,
+    profile_id: UUID,
+    facts: dict[str, ProfileFact],
+    source: Source,
+    company: Company,
+    url: str,
+    title: str,
+    description: str,
+    actor_id: str = "seed_resume_studio_demo",
+) -> tuple[Application, object]:
+    """One shortlisted job and an application with a verified tailored resume,
+    built through the real B2/B3 validators, B5 verdicts and B6 persistence."""
+    job = Job(
+        id=uuid7(),
+        source_id=source.id,
+        company_id=company.id,
+        url=url,
+        title=title,
+        normalized_title=title.lower(),
+        seniority="mid",
+        location_raw="Dallas, TX",
+        location_city="Dallas",
+        location_state="TX",
+        location_country="US",
+        employment_type="full_time",
+        status=JobStatus.SHORTLISTED,
+        description_raw=description,
+    )
+    session.add(job)
+    await session.flush()
+
+    session.add(
+        JobEvaluation(
+            id=uuid7(),
+            job_id=job.id,
+            profile_version=1,
+            score=Decimal("78.00"),
+            recommendation=Recommendation.STRONG,
+            match_matrix=_match_matrix(facts),
+            gaps=[],
+            rationale=(
+                "Verified AWS, Terraform, CI/CD and Linux experience covers the "
+                "required skills for this role."
+            ),
+            score_breakdown={"required_met": 2, "preferred_met": 1},
+        )
+    )
+    application = Application(
+        id=uuid7(),
+        job_id=job.id,
+        profile_id=profile_id,
+        status=ApplicationStatus.CREATED,
+        priority=1,
+    )
+    session.add(application)
+    await session.flush()
+
+    # Into the state the pipeline enters B6 from - through the state
+    # machine, which writes the history row and the status event.
+    await transition_application(
+        session,
+        application,
+        ApplicationStatus.RESUME_GENERATING,
+        actor_type="system",
+        actor_id=actor_id,
+        reason="local demo seed",
+    )
+    await session.flush()
+
+    context = await load_tailoring_context(session, profile_id=profile_id, job_id=job.id)
+    selection = _selection(facts)
+
+    # Run the demo drafts through the real B2 and B3 validators. No model
+    # is called, but every guard they apply still runs: fact approval,
+    # freshness, PII, the mixed-section rule, and the numeral guard. A
+    # figure not present in a cited fact fails the seed here rather than
+    # appearing in the studio as an unsupported claim.
+    b2, b3 = _drafts(facts)
+    drafting = validate_drafting(canonical(b2), context, selection, prompt_version="demo-b2")
+    summary = validate_summary(canonical(b3), context, selection, prompt_version="demo-b3")
+    bullets, sentences = drafting.bullets, summary.sentences
+    verified = _verdicts(bullets, sentences, selection, context)
+
+    result = await persist_resume(
+        session,
+        application_id=application.id,
+        verified=verified,
+        bullets=bullets,
+        sentences=sentences,
+        context=context,
+        selection=selection,
+        model="demo-seed",
+        prompt_version="demo-b2/b3",
+        cost_usd=Decimal("0"),
+        actor_id=actor_id,
+    )
+    return application, result
+
+
 async def seed() -> int:
     async with session_scope() as session:
         if await _existing_demo_job(session) is not None:
@@ -399,92 +500,18 @@ async def seed() -> int:
         facts = await _facts(session, profile_id, user_id)
         await _base_resume(session, profile_id)
 
-        job = Job(
-            id=uuid7(),
-            source_id=source.id,
-            company_id=company.id,
+        application, result = await build_tailored_application(
+            session,
+            profile_id=profile_id,
+            facts=facts,
+            source=source,
+            company=company,
             url=DEMO_JOB_URL,
             title="Cloud Engineer",
-            normalized_title="cloud engineer",
-            seniority="mid",
-            location_raw="Dallas, TX",
-            location_city="Dallas",
-            location_state="TX",
-            location_country="US",
-            employment_type="full_time",
-            status=JobStatus.SHORTLISTED,
-            description_raw=(
+            description=(
                 "Demo posting for local development. Cloud Engineer working on "
                 "AWS infrastructure, CI/CD and containerised services."
             ),
-        )
-        session.add(job)
-        await session.flush()
-
-        session.add(
-            JobEvaluation(
-                id=uuid7(),
-                job_id=job.id,
-                profile_version=1,
-                score=Decimal("78.00"),
-                recommendation=Recommendation.STRONG,
-                match_matrix=_match_matrix(facts),
-                gaps=[],
-                rationale=(
-                    "Verified AWS, Terraform, CI/CD and Linux experience covers the "
-                    "required skills for this role."
-                ),
-                score_breakdown={"required_met": 2, "preferred_met": 1},
-            )
-        )
-        application = Application(
-            id=uuid7(),
-            job_id=job.id,
-            profile_id=profile_id,
-            status=ApplicationStatus.CREATED,
-            priority=1,
-        )
-        session.add(application)
-        await session.flush()
-
-        # Into the state the pipeline enters B6 from - through the state
-        # machine, which writes the history row and the status event.
-        await transition_application(
-            session,
-            application,
-            ApplicationStatus.RESUME_GENERATING,
-            actor_type="system",
-            actor_id="seed_resume_studio_demo",
-            reason="local demo seed",
-        )
-        await session.flush()
-
-        context = await load_tailoring_context(session, profile_id=profile_id, job_id=job.id)
-        selection = _selection(facts)
-
-        # Run the demo drafts through the real B2 and B3 validators. No model
-        # is called, but every guard they apply still runs: fact approval,
-        # freshness, PII, the mixed-section rule, and the numeral guard. A
-        # figure not present in a cited fact fails the seed here rather than
-        # appearing in the studio as an unsupported claim.
-        b2, b3 = _drafts(facts)
-        drafting = validate_drafting(canonical(b2), context, selection, prompt_version="demo-b2")
-        summary = validate_summary(canonical(b3), context, selection, prompt_version="demo-b3")
-        bullets, sentences = drafting.bullets, summary.sentences
-        verified = _verdicts(bullets, sentences, selection, context)
-
-        result = await persist_resume(
-            session,
-            application_id=application.id,
-            verified=verified,
-            bullets=bullets,
-            sentences=sentences,
-            context=context,
-            selection=selection,
-            model="demo-seed",
-            prompt_version="demo-b2/b3",
-            cost_usd=Decimal("0"),
-            actor_id="seed_resume_studio_demo",
         )
 
         print("Resume Studio demo seeded.")

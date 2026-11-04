@@ -31,6 +31,7 @@ from apps.api.routers import (
     profile,
     resume_review,
     resumes,
+    review_status,
 )
 from apps.api.routers import (
     settings as settings_router,
@@ -160,6 +161,7 @@ def create_app() -> FastAPI:
 
     app.include_router(alerts.router, prefix=settings.api_prefix)
     app.include_router(monitoring.router, prefix=settings.api_prefix)
+    app.include_router(review_status.router, prefix=settings.api_prefix)
     app.include_router(health.router)
     app.include_router(health.api_router, prefix=settings.api_prefix)
     app.include_router(auth.router, prefix=settings.api_prefix)
