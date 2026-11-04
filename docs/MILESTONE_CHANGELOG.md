@@ -1261,3 +1261,43 @@ Commit `68a8b70`.
   - Reviewer has no Submit control.
   - An unknown application shows Not found.
 - pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
+
+## M13 Phase 2 — COMPLETE, verified 2026-11-04
+
+Commit `7e0e481`.
+
+### Profile, facts and settings
+
+- Backend:
+  - Fact verification and evidence are attributed to the authenticated owner. `verified_by` and `added_by` are no longer taken from the request: they are optional, and any value other than the signed-in user is refused with 422. This closes the Phase-2-era placeholder in `FactVerifyRequest`.
+  - `ProfileRepository.get_singleton()` orders its lookup, so the profile served is stable.
+  - Fixed a pre-existing defect: fact edit, verify, unverify and retire, and profile and section updates, returned 500. The server-generated `updated_at` was expired after the UPDATE and could not be read during async serialisation. The routers now commit and refresh. These paths had no API-level test, and now they do.
+  - `GET /api/v1/profile` now returns `email`, `phone`, `work_authorization`, `min_salary` and `max_salary` as null for non-owners. Reviewers still see the name, headline, sections and facts they review against.
+  - `GET /api/v1/settings/submission-gate`, owner and reviewer, read-only. It reports `submission_mode`, the persisted switch and `live`, so the UI can show that the persisted switch alone never sends. The existing `submission-enabled` contract is unchanged.
+- Frontend:
+  - `/profile`: basics with an owner-only edit form. It sends the full current record plus `version`, because PUT replaces every field, and explains a stale-version conflict. Reviewers see no contact details or work authorization, and the owner sees only "Recorded" for work authorization outside the form.
+  - Profile sections, each with an owner-only "Suggest facts" action. Suggestions are deterministic and land as drafts.
+  - Facts: summary, status filter, editing drafts, and confirmed verify, return-to-draft and retire. Each is re-read from the server. Evidence is listed and added without any attribution field.
+  - `/settings`: deployment mode and the persisted switch, shown side by side. An owner-only toggle with a confirmation whose wording follows the mode: in dry-run it says nothing is sent. Reviewers get a read-only view.
+  - 422 messages name the first invalid field.
+
+### Explicit limitations
+
+- Profile sections are read-only in the UI. Section CRUD exists in the API and is not yet exposed here.
+- Matching thresholds and quotas are configuration-only, and the Settings page says so instead of showing unconfirmed values.
+
+### Final verification counts
+
+- Backend full run: 3245 passed under REQUIRE_SECURITY_TESTS=1, 0 skipped. Two `test_resume_rework_api` concurrency tests timed out while the host slept mid-run (10.9 h wall clock) and passed on re-run.
+- After the final changes:
+  - Unit tests plus the 40 integration files touching profiles or facts: 2925 passed.
+  - New tests: fact attribution, lifecycle and profile redaction (6), and settings gate (2).
+  - `get_singleton()` is now ordered, because in a shared database an unordered `LIMIT 1` returned different profiles across calls.
+- ruff check and format: clean. mypy: no issues. check-shadowing: clean. `git diff --check`: clean.
+- Frontend: lint and typecheck clean, all tests passed (including 25 new profile and settings tests), and the production build succeeded.
+- Browser checks in the isolated demo:
+  - The reviewer is read-only, with no contact fields and no switch control.
+  - The owner verified a draft fact, and the counts were re-read.
+  - The switch dialog's dry-run wording is correct. It was cancelled with Escape, the switch was left off, and focus returned to the trigger.
+  - No horizontal overflow at 375 px.
+- Secrets scan: no unbaselined secrets, and the baseline is unchanged.
