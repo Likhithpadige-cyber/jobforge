@@ -1219,3 +1219,45 @@ Commit `1cdc545`. Details: [M12_PHASE3.md](M12_PHASE3.md).
 - Offline evals: 61 passed, 51 cases, 0 provider calls.
 - Frontend: lint and typecheck clean, 213 tests passed, production build succeeded.
 - pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
+
+## M13 Phase 1 — COMPLETE, verified 2026-11-03
+
+Commit `68a8b70`.
+
+### Application review and submission UI
+
+- Backend, read-only, owner and reviewer:
+  - `GET /api/v1/approvals` (filters, pagination, oldest-first pending).
+  - `GET /applications/{id}/submission-readiness`.
+  - `GET /applications/{id}/submissions`.
+  - `GET /applications/{id}/cover-letter`.
+  - Each runs in a `READ ONLY` transaction, returns 404 for unknown applications, and never returns snapshots, failure reasons or recipient addresses.
+- `evaluate_submit_preconditions()` is now the single definition of submit readiness:
+  - Submit runs it stopping at the first failure, so refusals are unchanged.
+  - Readiness runs it to completion, failing closed per check.
+  - `can_submit` is owner-only and requires both switches.
+- Frontend:
+  - Approvals inbox.
+  - Application workspace with a server-derived next step. A failed section is shown as unavailable, never as empty.
+  - Cover-letter and answers-package review.
+  - Submission readiness with an owner-only, confirmed Submit that is disabled in dry-run mode.
+  - A prepared attempt reads "Not sent yet" and is never described as queued for sending.
+- Demo seed: application A is awaiting approval (resume, cover letter and 3 questions). Application B is `submission_ready` against a `mailto:` job in dry-run mode.
+
+### Explicit limitations
+
+- The answers approval has no pending row (M9 rule): it is opened and decided in one step and does not appear in the inbox.
+- Readiness and history are polled (every 10 s while sending), not pushed.
+
+### Final verification counts
+
+- Backend: 3237 passed under REQUIRE_SECURITY_TESTS=1 (unit, integration and safety), 0 skipped. Review status API: 15 passed.
+- ruff check and `ruff format --check .`: clean. mypy: 165 source files, no issues.
+- verify-schema: 12 passed; head 0010_submission_retry_schedule. check-shadowing and down migration: clean.
+- Frontend: lint and typecheck clean, 259 tests passed, production build succeeded.
+- Browser checks in the isolated demo, as owner and reviewer, at 1280, 768 and 375 px with no horizontal overflow:
+  - Answers saved, refused while incomplete, then approved.
+  - Dry-run Submit disabled.
+  - Reviewer has no Submit control.
+  - An unknown application shows Not found.
+- pip-audit: no known vulnerabilities. Secrets scan: no unbaselined secrets.
