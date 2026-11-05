@@ -1530,3 +1530,63 @@ Verification limits and recovered attempts:
   existing process/container was stopped or restarted.
 - Manual workflow dispatch becomes available when the workflow exists on the
   default branch. Hosted clean-runner startup still needs verification there.
+
+## M14 Phase 3 — documentation and repository hygiene (2026-11-05)
+
+Implementation: `75c8f0e`.
+
+- Replaced the stale M3 README with current architecture, ten-revision schema
+  status, host/development/demo setup, test/CI commands, troubleshooting and
+  explicit limitations. Removed obsolete claims that future agents and UI
+  are not implemented and that `make check` represents the whole CI suite.
+- Added `docs/OPERATIONS.md` for password/TOTP sessions, CSRF, owner/reviewer
+  authorization, shared-workspace visibility, audit/worker role boundaries,
+  submission gates and network-capable transport choices.
+- Updated SECURITY.md to distinguish implemented behavior from planned
+  Cognito/passkey/token/AWS/deployment controls, and corrected the current
+  secret scanner/dependency-lock description. No production readiness claimed.
+- Added `docs/REPOSITORY_HYGIENE.md`: tracked artifact review, local env history
+  check, reviewed baseline policy, ignore/build-context rules and known finding.
+- Ignored browser reports, auth state and HARs; excluded local evidence,
+  private inputs, nested env/private-key files and Terraform state from Docker
+  contexts. Kept source, npm lock and env examples available. No valued local
+  files were deleted and no license was added.
+- Repaired scaffold secret scanning to enumerate Git-tracked/staged files,
+  rather than ignored `.venv` packages. Failure to enumerate Git is a failure;
+  script filenames have no secret exemption. Four new regression tests prove
+  scope, force-added secret rejection, missing-metadata handling and no script
+  filename bypass. The full CI detect-secrets gate is unchanged.
+
+Independent verification:
+
+- **1786 unit tests passed, 1511 deselected, 0 failed, 0 skipped**, 9.40 seconds;
+  includes the four new checks. Targeted new tests: **4 passed**, 0.86 seconds.
+  The JUnit gate accepted the unit report.
+- **24** relative documentation link targets exist; **22** representative
+  Git-ignore/source-preservation assertions passed. Tracked sensitive/generated
+  artifact path review found none unintended; local refs show no `.env` or
+  `.env.demo` commit history. No real ignored credential values were exposed.
+- Tiny synthetic Docker scratch build/export: **22** sensitive/output paths
+  excluded; source/lock files and root/nested env examples preserved. This was
+  not an application image build and changed no running containers.
+- Ruff check passed; format: **316 files** already formatted; mypy: **167**
+  application source files without issues. Schema: **12 passed**; shadowing and
+  generated down migration checks passed. Actionlint/ShellCheck, full tracked
+  secret scan and `git diff --check` passed.
+- Backend/frontend runtime and dependencies did not change in this phase.
+  Phase 2's full backend/coverage, safety, API/browser E2E and Phase 1's final
+  frontend/security-audit verification remain applicable; the tooling changes
+  received their own full unit regression above.
+
+Unresolved finding (preserved, not waived):
+
+- `make verify` aggregate: **22 passed, 1 failed, 0 warnings**. Its import-direction
+  rule reports **31 pre-existing upward import occurrences** from core into
+  agents/services. Before this phase it was **21 passed, 2 failed**, including
+  ignored virtualenv secret false positives. The scanner defect is fixed; the
+  architecture diagnostic remains a real failing diagnostic and is documented
+  in README/OPERATIONS/REPOSITORY_HYGIENE. A runtime boundary refactor is outside
+  M14's documentation/hygiene scope. No import allowlist or rule weakening added.
+- Hosted Actions and production Docker image builds still await a hosted run.
+  No push, infrastructure provisioning, real email/application, unrelated
+  container restart or M15 implementation occurred in any M14 phase.
