@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
+import { asSentence } from "@/lib/review";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 const NOTE_LIMIT = 4000;
@@ -39,7 +40,7 @@ export function DecisionForm({
   if (!canApprove && !canRequestChanges) {
     return (
       <p data-testid="decision-blocked" className="rounded-card border border-edge bg-muted px-4 py-3 text-sm text-ink-soft">
-        {blockedReason ?? `No decision is available for this ${subject} right now.`}
+        {blockedReason ? asSentence(blockedReason) : `No decision is available for this ${subject} right now.`}
       </p>
     );
   }
@@ -59,9 +60,10 @@ export function DecisionForm({
       {canRequestChanges && (
         <div className="space-y-2 border-t border-edge pt-5">
           <label htmlFor={changesId} className="block text-sm font-medium text-ink">What should change? (required)</label>
-          <textarea id={changesId} value={changes} maxLength={NOTE_LIMIT} onChange={(event) => setChanges(event.target.value)} rows={3} aria-describedby={`${changesId}-help`} className="w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink" />
+          <textarea id={changesId} value={changes} maxLength={NOTE_LIMIT} onChange={(event) => setChanges(event.target.value)} rows={3} aria-required="true" aria-describedby={`${changesId}-help`} className="w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink" />
           <p id={`${changesId}-help`} className="text-xs text-ink-soft">{changesEffect}</p>
-          <button type="button" onClick={() => setConfirming("changes")} disabled={!trimmed} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-violet/40 disabled:cursor-not-allowed disabled:opacity-50">
+          {!trimmed && <p id={`${changesId}-why`} className="text-xs text-ink-soft">Write what should change to enable this.</p>}
+          <button type="button" onClick={() => setConfirming("changes")} disabled={!trimmed} aria-describedby={trimmed ? undefined : `${changesId}-why`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-violet/40 disabled:cursor-not-allowed disabled:opacity-50">
             Request changes…
           </button>
         </div>

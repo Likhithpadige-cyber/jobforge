@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AuthGuard } from "./AuthGuard";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -23,6 +23,38 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [navOpen, setNavOpen] = useState(false);
+  const drawer = useRef<HTMLDivElement>(null);
+
+  // The drawer is a modal dialog: focus moves into it, Tab stays inside,
+  // Escape closes it, and focus returns to whatever opened it.
+  useEffect(() => {
+    if (!navOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    drawer.current?.querySelector<HTMLElement>("a[href], button")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+        return;
+      }
+      if (event.key !== "Tab" || !drawer.current) return;
+      const focusable = Array.from(drawer.current.querySelectorAll<HTMLElement>("a[href], button:not([disabled])"));
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      opener?.focus();
+    };
+  }, [navOpen]);
 
   // Every page rendered through the shell is a protected page, so the guard
   // lives here rather than being repeated per route. /login does not use the
@@ -41,11 +73,12 @@ export function AppShell({
         <div className="fixed inset-0 z-40 lg:hidden">
           <button
             type="button"
+            tabIndex={-1}
             className="absolute inset-0 bg-ink/40"
             aria-label="Close navigation"
             onClick={() => setNavOpen(false)}
           />
-          <div className="relative h-full w-[17rem] animate-panel-in">
+          <div ref={drawer} role="dialog" aria-modal="true" aria-label="Navigation" data-testid="nav-drawer" className="relative h-full w-[17rem] max-w-[85vw] animate-panel-in">
             <Sidebar onNavigate={() => setNavOpen(false)} />
           </div>
         </div>

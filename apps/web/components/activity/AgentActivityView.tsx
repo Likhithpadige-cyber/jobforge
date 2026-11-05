@@ -168,7 +168,7 @@ function RunItem({ run }: { run: AgentRun }) {
       </div>
       {open && (
         error ? <p role="alert" className="text-sm text-signal-risk">{error}</p>
-        : !detail ? <p className="text-sm text-ink-soft">Loading steps…</p>
+        : !detail ? <p role="status" className="text-sm text-ink-soft">Loading steps…</p>
         : detail.steps.length === 0 ? <p className="text-sm text-ink-soft">No steps were recorded.</p>
         : (
           <ol className="mt-1 space-y-1" aria-label="Steps">

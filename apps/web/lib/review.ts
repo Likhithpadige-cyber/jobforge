@@ -340,3 +340,11 @@ function fieldError(body: unknown): string | null {
   const text = msg.replace(/^Value error, /, "");
   return field ? `${field.replaceAll("_", " ")}: ${text}` : text;
 }
+
+/** Server reasons are lower-case fragments; show them as a sentence. */
+export function asSentence(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+  const capital = trimmed[0]!.toLocaleUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(capital) ? capital : `${capital}.`;
+}

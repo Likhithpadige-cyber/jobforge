@@ -128,7 +128,7 @@ export function Dashboard() {
 
       <div className="grid gap-9 lg:grid-cols-2">
         <section aria-labelledby="decisions-heading">
-          <SectionHeader id="decisions-heading" title="Needs a decision" description="The important calls stay with you." action={<Link href="/approvals" className="text-sm font-semibold text-violet-deep hover:underline">All approvals</Link>} />
+          <SectionHeader id="decisions-heading" title="Needs a decision" description="The important calls stay with you." action={<Link href="/approvals" className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">All approvals</Link>} />
           <div className="rounded-card border border-edge bg-surface p-5 shadow-raised">
             {data.approvals === null ? (
               <p className="text-sm text-signal-risk">Approvals are unavailable right now.</p>
@@ -150,7 +150,7 @@ export function Dashboard() {
         </section>
 
         <section aria-labelledby="agents-heading">
-          <SectionHeader id="agents-heading" title="Recent agent activity" description={data.runSummary ? `${data.runSummary.runs} runs in 7 days · ${formatCost(data.runSummary.cost_usd)} model cost` : "What the agents did recently."} action={<Link href="/agent-activity" className="text-sm font-semibold text-violet-deep hover:underline">All activity</Link>} />
+          <SectionHeader id="agents-heading" title="Recent agent activity" description={data.runSummary ? `${data.runSummary.runs} runs in 7 days · ${formatCost(data.runSummary.cost_usd)} model cost` : "What the agents did recently."} action={<Link href="/agent-activity" className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">All activity</Link>} />
           <div className="rounded-card border border-edge bg-surface p-5 shadow-raised">
             {data.runs === null ? (
               <p className="text-sm text-signal-risk">Agent activity is unavailable right now.</p>

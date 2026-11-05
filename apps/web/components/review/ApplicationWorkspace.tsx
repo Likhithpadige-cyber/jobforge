@@ -179,8 +179,8 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
 
   return (
     <div className="space-y-6">
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
-        <Link href="/applications" className="hover:text-violet-deep">Applications</Link>
+      <nav aria-label="Application location" className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
+        <Link href="/applications" className="inline-flex min-h-6 items-center hover:text-violet-deep">Applications</Link>
         <span aria-hidden="true">›</span>
         <span className="text-ink">{resume?.job_title ?? "Application"}</span>
       </nav>
@@ -211,7 +211,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
       </header>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <SectionCard title="Resume" action={resume && <Link href={`/resume-studio/${applicationId}`} className="text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Resume" action={resume && <Link href={`/resume-studio/${applicationId}`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
           {failed("resume") ? (
             <Unavailable />
           ) : resume ? (
@@ -221,7 +221,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
 
-        <SectionCard title="Cover letter" action={coverLetter?.cover_letter_version && <Link href={`/applications/${applicationId}/cover-letter`} className="text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Cover letter" action={coverLetter?.cover_letter_version && <Link href={`/applications/${applicationId}/cover-letter`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
           {failed("cover_letter") ? (
             <Unavailable />
           ) : coverLetter?.cover_letter_version ? (
@@ -231,7 +231,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
 
-        <SectionCard title="Application answers" action={questions && <Link href={`/applications/${applicationId}/answers`} className="text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Application answers" action={questions && <Link href={`/applications/${applicationId}/answers`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
           {failed("answers") ? (
             <Unavailable />
           ) : questions ? (
@@ -241,7 +241,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
 
-        <SectionCard title="Submission" action={<Link href={`/applications/${applicationId}/submission`} className="text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Submission" action={<Link href={`/applications/${applicationId}/submission`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
           <p className="text-sm text-ink">{passed} of {readiness.checks.length} readiness conditions met</p>
           <p className="mt-1 text-sm text-ink-soft">{gateLabel(readiness.gate)}</p>
           {failed("history") ? (

@@ -151,7 +151,7 @@ function QuestionItem({ applicationId, question, editable, onSaved }: { applicat
       </div>
       {answer ? (
         <>
-          <textarea id={fieldId} value={value} disabled={!editable || saving} maxLength={question.max_length ?? 4000} onChange={(event) => setValue(event.target.value)} rows={3} className="mt-3 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink disabled:bg-muted" />
+          <textarea id={fieldId} value={value} aria-required={question.is_required || undefined} disabled={!editable || saving} maxLength={question.max_length ?? 4000} onChange={(event) => setValue(event.target.value)} rows={3} className="mt-3 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink disabled:bg-muted" />
           <p className="mt-1 text-xs text-ink-soft">
             {answer.source === "human" ? "Written by a person" : answer.source === "agent" ? `Drafted from ${answer.fact_ids.length} verified fact${answer.fact_ids.length === 1 ? "" : "s"}` : answer.source === "derived" ? "Derived from your facts" : "Left blank"}
             {answer.requires_human && " · needs your answer"}

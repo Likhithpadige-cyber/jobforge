@@ -264,7 +264,7 @@ function EvidenceList({ factId, canAdd }: { factId: string; canAdd: boolean }) {
     <div className="mt-3 rounded-card bg-muted p-3">
       {error && <p role="alert" className="mb-2 text-sm text-signal-risk">{error}</p>}
       {items === null && !error ? (
-        <p className="text-sm text-ink-soft">Loading evidence…</p>
+        <p role="status" className="text-sm text-ink-soft">Loading evidence…</p>
       ) : items && items.length === 0 ? (
         <p className="text-sm text-ink-soft">No evidence attached.</p>
       ) : (

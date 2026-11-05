@@ -17,7 +17,7 @@ const config: Config = {
         muted: "#F5F2EB",      // cream surfaces
         edge: "#E8E8E5",
         ink: "#24283B",
-        "ink-soft": "#687082",
+        "ink-soft": "#636B7C", // ≥4.5:1 on every surface, incl. muted and violet-soft (WCAG AA)
         violet: { DEFAULT: "#6457B5", soft: "#F0EDFA", deep: "#4D4291" },
         brass: {
           DEFAULT: "#C9AE78",
@@ -26,8 +26,8 @@ const config: Config = {
         },
         // Meaning-bearing only. Muted on purpose.
         signal: {
-          strong: "#398468",   // soft emerald success
-          review: "#A97A2F",   // needs review / borderline
+          strong: "#33765D",   // soft emerald success (AA on its own badge tint)
+          review: "#8B6427",   // needs review / borderline (AA on its own badge tint)
           risk: "#A34A42",     // security / failure
           info: "#4A6785",     // informational
         },

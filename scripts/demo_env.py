@@ -574,6 +574,109 @@ async def _seed_review_workflow() -> None:
         await dispose_engine()
 
 
+async def e2e_fixture() -> int:
+    """Fresh, uniquely named synthetic records for one browser E2E run.
+
+    Prints one JSON line: an application in `awaiting_approval` (pending
+    resume and cover-letter review, one required question nobody has
+    answered) and a draft fact. Each run creates new rows, so tests that
+    approve or retire never depend on what an earlier run left behind.
+    Everything goes through the real services with replayed generation;
+    if generation is paused, this fails closed rather than bypassing it.
+    """
+    import json
+    import secrets
+
+    from sqlalchemy import select
+
+    from packages.core.auth.passwords import hash_password
+    from packages.core.db import dispose_engine, init_engine, session_scope
+    from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
+    from packages.core.models import Experience, FactType, User
+    from packages.core.repositories import FactRepository
+    from packages.core.services import resume_review
+    from packages.core.services.applications import RawQuestion, prepare_application
+    from packages.shared.ids import uuid7
+    from scripts import seed_resume_studio_demo as studio
+
+    settings = check_settings()
+    run = uuid7().hex[-12:]
+    await init_engine(settings)
+    await init_audit_engine(settings)
+    try:
+        async with session_scope() as session:
+            await check_database(await session.connection(), require_marker=True)
+            owner = await session.scalar(select(User).where(User.email == OWNER_EMAIL))
+            profile = await studio._demo_profile(session)
+            if owner is None or profile is None:
+                raise DemoGuardError("run `make demo-seed` before the browser E2E suite")
+            profile_id, user_id = profile
+            facts = await studio._facts(session, profile_id, user_id)
+            application, _ = await studio.build_tailored_application(
+                session,
+                profile_id=profile_id,
+                facts=facts,
+                source=await studio._source(session),
+                company=await studio._company(session),
+                url=f"https://jobs.example/e2e/{run}",
+                title=f"E2E Cloud Engineer {run}",
+                description=f"Fictional browser E2E posting {run}. AWS, Terraform and CI/CD.",
+                actor_id="demo_e2e_fixture",
+            )
+            await prepare_application(
+                session,
+                application_id=application.id,
+                questions=[
+                    RawQuestion(
+                        question_text="Why are you interested in this role?",
+                        input_type="textarea",
+                        is_required=True,
+                        max_length=1000,
+                    )
+                ],
+            )
+            await session.flush()
+            await resume_review.enter_review(session, application_id=application.id, actor=owner)
+            await session.flush()
+            await _replay_cover_letter(session, application.id)
+            experience = await session.scalar(
+                select(Experience.id).where(Experience.profile_id == profile_id).limit(1)
+            )
+            fact = await FactRepository(session).create_draft(
+                profile_id=profile_id,
+                fact_type=FactType.SKILL,
+                text_value=f"Synthetic E2E skill {run}",
+                source_table="experiences",
+                source_id=experience or uuid7(),
+            )
+            # A throwaway reviewer for the sign-in tests, so repeated runs
+            # never exhaust the shared accounts' login rate-limit budget.
+            password = secrets.token_urlsafe(18)
+            reviewer = User(
+                id=uuid7(),
+                email=f"e2e-reviewer-{run}@example.com",
+                role="reviewer",
+                password_hash=hash_password(password),
+            )
+            session.add(reviewer)
+            await session.flush()
+            print(
+                json.dumps(
+                    {
+                        "run": run,
+                        "application_id": str(application.id),
+                        "fact_id": str(fact.id),
+                        "reviewer_email": reviewer.email,
+                        "reviewer_password": password,
+                    }
+                )
+            )
+    finally:
+        await dispose_audit_engine()
+        await dispose_engine()
+    return 0
+
+
 def _alert(
     kind: str,
     severity: str,
@@ -604,7 +707,7 @@ def _alert(
 # ------------------------------------------------------------------ main
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["write-env", "check", "init", "seed"])
+    parser.add_argument("command", choices=["write-env", "check", "init", "seed", "e2e-fixture"])
     args = parser.parse_args()
     if args.command == "write-env":
         return write_env(ROOT / ".env.demo")
@@ -620,6 +723,8 @@ def main() -> int:
             return asyncio.run(_check())
         if args.command == "init":
             return asyncio.run(init())
+        if args.command == "e2e-fixture":
+            return asyncio.run(e2e_fixture())
         return asyncio.run(seed())
     except DemoGuardError as exc:
         print(exc, file=sys.stderr)

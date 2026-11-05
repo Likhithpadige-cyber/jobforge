@@ -141,6 +141,42 @@ pytest --cov --cov-report=term-missing      # coverage
 
 Integration tests that need PostgreSQL or Redis skip cleanly when those aren't reachable, so `pytest` works on a laptop with nothing running.
 
+**End-to-end** — opt-in only. Everything under `tests/e2e/` is deselected from
+`pytest`, `make test` and the unit, integration and safety suites, and runs
+only when a run selects the `e2e` marker:
+
+| Suite | What it drives | Needs |
+|---|---|---|
+| `tests/e2e/test_m13_api_journeys.py` | Multi-step owner and reviewer journeys through the real HTTP API: sign-in, CSRF, review, answers, dry-run submission, profile, facts, agent activity | The dev stack's PostgreSQL (same as integration tests) |
+| `tests/e2e/browser/` | Real Chromium via [pytest-playwright](https://playwright.dev/python/): sign-in and roles, dashboard, agent activity, review workflow, submission readiness, profile, facts, settings, at 1280 px and 375 px | The isolated demo stack ([docs/DEMO_ENVIRONMENT.md](docs/DEMO_ENVIRONMENT.md)) |
+
+One-time setup (installs `pytest-playwright` from `requirements-dev.txt` and
+downloads Playwright's Chromium, about 100 MB, into `~/Library/Caches/ms-playwright`
+on macOS or `~/.cache/ms-playwright` on Linux):
+
+```bash
+make e2e-install        # = pip install -r requirements-dev.txt && playwright install chromium
+```
+
+Start the services, then run:
+
+```bash
+make demo-up demo-seed  # isolated demo: PostgreSQL, Redis, API on :8100 (dry-run, replay LLM, fake email)
+make demo-web-host      # demo web on http://127.0.0.1:3100 (separate terminal; or the web container)
+make test-e2e-browser   # = .venv/bin/pytest -m e2e tests/e2e/browser
+make test-e2e           # API journeys, inside the dev stack
+```
+
+Useful options: `--headed` to watch, `--slowmo 250`, `-k review` to select,
+`JOBFORGE_E2E_BASE_URL=http://127.0.0.1:3100` to point at another demo web.
+
+Safety: the browser suite refuses to run unless `.env.demo` marks a demo
+environment with `SUBMISSION_MODE=dry_run` *and* the running API reports
+dry-run and `live: false`. No test confirms a Submit or turns the submission
+switch on; the demo uses replayed generation and a fake email transport.
+Records that tests change come from `python -m scripts.demo_env e2e-fixture`,
+which creates fresh, uniquely named synthetic rows for every run.
+
 **Frontend** — Vitest with Testing Library and jsdom:
 
 ```bash

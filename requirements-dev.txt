@@ -9,6 +9,13 @@ anyio==4.7.0
 testcontainers[postgres,redis]==4.9.0
 hypothesis==6.122.3
 
+# --- browser end-to-end (M13 Phase 4, opt-in) --------------------------
+# Real-browser tests in tests/e2e/browser drive the isolated demo stack.
+# They run only when asked for (`make test-e2e-browser`); the browser itself
+# is installed separately with `playwright install chromium`.
+pytest-playwright==0.10.0
+playwright==1.64.1
+
 # --- renderer verification (M8, test-only) -----------------------------
 # Two independent PDF extractors. They disagreed about the bullet glyph once
 # already, and that disagreement was the finding; one extractor would have

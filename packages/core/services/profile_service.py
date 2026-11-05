@@ -24,7 +24,7 @@ from packages.core.repositories import (
     FactRepository,
     ProfileRepository,
 )
-from packages.shared.errors import NotFoundError, ValidationError
+from packages.shared.errors import ConflictError, NotFoundError, ValidationError
 
 #: Which fact_type a suggestion from each source table gets.
 SOURCE_FACT_TYPE: dict[str, FactType] = {
@@ -58,7 +58,9 @@ class ProfileService:
         profile = await self.profiles.get_or_404(profile_id)
         expected_version = values.pop("version", None)
         if expected_version is not None and expected_version != profile.version:
-            raise ValidationError(
+            # A stale copy is a conflict (409), not malformed input: the UI
+            # tells the person to reload rather than to fix a field.
+            raise ConflictError(
                 f"profile has moved on (expected version {expected_version}, "
                 f"current {profile.version}); reload before saving"
             )

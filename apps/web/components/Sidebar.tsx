@@ -40,9 +40,9 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         )}
       </nav>
       <div className="m-3 rounded-card border border-violet/10 bg-violet-soft/60 p-4">
-        <p className="text-xs font-semibold text-violet-deep">Your next step</p>
-        <p className="mt-1 text-sm text-ink">Review what is waiting for your approval.</p>
-        <Link href="/approvals" onClick={onNavigate} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-violet-deep hover:underline">View approvals <Icon name="arrow" className="h-3 w-3" /></Link>
+        <p className="text-xs font-semibold text-violet-deep">Decisions stay with you</p>
+        <p className="mt-1 text-sm text-ink">Anything waiting for a person is in Approvals.</p>
+        <Link href="/approvals" onClick={onNavigate} className="mt-3 inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-violet-deep hover:underline">Open approvals <Icon name="arrow" className="h-3 w-3" /></Link>
       </div>
     </div>
   );

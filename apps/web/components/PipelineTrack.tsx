@@ -29,7 +29,7 @@ export function PipelineTrack({ stages }: { stages: PipelineStage[] }) {
             <div className="flex items-center gap-1.5">
               <span
                 className={`tabular text-xs font-medium ${
-                  needsYou ? "text-brass-deep" : "text-ink-soft/70"
+                  needsYou ? "text-brass-deep" : "text-ink-soft"
                 }`}
               >
                 {index + 1}

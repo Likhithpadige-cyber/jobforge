@@ -10,7 +10,7 @@ FULL := --profile full
 .PHONY: help bootstrap dev dev-full up down stop clean logs ps shell-api shell-db \
         migrate migration downgrade seed seed-resume-studio setup-auth auth-key \
         test test-unit \
-        test-integration test-cov \
+        test-integration test-e2e test-e2e-browser e2e-install test-cov \
         lint fmt typecheck check web-install web-test web-lint web-build \
         verify secrets-scan secrets-baseline audit db-roles db-grants db-reset \
         verify-schema check-shadowing test-security diagnose-roles db-verify-roles \
@@ -164,6 +164,17 @@ test-unit:  ## Unit tests only (no services required)
 
 test-integration:  ## Integration tests (requires the stack running)
 	$(COMPOSE) run --rm api pytest -m integration
+
+test-e2e:  ## Opt-in E2E API journeys (real login, CSRF, PostgreSQL; needs the stack)
+	$(COMPOSE) run --rm api pytest -m e2e tests/e2e/test_m13_api_journeys.py
+
+e2e-install:  ## Install the browser E2E toolchain into .venv (pytest-playwright + Chromium)
+	.venv/bin/pip install -r requirements-dev.txt
+	.venv/bin/playwright install chromium
+
+test-e2e-browser:  ## Opt-in real-browser E2E against the running demo (make demo-up demo-seed first)
+	$(DEMO_GUARD)
+	.venv/bin/pytest -m e2e tests/e2e/browser
 
 test-cov:  ## Backend tests with coverage
 	$(COMPOSE) run --rm api pytest --cov --cov-report=term-missing

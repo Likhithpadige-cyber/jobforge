@@ -14,7 +14,7 @@ import type { ReactNode } from "react";
 export const FIELD_INPUT_CLASS =
   "w-full rounded-[0.875rem] border border-white/70 bg-white/80 py-2.5 pl-11 pr-3 text-sm text-ink " +
   "shadow-[inset_0_1px_2px_rgba(36,40,59,0.05)] outline-none transition " +
-  "placeholder:text-ink-soft/70 hover:bg-white/90 focus:border-violet/45 focus:bg-white";
+  "placeholder:text-ink-soft hover:bg-white/90 focus:border-violet/45 focus:bg-white";
 
 export function LoginField({
   htmlFor,

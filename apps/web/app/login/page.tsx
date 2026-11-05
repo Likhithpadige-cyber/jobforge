@@ -131,7 +131,10 @@ function LoginForm() {
                   : "Local development: your password is enough."}
               </p>
 
-              <form onSubmit={onSubmit} className="mt-5 space-y-3" noValidate>
+              {/* method="post": if this form were ever submitted natively (before
+                  hydration, or without JavaScript) credentials must go in a body,
+                  never in a URL. React handles the real submission. */}
+              <form method="post" onSubmit={onSubmit} className="mt-5 space-y-3" noValidate>
                 <LoginField htmlFor="email" label="Email" glyph={<MailGlyph />}>
                   <input
                     id="email"
