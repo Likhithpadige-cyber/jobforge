@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -255,19 +256,30 @@ def check_internal_imports() -> None:
 
 # ---------------------------------------------------------------- safety
 def check_no_committed_secrets() -> None:
-    """No real-looking key material anywhere in the tree."""
+    """Check tracked files, including staged additions, without scanning local secrets."""
     patterns = [
         (re.compile(r"sk-ant-[A-Za-z0-9\-_]{20,}"), "Anthropic API key"),
         (re.compile(r"AKIA[0-9A-Z]{16}"), "AWS access key id"),
         (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"), "private key"),
     ]
     hits: list[str] = []
-    for path in ROOT.rglob("*"):
+    try:
+        tracked = (
+            subprocess.run(  # noqa: S603 - fixed git argv, no shell
+                ["git", "ls-files", "-z"],  # noqa: S607 - fixed tool from trusted developer PATH
+                cwd=ROOT,
+                capture_output=True,
+                check=True,
+            )
+            .stdout.decode("utf-8")
+            .split("\0")
+        )
+    except (OSError, subprocess.CalledProcessError):
+        record(FAIL, "no committed secrets", "cannot enumerate Git-tracked files")
+        return
+    for name in filter(None, tracked):
+        path = ROOT / name
         if not path.is_file():
-            continue
-        if any(p in {"node_modules", ".git", ".next", "__pycache__"} for p in path.parts):
-            continue
-        if path.name == "verify_scaffold.py":
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")

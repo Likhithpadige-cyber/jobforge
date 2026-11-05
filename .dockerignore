@@ -21,3 +21,37 @@ infra/terraform
 !README.md
 data/
 artifacts/
+
+# Local evidence, backups and private application inputs are not build context.
+backups/
+uploads/
+.eval-results/
+test-results/
+playwright-report/
+blob-report/
+.auth/
+*.har
+profile.local.*
+seed.local.json
+coverage/
+coverage.xml
+.coverage.*
+htmlcov/
+*.tsbuildinfo
+
+# Apply sensitive/browser exclusions to nested directories too.
+**/.env
+**/.env.*
+!**/.env.example
+**/test-results/
+**/playwright-report/
+**/blob-report/
+**/.auth/
+**/*.har
+**/*.pem
+**/*.key
+**/*.p12
+**/secrets/
+**/*.tfstate
+**/*.tfstate.*
+**/.terraform/

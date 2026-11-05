@@ -70,3 +70,10 @@ Thumbs.db
 
 # Offline evaluation reports (the synthetic corpus is versioned separately)
 .eval-results/
+
+# --- browser test output (may contain cookies, screenshots or PII) ------------
+test-results/
+playwright-report/
+blob-report/
+.auth/
+*.har

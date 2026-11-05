@@ -1,10 +1,26 @@
 # SECURITY.md
 
 **Project:** AI Job Application Platform (`jobforge`)
-**Status:** Design — v1.0
+**Status:** Security design with implementation notes through M14
 **Parent document:** [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ---
+
+## Implementation status (M14)
+
+The current runtime is password/TOTP with Redis sessions, server-side role/CSRF
+checks, least-privileged database roles and guarded email submission. Local/test
+TOTP and Secure-cookie exceptions are described below. The workspace is shared
+between owners/reviewers; it is not tenant-isolated.
+[OPERATIONS.md](OPERATIONS.md) documents current behavior and limitations.
+
+Cognito/OIDC, passkeys, personal access tokens, KMS/Secrets Manager, deployment
+OIDC, WAF and other AWS controls below are **design targets**, not delivered
+infrastructure. Terraform has only a placeholder. Production readiness, CSP/HSTS,
+TLS termination, retention enforcement, image/IaC scanning and branch protections
+must not be inferred from this design. M14 did not provision or deploy anything.
+Current blocking CI checks are documented in [CI.md](CI.md); secret scanning uses
+detect-secrets, not gitleaks, and Python pins are not a hashed production lock.
 
 ## 1. Security posture
 
@@ -44,7 +60,7 @@ So the security effort is weighted accordingly:
 | **Compromised/poisoned job source** | Bulk injected content, bogus postings designed to harvest PII | §5, §7, source-level enabling and review |
 | **The LLM itself** | Plausible fabrication, overreach, sycophantic agreement with the JD's framing | §4 (grounding, numeral guard, independent verifier, DB grants) |
 | **A bug in our own code** | Submitting without approval, writing a fact, deleting an audit row | §4.4 (database constraints and grants as the last line) |
-| **Network attacker** | Interception, MITM | TLS everywhere; no plaintext transport anywhere including local Docker network for credentials |
+| **Network attacker** | Interception, MITM | Production target: TLS everywhere. Current local/test stacks use HTTP and local database/Redis networking on a trusted machine. |
 | **Attacker with laptop access** | Full local compromise | Disk encryption (FileVault), no secrets in repo, TOTP on the app |
 | **Third-party site operator** | Legitimate objection to automated access | §7 — we operate within stated terms and default to human submission |
 | **The user themselves (under time pressure)** | Rubber-stamping approvals, disabling guardrails to hit 100/day | §4.5 — friction is preserved deliberately; guardrail toggles don't exist |
@@ -63,19 +79,20 @@ Nation-state adversaries, DDoS resilience, multi-tenant isolation (single user),
 
 | Environment | Mechanism |
 |---|---|
-| Local dev | Password (argon2id) + TOTP; session cookie |
-| Production | OIDC via Amazon Cognito, or passkey/WebAuthn; MFA required |
+| Local/test (implemented) | Password (argon2id), optional TOTP; session cookie |
+| Non-local runtime (implemented) | Password + required TOTP; Secure session cookie |
+| Future production integration | OIDC via Amazon Cognito, or passkey/WebAuthn; MFA required |
 
 Sessions: HttpOnly, Secure, SameSite=Strict, 12-hour idle expiry, 7-day absolute expiry, server-side session store in Redis with revocation. CSRF protection via double-submit token on all state-changing requests.
 
-Programmatic access uses scoped personal access tokens (`read`, `write`, `admin`), hashed at rest, 90-day expiry, revocable, with last-used tracking.
+Planned programmatic access uses scoped personal access tokens (`read`, `write`, `admin`), hashed at rest, 90-day expiry, revocable, with last-used tracking.
 
 ### 3.2 Authorization
 
 Two enforcement layers, deliberately redundant:
 
-1. **Application layer** — FastAPI dependencies check the actor and scope on every route. Agent-scoped tokens receive `403` on `/profile/*`, `/site-policies/*`, `/settings`, and all `/approvals/*` decision endpoints.
-2. **Database layer** — separate roles (`app_api`, `app_agent`, `app_monitor`, `app_migrate`) with grants per DATABASE_DESIGN.md §8.
+1. **Application layer** — FastAPI dependencies check the session actor, CSRF and owner/reviewer role on authenticated routes. Owner-only actions reject reviewers. Agent-scoped API tokens are a design target, not an implemented authentication mode.
+2. **Database layer** — separate roles (`app_api`, `app_agent`, `app_monitor`, `app_audit`, `app_migrate`) with grants per DATABASE_DESIGN.md §8.
 
 Layer 2 exists because layer 1 is code, and code has bugs. An agent worker connecting as `app_agent` **physically cannot** insert a profile fact, approve an application, or alter a site policy, regardless of what its code or its model output tries to do.
 
@@ -83,7 +100,7 @@ Layer 2 exists because layer 1 is code, and code has bugs. An agent worker conne
 
 | Rule | Detail |
 |---|---|
-| Never in git | `.gitignore` + `gitleaks` in pre-commit and in CI on every PR |
+| Never in git | `.gitignore` + reviewed detect-secrets baseline, pre-commit hook and CI gate |
 | Never in the database | Postgres holds references, never values |
 | Never in an LLM prompt | The prompt builder rejects any string matching known secret patterns before send (`pii_in_prompt` guardrail) |
 | Never in logs | Structured-log redaction processor with an allowlist of loggable fields |
@@ -339,11 +356,11 @@ Applications are submitted as the user, with the user's real information, review
 | SSRF | Outbound HTTP goes through a client that resolves and blocks private/link-local/metadata ranges (notably `169.254.169.254`); only domains present in `site_policies` are reachable |
 | File upload | Evidence documents: type allowlist, size cap, content-type sniffing, stored outside the web root, never executed |
 | Rate limiting | Per-user API limits (300 read/min, 60 write/min); per-domain outbound limits |
-| Dependency safety | Pinned with hashes; Dependabot; `pip-audit` and `npm audit` blocking in CI; Trivy image scanning |
+| Dependency safety | Exact Python/direct frontend pins and npm integrity lock; `pip-audit` and `npm audit` blocking in CI. Hashed Python lock, Dependabot and Trivy scanning remain design targets. |
 | Error handling | RFC 7807 problem details; stack traces never returned to the client |
 | Security headers | CSP, HSTS, X-Content-Type-Options, Referrer-Policy, Permissions-Policy |
 
-### 8.2 Infrastructure (AWS)
+### 8.2 Infrastructure (AWS — planned, not provisioned)
 
 | Control | Detail |
 |---|---|
@@ -356,7 +373,11 @@ Applications are submitted as the user, with the user's real information, review
 | Monitoring | CloudTrail on, GuardDuty on, AWS Config rules for public-access drift, Budgets alarm |
 | Terraform | Remote state in S3 (encrypted, versioned) with DynamoDB locking; `tfsec`/`checkov` in CI; `plan` reviewed on every PR |
 
-### 8.3 CI/CD
+### 8.3 CI/CD design targets
+
+The list below is the target deployment policy. Current locally verified CI
+coverage and hosted-run limitations are in [CI.md](CI.md); remote branch rules
+and deployment controls have not been configured or verified by M14.
 
 - Branch protection on `main`; no direct pushes; required reviews
 - Required checks: lint, typecheck, unit, integration, contract, **safety regression suite**, secret scan, dependency audit, IaC scan
