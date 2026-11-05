@@ -1673,3 +1673,128 @@ backend/E2E results are not relabeled as fresh verification. No cloud resources,
 domains/services, deploy, push, real email/application, production credential
 change, database/volume/user-data deletion, unrelated container restart, license
 addition or new product feature occurred.
+
+
+## Post-M15 — global frontend redesign (2026-11-05)
+
+Implementation/design-system commit: `09c5a38`. Started from clean `dev` at
+`6ad4815` after inspecting the repository, existing design system and UI colors.
+The concise implementation plan preceded changes. M15 reports and the production
+**NO-GO** decision are unchanged.
+
+### Changes
+
+- Replaced the light/violet/brass and stock status palettes with six CSS
+  primitives and centralized semantic Tailwind roles: Midnight `#0A0F14`, Deep
+  Teal `#0F3D3E`, Muted Teal `#2E6F73`, Aqua `#7FB3B8`, Cream `#EADCC8`, Orange
+  `#C6601F`. Removed gradients, translucent paint, opacity fades/pulses and
+  multicolor login PNG/WebP assets. The hex values were authoritative; no supplied
+  reference image was found locally.
+- Applied solid dark surfaces to authentication, dashboard/pipeline, feed,
+  applications/review workspace, resumes, cover letters, answers, submission,
+  profile/facts, agents, settings and owner operations. Shared navigation,
+  dialogs, controls, tables, notices and loading/empty/error/status views use
+  semantic roles. Added themed 404 and generic error boundaries without exposing
+  exception details. The login now uses a split desktop layout and centered
+  mobile card, with quiet inline SVG decoration and a visible heading.
+- Orange actions use Midnight text (4.67:1) and Cream boundaries (3.06:1).
+  Supporting Aqua text is at least 5.15:1 on implemented text surfaces; Cream is
+  at least 8.86:1. Meaningful field/button borders and keyboard focus use Aqua.
+  Cream-on-Orange (3.06:1) and Cream-on-Muted-Teal (4.28:1) normal text are
+  explicitly prohibited. Labels/glyphs preserve status meaning without color.
+- Fixed issues discovered in browser verification: account-link accessible name
+  includes visible initials, resume list has an explicit single mobile column,
+  and resume workspace no longer duplicates the shell H1. Dialog keyboard
+  trapping, Escape/focus restoration, role/privacy protections, real API-derived
+  state and dry-run safeguards remain intact. No backend API/business change.
+- Added a source/generated-CSS color audit and negative fixtures; replaced
+  obsolete light-theme contrast assertions with measured dark-palette pairs.
+  Pinned test-only axe-core 4.14.0 and added nine guarded browser cases.
+  `docs/UI_DESIGN_SYSTEM.md` records inventory, token/contrast rules, commands,
+  results, local preview setup and limitations.
+- The implementation commit changes 69 files, including the design document,
+  tests, package files, removed artwork and `.secrets.baseline`. The secret gate
+  flagged only the updated public axe-core integrity checksum. The existing
+  reviewed entry was refreshed; its hook also moved 621 lockfile line references
+  and its timestamp. Programmatic comparison confirmed no other finding hash or
+  scanner/filter change. No broad exception or secret value was introduced.
+
+### Verification
+
+Final frontend command, run at the repository root under Node 22.23.4:
+
+```sh
+npm exec --yes --package=node@22 -- sh -c 'npm --prefix apps/web test && npm --prefix apps/web run typecheck && npm --prefix apps/web run lint && npm --prefix apps/web run build && npm --prefix apps/web run audit:colors -- --built'
+```
+
+- Unit regression: **336 passed / 26 files**, **6.71 seconds**, no failures.
+- TypeScript: **passed** (`tsc --noEmit`). ESLint: **passed**, no lint
+  warnings/errors; existing `next lint` deprecation notice remains.
+- Production frontend build: **passed**, 20 listed page/API routes including
+  themed 404. The repository build prints the existing unconfigured-public-API
+  localhost fallback warning; no production configuration/readiness fix is claimed.
+- Color audit: **passed**, **90 files** (89 UI source/config files and one built
+  CSS file), six approved paint colors plus no-paint transparency. This also
+  caught and eliminated Tailwind's generated blue ring fallback.
+- `npm --prefix apps/web audit --json`: **zero known vulnerabilities**.
+- `.venv/bin/ruff check tests/e2e/browser/test_ui_theme.py`: **passed**;
+  `.venv/bin/ruff format --check tests/e2e/browser/test_ui_theme.py`:
+  **one file already formatted**.
+
+Final guarded browser command (Python 3.12.14 / Chromium):
+
+```sh
+JOBFORGE_E2E_BASE_URL=http://127.0.0.1:3115 \
+JOBFORGE_UI_EVIDENCE_DIR=/tmp/jobforge-ui-evidence \
+LLM_MODE=replay SUBMISSION_MODE=dry_run EMAIL_TRANSPORT_MODE=fake \
+.venv/bin/pytest -m e2e tests/e2e/browser \
+  --junitxml=/tmp/jobforge-ui-browser.xml
+```
+
+- **26 passed, 0 failed, 0 skipped**, **82.67 seconds**: all 17 existing M13
+  journeys plus nine new theme/accessibility cases.
+- **78** axe WCAG A/AA page/state checks with computed visible-paint and document
+  overflow assertions: **zero violations/overflow failures**. Includes **62**
+  route/role/viewport combinations (17 owner routes and 14 reviewer routes at
+  each width), six login/error/404 checks, two form/dialog checks and eight
+  feedback/navigation checks. Viewports: **1280×800 and 375×812**.
+- Checked login Tab/focus, enabled/disabled/hover actions, profile editing,
+  checkbox acknowledgement and Escape/focus return, mocked loading/empty/503
+  states, desktop search and mobile drawer. Authentication error presentation
+  uses an intercepted synthetic request; no real login attempt for that case.
+- Browser ran against a separately built standalone frontend in a temporary
+  directory on loopback 3116, with its compiled API origin set to loopback 3115.
+  A temporary loopback router served pages/assets from that frontend and API
+  calls from the existing isolated demo API on 8100. Static/public assets were
+  copied into the standalone output. This tested the production-mode frontend,
+  not a production Docker image or external deployment. Only these temporary
+  verification servers were stopped afterward; existing containers were untouched.
+- Local screenshots visually reviewed login, dashboard, review workspace,
+  resume, cover letter and settings across desktop/mobile; other core workspace
+  screenshots were captured. Only synthetic demo content was used.
+- Initial frontend run had **315 passed, 6 failed** because five assertions
+  described the retired light palette and one expected a pulsing skeleton.
+  The first combined browser run had **19 passed, 5 failed**: four failures were
+  an incorrect new-test detail lookup and one exposed the avatar label issue.
+  A subsequent route sweep exposed the mobile overflow and duplicate H1. All
+  were corrected before the final green runs; no checks were waived.
+- Full tracked-file gate:
+  `.venv/bin/detect-secrets-hook --baseline .secrets.baseline $(git ls-files)`
+  **passed** after the reviewed checksum/reference refresh. `git diff --check`
+  and staged whitespace checks **passed**. M15 report diff is empty.
+
+### Remaining limits and restrictions
+
+No app-controlled off-palette paint or failing UI test remains in this scope.
+Axe plus focused keyboard/visual checks are not comprehensive WCAG certification.
+Safari/Firefox, screen-reader sessions, forced-colors and OS-native popup chrome
+were not exhaustively tested; browser antialiasing naturally creates blended edge
+pixels. Framework error fallback rendering is unit/source/build verified, not
+an induced production crash. Backend regression, load/soak, production image
+builds and hosted Actions were not rerun for this frontend-only change.
+
+No push, deploy, cloud resource, domain purchase, real email/application,
+production credential modification, database/volume/user-data deletion,
+unrelated container restart, license addition or infrastructure remediation.
+The existing 31 upward-import findings and all M15 deployment blockers remain
+outside this UI task. Changelog is committed separately from implementation.
