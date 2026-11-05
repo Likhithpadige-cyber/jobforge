@@ -1342,3 +1342,93 @@ Commit `89256f1`.
   - Agent activity lists 9 replay runs at $0.00. The failed seed run shows only `ModelOutputError`.
   - No horizontal overflow at 375 px.
 - Secrets scan: no unbaselined secrets, and the baseline is unchanged.
+
+## M13 Phase 4 — COMPLETE, verified 2026-11-05
+
+Commit `c882f11`. This closes M13: Phases 1–4 are all committed and regression-tested together.
+
+### Header identity
+
+- The hard-coded "LS" avatar is gone. Initials come from the signed-in user's own session email (`demo.reviewer@…` → "DR"), with no extra request.
+- The session has no display name. The profile's `full_name` is the candidate's, so it is never used: a reviewer is never shown the candidate's identity as their own.
+- If there are no usable letters, the avatar shows an icon, never someone else's initials.
+- Only the owner's avatar links to `/profile`; a reviewer's is a labelled, non-interactive badge.
+
+### Accessibility (WCAG 2.2 AA)
+
+- **Contrast:**
+  - Three design tokens were minimally darkened, keeping their hue: `ink-soft` #687082→#636B7C, `signal-strong` #398468→#33765D, `signal-review` #A97A2F→#8B6427.
+  - Before, `ink-soft` measured 4.30–4.44:1 on cream and violet-soft surfaces, and the strong and review badges 3.4–3.9:1. Every token now reaches at least 4.5:1 on every surface and on its own badge tint. A test computes this from `tailwind.config.ts`.
+  - Translucent `ink-soft/70` and `/75` text was removed from M13 surfaces: the pipeline stage numbers and the search and login placeholders.
+- **Headings and landmarks:**
+  - Section cards are `h2` regions named by their heading. Settings and Agent activity previously jumped from h1 to h3.
+  - The workspace's second "Breadcrumb" navigation is renamed "Application location", so no two landmarks share a name.
+- **Mobile navigation drawer:** it is now a modal dialog. Focus moves into it, Tab is trapped, Escape closes it, and focus returns to the control that opened it. Both openers announce `aria-haspopup="dialog"`.
+- **Dialogs:** the confirmation dialog's focus trap now covers links, selects and other focusable elements, not only inputs and buttons.
+- **Forms:**
+  - The required change note and required answers carry `aria-required`.
+  - A disabled "Request changes…" button explains why it is disabled, through `aria-describedby`.
+  - Server reasons are shown as sentences.
+  - The login form declares `method="post"`, so a native submission could never put credentials in a URL. Its button is already disabled before hydration; this is defence in depth.
+- **Announcements:** skeleton loading states contain screen-reader text, and on-demand loads (run steps, evidence) are `role="status"`.
+- **Targets and readability:**
+  - Standalone links that were 16–20 px tall are now at least 24 px (SC 2.5.8).
+  - Mobile tab labels are 11 px, up from 10 px.
+- **Honesty:** the sidebar no longer always says "Review what is waiting for your approval"; it now points to Approvals neutrally.
+
+### Defect fixed
+
+- `PUT /profile` with an outdated `version` returned 422 (`ValidationError`), so the edit form's "the profile changed since you opened it" guidance never appeared. It now returns 409 (`ConflictError`), and the E2E API journey asserts it.
+
+### End-to-end tests (opt-in, `-m e2e`)
+
+- `tests/e2e/` is deselected from every normal run (`pytest`, `make test`, unit, integration, safety). It is selected only with `-m e2e`.
+- A session that mixes the two suites stops with a clear message. Playwright's sync event loop and the async API fixtures cannot share a process.
+- **API journeys** (`tests/e2e/test_m13_api_journeys.py`, 6 tests, `make test-e2e`), with real `POST /auth/login`, CSRF and PostgreSQL:
+  - sign-in, roles, missing-CSRF refusal and sign-out;
+  - cover-letter review;
+  - answers: refused while incomplete, then saved and approved;
+  - dry-run submission: refused for the owner (409), forbidden for the reviewer (403), body fields rejected (422), never started;
+  - profile: edit, stale-version 409, reviewer redaction and 403;
+  - facts: spoofed `verified_by` and `added_by` rejected (422), attribution taken from the session, reviewer 403s, retirement;
+  - agent runs: error messages, step output and LLM prompts and responses never returned.
+  - Both email transports are replaced by tripwires that fail a test if anything tries to send.
+- **Browser suite** (`tests/e2e/browser/`, 17 tests, pytest-playwright 0.10.0 with Playwright 1.64.1 and Chromium, `make test-e2e-browser`), against the isolated demo stack:
+  - signed-out redirect, wrong password, sign-in and sign-out, each user's own initials;
+  - dashboard real counts, plus "—" and Retry on an intercepted failure;
+  - agent activity with no leak markers in the page or in the API responses;
+  - the full review workflow on a fresh application: cover letter approved; answers refused, answered, saved and approved; readiness incomplete;
+  - dry-run submission disabled for the owner and absent for the reviewer, with API 409 and 403;
+  - profile edit, always restored afterwards, and reviewer redaction;
+  - fact attribution spoof refused, verified as the owner, retired;
+  - the settings dialog never implies dry-run can send, and Escape returns focus;
+  - every M13 page for owner and reviewer at 1280 px and 375 px: one `main`, an h1, the avatar, no horizontal overflow;
+  - the mobile navigation drawer's keyboard behaviour.
+- **Safety:** the browser session stops unless `.env.demo` marks a demo environment with dry-run and the running API reports `dry_run` with `live: false`. No test confirms a Submit or turns the switch on.
+- **Determinism:** `python -m scripts.demo_env e2e-fixture` creates fresh, uniquely named synthetic rows for each run: an application awaiting review with an unanswered required question, a draft fact, and a throwaway reviewer. It runs on the host against the demo's published ports, through the real services with replayed generation. Read-only checks find seeded rows by fixed titles, never by row order.
+- Setup and run commands are documented in the README under Testing → End-to-end. The new Makefile targets are `e2e-install`, `test-e2e` and `test-e2e-browser`.
+
+### Explicit limitations
+
+- The login rate limit (20 per address and 8 per email per 15 minutes) is deliberately left as it is. One browser run signs in 4 times, so at most about four runs fit in 15 minutes.
+- Each browser run leaves its synthetic application, fact and reviewer in the demo database. They are clearly named `E2E …` and `e2e-reviewer-…`.
+- The 3.8 GiB Docker VM cannot hold the dev stack and the demo stack under load: the demo API failed with `ENOMEM`. With your approval, the dev `jobforge-api`, `jobforge-web` and `jobforge-minio` containers were paused for the browser runs and restarted afterwards.
+- `pip-audit -r requirements-dev.txt` reports two advisories in the pre-existing test-only `pypdf==6.16.0` pin (fixed in 6.21.4). This is left for M14's dependency work. `make audit` (`requirements.txt`) is clean.
+- `make test-e2e` runs inside the dev API container. In this phase the API journeys were run with the host `.venv` against the same dev PostgreSQL.
+
+### Final verification counts
+
+- **Backend:** full suite (unit, integration and safety) with `REQUIRE_SECURITY_TESTS=1`: 3267 passed, 0 failed, 0 skipped in 38 min. That run included the 6 API journeys before they became opt-in; the normal suite now collects 3261 and deselects the 23 E2E tests.
+  - The run included the 409 fix. Code changed after it: the E2E harness, `scripts/demo_env.py` (a new command) and the frontend login form.
+- **E2E, API journeys:** 6 passed, 0 failed, 0 skipped, on each of three runs.
+- **E2E, browser:**
+  - With the dev containers paused: 17 passed, 0 failed, 0 skipped on two consecutive runs.
+  - The final run, with the dev containers running: 17 passed, 0 failed, 0 skipped.
+  - Earlier runs failed for the infrastructure reasons recorded above (Docker VM `ENOMEM`, the login rate limit after back-to-back runs) and for three harness issues, all fixed: Next.js dev-overlay `status`/`alert` regions, a substring heading match, and the profile restore not being in a `finally`.
+- **Frontend:** 321 tests passed (31 new in `accessibility-polish.test.tsx`), typecheck and lint clean, production build succeeded.
+- **Static checks:** ruff check and format clean (313 files). mypy: 167 source files, no issues. verify-schema 12 passed. check-shadowing clean. `git diff --check` clean.
+- **Secrets scan:** no unbaselined secrets, and the baseline is unchanged. `make audit`: clean.
+- **Browser checks, in the in-app browser and the E2E suite:**
+  - Owner initials "DC" and reviewer "DR".
+  - The dashboard, agent activity, review screens, profile, facts and settings at 1280 px and 375 px, with no horizontal overflow.
+  - The mobile drawer: a dialog, focus inside, Escape returns focus to "More navigation".
