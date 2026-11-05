@@ -1,0 +1,77 @@
+name: Playwright E2E
+
+# Opt-in to keep the Docker/browser workload out of the fast required checks.
+# workflow_dispatch is available once this file exists on the default branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: playwright-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  LLM_MODE: replay
+  SUBMISSION_MODE: dry_run
+  EMAIL_TRANSPORT_MODE: fake
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install browser test dependencies
+        run: |
+          pip install -r requirements-dev.txt
+          playwright install --with-deps chromium
+          npm ci --prefix apps/web
+      - name: Create ephemeral demo configuration
+        run: make demo-env
+      - name: Start isolated demo services
+        run: |
+          docker compose -p jobforge-demo -f docker-compose.demo.yml --env-file .env.demo \
+            up -d --build --wait postgres redis api web
+          make demo-migrate demo-init demo-seed
+      - name: Wait for demo sign-in page
+        run: |
+          for attempt in {1..60}; do
+            echo "Waiting for demo sign-in page ($attempt/60)"
+            if curl -fsS http://127.0.0.1:3100/login > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          exit 1
+      - name: Browser journeys (dry-run gate verified by fixtures)
+        run: |
+          pytest -m e2e tests/e2e/browser --junitxml=test-results/browser.xml
+          python scripts/check_test_report.py test-results/browser.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-results
+          path: test-results/*.xml
+          retention-days: 7
+      - name: Remove this runner's demo containers
+        if: always()
+        run: |
+          if test -f .env.demo; then
+            docker compose -p jobforge-demo -f docker-compose.demo.yml --env-file .env.demo down -v
+          fi

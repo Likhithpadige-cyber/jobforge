@@ -5,8 +5,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 # ---------------------------------------------------------------- deps
 FROM base AS deps
-COPY apps/web/package.json apps/web/package-lock.json* ./
-RUN npm ci || npm install
+COPY apps/web/package.json apps/web/package-lock.json ./
+RUN npm ci
 
 # ------------------------------------------------------------ dev image
 FROM deps AS development
