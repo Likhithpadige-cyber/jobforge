@@ -1471,3 +1471,62 @@ Known maintenance notes: ESLint 9 reports an upstream support/deprecation
 warning and `next lint` is deprecated in Next.js 15; both still pass. Audit
 results are point-in-time, and the scoped overrides need review on upgrades.
 Browser/API E2E remain opt-in and were not run in this dependency phase.
+
+## M14 Phase 2 — CI reliability (2026-11-05)
+
+Implementation: `12f62b4`.
+
+- CI now covers pushes/PRs to `dev` and `main`, plus manual dispatch. Jobs
+  have timeouts, read-only repository permissions and non-persisted checkout
+  credentials. Replay, fake email and dry-run submission are workflow defaults.
+- Preserved backend lint/format, mypy, schema, shadowing and migration checks;
+  full backend coverage runs with PostgreSQL, Redis and runner-only MinIO.
+  Added the missing app_audit login and fail-fast SQL role setup.
+- Safety and six API journeys run in separate processes. The new JUnit gate
+  rejects absent, malformed, empty, failing or skipped reports; nine tests
+  exercise those failure paths. Reports/coverage are retained as CI artifacts.
+- Frontend now requires `npm ci`, audits all dependencies and runs lint,
+  typecheck, tests and build. The Dockerfile also rejects missing/broken
+  lockfiles rather than falling back to `npm install`.
+- Python audit includes development requirements. The tracked-file secrets
+  gate remains read-only; baseline additions are reviewed runner-only dummy
+  credentials. CAPTCHA/stealth checks scan manifests/lockfile, fixing the
+  old scanner self-match. Actionlint checks both workflows in CI.
+- Added separate manual `playwright.yml`: ephemeral demo config, isolated
+  demo services, health wait, migrations/init/fictional seed, Chromium,
+  17 guarded journeys, JUnit gate and runner-only cleanup. No submission or
+  generation worker starts. See `docs/CI.md` for operation and local equivalents.
+
+Independent local verification:
+
+- Full backend with coverage and `REQUIRE_SECURITY_TESTS=1`: **3270 passed,
+  23 E2E deselected, 0 failed, 0 skipped**, 386.15 seconds. Coverage:
+  **9449 / 10330 lines (91.47%)**.
+- Separate safety suite: **1392 passed, 1901 deselected, 0 failed, 0 skipped**,
+  118.70 seconds. Separate API E2E: **6 passed**, 5.07 seconds.
+- Browser E2E against patched Next.js 15.5.29 under Node 22: **17 passed,
+  0 failed, 0 skipped**, 45.33 seconds. All three JUnit gate invocations passed.
+- New report gate tests: **9 passed**. Ruff check and format passed (315
+  files); mypy passed (167 application sources and the new script separately).
+- Both workflows passed actionlint 1.7.7 with ShellCheck 0.11.0. All **33**
+  workflow shell steps passed Bash syntax parsing. Tracked-file secret scan
+  and `git diff --check` passed.
+- Phase 1's final Node 22 checks (321 frontend tests, lint, typecheck, build,
+  clean install and zero-vulnerability audits) still cover the unchanged
+  frontend source/dependency set.
+
+Verification limits and recovered attempts:
+
+- GitHub-hosted Actions and production Docker image builds were not executed
+  locally. No push was made; image builds remain configured with `push: false`.
+- Initial browser attempt on occupied port 3100: **1 failed, 16 errors**;
+  the pre-existing Next.js 15.1.3 process returned server errors. A subsequent
+  attempt before the isolated frontend started: **1 failed, 16 skipped**.
+  Explicit binary/working-directory fixes and a healthy sign-in check preceded
+  the successful final 17-test run. No application code change was needed.
+- The final browser run used a separate `/tmp` frontend copy/cache on port
+  3114 and the existing isolated demo API/database. It created synthetic E2E
+  fixture rows. Temporary frontend processes were stopped afterwards; no
+  existing process/container was stopped or restarted.
+- Manual workflow dispatch becomes available when the workflow exists on the
+  default branch. Hosted clean-runner startup still needs verification there.
