@@ -60,7 +60,7 @@ describe("JobFeedTable", () => {
       <JobFeedTable jobs={[]} sourceNames={{}} loading hasFilters={false}
         onResetFilters={noop} />,
     );
-    expect(container.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[data-testid="skeleton"]').length).toBeGreaterThan(0);
   });
 
   it("shows the empty state when nothing has been found", () => {

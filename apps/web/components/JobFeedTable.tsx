@@ -62,7 +62,7 @@ export function JobFeedTable({
           <button
             type="button"
             onClick={onResetFilters}
-            className="rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-brass hover:text-brass-deep"
+            className="rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-control hover:text-attention"
           >
             Clear filters
           </button>
@@ -84,7 +84,7 @@ export function JobFeedTable({
             Jobs found, with work mode, status, source and when each was found
           </caption>
           <thead>
-            <tr className="border-b border-edge bg-muted/40 text-xs text-ink-soft">
+            <tr className="border-b border-edge bg-inset text-xs text-ink-soft">
               <th scope="col" className="px-5 py-3 font-medium">Role</th>
               <th scope="col" className="px-5 py-3 font-medium">Location</th>
               <th scope="col" className="hidden px-5 py-3 font-medium lg:table-cell">
@@ -102,7 +102,7 @@ export function JobFeedTable({
               const salary = formatSalary(job);
               const decide = needsHumanDecision(job);
               return (
-                <tr key={job.id} className="border-b border-edge last:border-0 hover:bg-muted/50">
+                <tr key={job.id} className="border-b border-edge last:border-0 hover:bg-inset">
                   <td className="px-5 py-4 align-top">
                     <p className="font-medium leading-snug text-ink">{job.title}</p>
                     <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-ink-soft">
@@ -133,7 +133,7 @@ export function JobFeedTable({
                       tone={decide ? "review" : undefined}
                     />
                     {decide && (
-                      <p className="mt-1 text-xs text-signal-review">Waiting on you</p>
+                      <p className="mt-1 text-xs text-attention">Waiting on you</p>
                     )}
                   </td>
                   <td className="hidden px-5 py-4 align-top text-sm text-ink-soft xl:table-cell">
@@ -145,7 +145,7 @@ export function JobFeedTable({
                   <td className="px-5 py-4 text-right align-top">
                     <Link
                       href={`/job-feed/${job.id}`}
-                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink transition-colors hover:border-brass hover:bg-brass-soft/50 hover:text-brass-deep"
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink transition-transform hover:border-control hover:bg-inset hover:text-attention"
                     >
                       Review match
                       <Icon name="arrow" className="h-3.5 w-3.5" />

@@ -49,8 +49,8 @@ export function SubmissionSwitchCard() {
   return (
     <SectionCard title="Application submission">
       <div data-testid="settings-gate" className="space-y-4">
-        {notice && <p role="status" className="rounded-card border border-signal-strong/25 bg-signal-strong/10 px-4 py-3 text-sm text-ink">{notice}</p>}
-        {error && <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">{error.message}</p>}
+        {notice && <p role="status" className="rounded-card border border-success bg-inset px-4 py-3 text-sm text-ink">{notice}</p>}
+        {error && <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">{error.message}</p>}
 
         <dl className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-card border border-edge p-4">
@@ -71,7 +71,7 @@ export function SubmissionSwitchCard() {
         </p>
 
         {isOwner ? (
-          <button type="button" onClick={() => { setNotice(null); setConfirming(true); }} className={`inline-flex min-h-11 items-center rounded-chip px-5 text-sm font-semibold ${turningOn ? "bg-signal-risk text-white hover:opacity-90" : "border border-edge bg-surface text-violet-deep hover:border-violet/40"}`}>
+          <button type="button" onClick={() => { setNotice(null); setConfirming(true); }} className={`inline-flex min-h-11 items-center rounded-chip px-5 text-sm font-semibold ${turningOn ? "bg-action text-action-ink " : "border border-edge bg-surface text-accent hover:border-control"}`}>
             {turningOn ? "Turn submission switch on…" : "Turn submission switch off…"}
           </button>
         ) : (
@@ -105,7 +105,7 @@ export function SubmissionSwitchCard() {
               <p>This deployment is in <strong className="text-ink">dry-run mode</strong>. With the switch on, nothing is sent: real email also needs the deployment&apos;s live mode, which only its operator can enable.</p>
             ) : (
               <>
-                <p className="font-medium text-signal-risk">Live mode is configured. With the switch on, a confirmed Submit sends a real email to the employer.</p>
+                <p className="font-medium text-danger">Live mode is configured. With the switch on, a confirmed Submit sends a real email to the employer.</p>
                 <p>Nothing is sent automatically. Each application still needs your own confirmed Submit.</p>
               </>
             )

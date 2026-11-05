@@ -32,7 +32,7 @@ export function ReviewErrorState({ error, onRetry, backHref = "/approvals" }: { 
         <EmptyState
           title="Not found"
           body={error.message}
-          action={<Link href={backHref} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40">Go back</Link>}
+          action={<Link href={backHref} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">Go back</Link>}
         />
       </div>
     );
@@ -42,7 +42,7 @@ export function ReviewErrorState({ error, onRetry, backHref = "/approvals" }: { 
       <EmptyState
         title="Could not load this"
         body={error.message}
-        action={onRetry ? <button type="button" onClick={onRetry} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40">Try again</button> : undefined}
+        action={onRetry ? <button type="button" onClick={onRetry} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">Try again</button> : undefined}
       />
     </div>
   );

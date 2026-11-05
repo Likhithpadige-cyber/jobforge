@@ -32,7 +32,7 @@ import {
 
 function ClaimDetails({ claim }: { claim: ApiClaim }) {
   return (
-    <dl className="mt-3 space-y-2 rounded-card border border-edge bg-muted/40 p-3 text-xs">
+    <dl className="mt-3 space-y-2 rounded-card border border-edge bg-inset p-3 text-xs">
       <div>
         <dt className="font-medium text-ink">Verdict</dt>
         <dd className="mt-0.5 text-ink-soft">
@@ -65,7 +65,7 @@ function ClaimLine({ claim }: { claim: ApiClaim }) {
   return (
     <li
       className={`rounded-card border px-4 py-3 ${
-        failing ? "border-signal-risk/30 bg-signal-risk/[0.04]" : "border-transparent"
+        failing ? "border-danger bg-inset" : "border-transparent"
       }`}
     >
       <div className="flex items-start justify-between gap-4">
@@ -106,12 +106,12 @@ export function ResumeStudioView({
     <div className="space-y-6">
       <header
         data-testid="studio-header"
-        className="reveal rounded-[1.5rem] border border-violet/10 bg-gradient-to-br from-white to-[#F5F1FB] p-6 shadow-raised sm:p-8"
+        className="reveal rounded-[1.5rem] border border-edge bg-surface p-6 shadow-raised sm:p-8"
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[.14em] text-violet-deep">Resume review workspace</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{jobLine(resume)}</h1>
+            <p className="text-xs font-semibold uppercase tracking-[.14em] text-accent">Resume review workspace</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{jobLine(resume)}</h2>
             <p className="mt-1 text-sm text-ink-soft">
               Version {resume.version} · Generated {formatTimestamp(resume.created_at)}
             </p>
@@ -129,7 +129,7 @@ export function ResumeStudioView({
           </div>
         </div>
         {review && (
-          <p className="mt-3 rounded-card border border-signal-risk/25 bg-signal-risk/[0.06] px-3 py-2 text-sm text-signal-risk">
+          <p className="mt-3 rounded-card border border-danger bg-inset px-3 py-2 text-sm text-danger">
             {review}. The text below is shown in full so you can see exactly what
             failed and why.
           </p>
@@ -139,10 +139,10 @@ export function ResumeStudioView({
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="space-y-6">
           <section aria-labelledby="comparison-heading" className="reveal grid gap-4 lg:grid-cols-2">
-            <div className="rounded-card border border-edge bg-muted/55 p-5 shadow-raised"><h2 id="comparison-heading" className="text-sm font-semibold text-ink">Original</h2><div className="mt-4 flex min-h-48 items-center justify-center rounded-card border border-dashed border-edge bg-white/70 p-5 text-center text-sm leading-6 text-ink-soft">Original resume content is not available from this API. No comparison or change highlight is inferred.</div></div>
-            <div className="rounded-card border border-violet/15 bg-surface p-5 shadow-raised"><h2 className="text-sm font-semibold text-ink">Revised · Version {resume.version}</h2><div className="mt-4 min-h-48 rounded-card border border-edge bg-white p-5"><p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">Professional summary</p><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink">{resume.summary_text || "No summary text recorded. The verified claims appear below."}</p></div></div>
+            <div className="rounded-card border border-edge bg-inset p-5 shadow-raised"><h2 id="comparison-heading" className="text-sm font-semibold text-ink">Original</h2><div className="mt-4 flex min-h-48 items-center justify-center rounded-card border border-dashed border-edge bg-surface p-5 text-center text-sm leading-6 text-ink-soft">Original resume content is not available from this API. No comparison or change highlight is inferred.</div></div>
+            <div className="rounded-card border border-edge bg-surface p-5 shadow-raised"><h2 className="text-sm font-semibold text-ink">Revised · Version {resume.version}</h2><div className="mt-4 min-h-48 rounded-card border border-edge bg-surface p-5"><p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">Professional summary</p><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink">{resume.summary_text || "No summary text recorded. The verified claims appear below."}</p></div></div>
           </section>
-          <section aria-labelledby="verification-heading" className="reveal rounded-card border border-edge bg-surface p-5 shadow-raised"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="verification-heading" className="text-base font-semibold text-ink">AI verification</h2><StatusBadge label={VERIFICATION_LABEL[resume.verification_status]} tone={VERIFICATION_TONE[resume.verification_status]} /></div><dl className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-chip bg-muted/50 p-3"><dt className="text-xs text-ink-soft">Claims checked</dt><dd className="mt-1 text-xl font-semibold text-ink">{resume.counts.total - resume.counts.not_checked}</dd></div><div className="rounded-chip bg-signal-strong/5 p-3"><dt className="text-xs text-ink-soft">Claims verified</dt><dd className="mt-1 text-xl font-semibold text-signal-strong">{resume.counts.supported}</dd></div><div className="rounded-chip bg-signal-risk/[0.04] p-3"><dt className="text-xs text-ink-soft">Unsupported claims</dt><dd className="mt-1 text-xl font-semibold text-signal-risk">{resume.counts.unsupported}</dd></div></dl><p className="mt-3 text-xs text-ink-soft">Guardrail result: {VERIFICATION_LABEL[resume.verification_status]}. Expand a claim below for the recorded reason and cited fact identifiers.</p></section>
+          <section aria-labelledby="verification-heading" className="reveal rounded-card border border-edge bg-surface p-5 shadow-raised"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="verification-heading" className="text-base font-semibold text-ink">AI verification</h2><StatusBadge label={VERIFICATION_LABEL[resume.verification_status]} tone={VERIFICATION_TONE[resume.verification_status]} /></div><dl className="mt-4 grid gap-3 sm:grid-cols-3"><div className="rounded-chip bg-inset p-3"><dt className="text-xs text-ink-soft">Claims checked</dt><dd className="mt-1 text-xl font-semibold text-ink">{resume.counts.total - resume.counts.not_checked}</dd></div><div className="rounded-chip bg-inset p-3"><dt className="text-xs text-ink-soft">Claims verified</dt><dd className="mt-1 text-xl font-semibold text-success">{resume.counts.supported}</dd></div><div className="rounded-chip bg-inset p-3"><dt className="text-xs text-ink-soft">Unsupported claims</dt><dd className="mt-1 text-xl font-semibold text-danger">{resume.counts.unsupported}</dd></div></dl><p className="mt-3 text-xs text-ink-soft">Guardrail result: {VERIFICATION_LABEL[resume.verification_status]}. Expand a claim below for the recorded reason and cited fact identifiers.</p></section>
           <h2 className="text-lg font-semibold text-ink">Revised content and claim checks</h2>
           {sections.length === 0 ? (
             <EmptyState
@@ -194,7 +194,7 @@ export function ResumeStudioView({
                   key={label}
                   type="button"
                   disabled
-                  className="w-full cursor-not-allowed rounded-chip border border-edge bg-muted px-3 py-2 text-xs font-medium text-ink-soft opacity-60"
+                  className="w-full cursor-not-allowed rounded-chip border border-edge bg-inset px-3 py-2 text-xs font-medium text-ink-soft"
                 >
                   {label} · Coming next
                 </button>

@@ -28,24 +28,18 @@ const TAGLINE: Record<Size, string> = {
 };
 
 export function BrandLockup({ size = "card" }: { size?: Size }) {
-  // The corner lockup sits on the sky, where ink-soft would fall below a
-  // readable contrast ratio; a light halo keeps it legible over both the
-  // blue upper sky and the bright water without changing the brand colour.
-  const onSky = size === "corner";
-  const halo = onSky ? "[text-shadow:0_1px_10px_rgba(255,255,255,0.75)]" : "";
-
   return (
-    <span className={`inline-flex flex-col items-center ${halo}`}>
+    <span className="inline-flex flex-col items-center">
       <span className="flex items-center gap-2.5">
         <svg viewBox="0 0 24 24" className={MARK[size]} aria-hidden="true" focusable="false">
-          <path d="M3 8h13l-2.2 4.2H8.8L11 8" fill="#6457B5" />
-          <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" fill="#4D4291" />
-          <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" fill="#C9AE78" />
+          <path d="M3 8h13l-2.2 4.2H8.8L11 8" className="fill-accent" />
+          <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" className="fill-ink" />
+          <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" className="fill-action" />
         </svg>
         <span className={`font-semibold tracking-tight text-ink ${NAME[size]}`}>JobForge</span>
       </span>
       <span
-        className={`mt-1 font-semibold uppercase ${onSky ? "text-ink/70" : "text-ink-soft"} ${TAGLINE[size]}`}
+        className={`mt-1 font-semibold uppercase text-ink-soft ${TAGLINE[size]}`}
       >
         Build Apply Grow
       </span>

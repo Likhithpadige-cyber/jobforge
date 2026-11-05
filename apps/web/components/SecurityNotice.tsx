@@ -19,16 +19,16 @@ export function SecurityNotice({
       aria-labelledby="security-heading"
       className="relative overflow-hidden rounded-card border border-edge bg-surface"
     >
-      <span className="absolute left-0 top-0 h-full w-1 bg-signal-risk" aria-hidden="true" />
+      <span className="absolute left-0 top-0 h-full w-1 bg-action" aria-hidden="true" />
       <div className="flex items-start gap-3.5 p-4 pl-5">
         <span
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-chip bg-signal-risk/10"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-chip bg-inset"
           aria-hidden="true"
         >
-          <Icon name="shield" className="h-4 w-4 text-signal-risk" />
+          <Icon name="shield" className="h-4 w-4 text-danger" />
         </span>
         <div className="min-w-0">
-          <p className="text-xs font-medium text-signal-risk">Flagged</p>
+          <p className="text-xs font-medium text-danger">Flagged</p>
           <h3 id="security-heading" className="mt-0.5 text-sm font-medium text-ink">
             This job description contains instructions aimed at JobForge
           </h3>
@@ -41,14 +41,14 @@ export function SecurityNotice({
             <button
               type="button"
               onClick={onInspect}
-              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brass-deep hover:underline"
+              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-attention hover:underline"
             >
               See the flagged text
               <Icon name="arrow" className="h-3.5 w-3.5" />
             </button>
           )}
           {isDemo && (
-            <p className="mt-3 rounded-chip bg-muted px-2 py-1 text-xs text-ink-soft">
+            <p className="mt-3 rounded-chip bg-inset px-2 py-1 text-xs text-ink-soft">
               Sample — scan findings are not stored against jobs yet.
             </p>
           )}

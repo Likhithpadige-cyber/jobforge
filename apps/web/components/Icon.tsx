@@ -75,9 +75,9 @@ export function Wordmark({ className = "" }: { className?: string }) {
   return (
     <span className={`flex items-center gap-2.5 ${className}`}>
       <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true" focusable="false">
-        <path d="M3 8h13l-2.2 4.2H8.8L11 8" fill="#6457B5" />
-        <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" fill="#4D4291" />
-        <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" fill="#C9AE78" />
+        <path d="M3 8h13l-2.2 4.2H8.8L11 8" className="fill-accent" />
+        <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" className="fill-ink" />
+        <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" className="fill-action" />
       </svg>
       <span className="text-[1rem] font-semibold tracking-tight text-ink">
         JobForge

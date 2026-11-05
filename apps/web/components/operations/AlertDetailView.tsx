@@ -55,10 +55,10 @@ export function AlertDetailView({ id }: { id: string }) {
   const resolved = alert.status === "resolved";
   return (
     <div className="space-y-5">
-      <Link href="/alerts" className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">← All alerts</Link>
-      {notice && <p role="status" className="rounded-card border border-signal-strong/25 bg-signal-strong/10 px-4 py-3 text-sm text-ink">{notice}</p>}
+      <Link href="/alerts" className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">← All alerts</Link>
+      {notice && <p role="status" className="rounded-card border border-success bg-inset px-4 py-3 text-sm text-ink">{notice}</p>}
       <article className="rounded-[1.25rem] border border-edge bg-surface p-5 shadow-raised sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">{kindLabel(alert.kind)}</p>
+        <p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">{kindLabel(alert.kind)}</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{alert.title}</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           {alert.auto_paused && <StatusBadge label="Pauses generation" tone="risk" />}
@@ -84,17 +84,17 @@ export function AlertDetailView({ id }: { id: string }) {
 
         {(alert.application_id || alert.job_id) && (
           <div className="mt-5 flex flex-wrap gap-3 border-t border-edge pt-5">
-            {alert.application_id && <Link href={`/applications/${alert.application_id}`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40">Open application</Link>}
-            {alert.job_id && <Link href={`/job-feed/${alert.job_id}`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40">Open job</Link>}
+            {alert.application_id && <Link href={`/applications/${alert.application_id}`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">Open application</Link>}
+            {alert.job_id && <Link href={`/job-feed/${alert.job_id}`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">Open job</Link>}
           </div>
         )}
 
         {!resolved && (
           <div className="mt-6 border-t border-edge pt-5">
             {alert.auto_paused && pauseStale && (
-              <p className="mb-3 text-sm text-signal-review">The generation status could not be refreshed; the impact below uses the last confirmed value.</p>
+              <p className="mb-3 text-sm text-attention">The generation status could not be refreshed; the impact below uses the last confirmed value.</p>
             )}
-            <button type="button" onClick={() => setConfirming(true)} className="inline-flex min-h-11 items-center rounded-chip bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-deep">
+            <button type="button" onClick={() => setConfirming(true)} className="inline-flex min-h-11 items-center rounded-chip bg-action px-4 text-sm font-semibold text-action-ink hover:bg-action-hover">
               Resolve incident…
             </button>
           </div>

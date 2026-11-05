@@ -37,7 +37,7 @@ export function RequirementList({
               <li key={`${req.text}-${index}`} className="px-4 py-3">
                 <p className="text-sm leading-relaxed text-ink">{req.text}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-soft">
-                  <span className="rounded-chip border border-edge bg-muted px-1.5 py-px">
+                  <span className="rounded-chip border border-edge bg-inset px-1.5 py-px">
                     {REQUIREMENT_KIND_LABEL[req.kind] ?? req.kind}
                   </span>
                   {years && <span className="tabular">{years}</span>}

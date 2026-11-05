@@ -75,12 +75,12 @@ export function MonitoringView() {
           Last evaluated: <span className="font-medium text-ink">{formatAge(age)}</span>
           {summary.generation_paused && <span className="ml-2"><StatusBadge label="Generation paused" tone="risk" /></span>}
         </p>
-        <button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40">
+        <button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">
           Refresh
         </button>
       </div>
       {error && (
-        <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">
+        <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">
           The latest refresh failed: {error.message} Showing the previous data.
         </p>
       )}
@@ -94,12 +94,12 @@ export function MonitoringView() {
       {ops && (
         <>
           {isStale(age) && (
-            <p role="alert" data-testid="stale-snapshot" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">
+            <p role="alert" data-testid="stale-snapshot" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">
               <strong className="font-semibold">Monitoring data is stale.</strong> The last evaluation was {formatAge(age)}. The monitor or scheduler worker may be down, and it cannot report its own absence.
             </p>
           )}
           {ops.redis_available === false && (
-            <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">
+            <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">
               Redis was unavailable at the last evaluation, so worker health and consumer lag were not measured.
             </p>
           )}
@@ -130,7 +130,7 @@ function Stat({ label, value, hint, tone }: { label: string; value: string; hint
   return (
     <div className="rounded-card border border-edge bg-surface p-4 shadow-raised">
       <p className="text-xs font-medium text-ink-soft">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tracking-tight ${tone === "risk" ? "text-signal-risk" : "text-ink"}`}>{value}</p>
+      <p className={`mt-1 text-2xl font-semibold tracking-tight ${tone === "risk" ? "text-danger" : "text-ink"}`}>{value}</p>
       {hint && <p className="mt-1 text-xs text-ink-soft">{hint}</p>}
     </div>
   );
@@ -218,11 +218,11 @@ function StalledApplications({ ops }: { ops: Operations }) {
       ) : (
         <ul className="space-y-2 text-sm">
           {entries.map(([status, count]) => (
-            <li key={status} className="flex justify-between gap-3"><span className="text-ink">{status.replace(/_/g, " ")}</span><span className="font-medium text-signal-review">{formatMetric(count)}</span></li>
+            <li key={status} className="flex justify-between gap-3"><span className="text-ink">{status.replace(/_/g, " ")}</span><span className="font-medium text-attention">{formatMetric(count)}</span></li>
           ))}
         </ul>
       )}
-      <Link href="/alerts" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">See stalled-application alerts</Link>
+      <Link href="/alerts" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">See stalled-application alerts</Link>
     </Card>
   );
 }
@@ -240,7 +240,7 @@ function OpenAlerts({ byKind }: { byKind: Record<string, number> }) {
           ))}
         </ul>
       )}
-      <Link href="/alerts" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">Review alerts</Link>
+      <Link href="/alerts" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">Review alerts</Link>
     </Card>
   );
 }
@@ -287,7 +287,7 @@ export function Sparkline({ label, values }: { label: string; values: (number | 
     <figure>
       <figcaption className="flex justify-between text-xs font-medium text-ink-soft"><span>{label}</span><span className="text-ink">{formatMetric(latest)}</span></figcaption>
       <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 h-10 w-full" role="img" aria-label={`${label}: latest ${latest}, highest ${Math.max(...known)} over ${known.length} snapshots`} preserveAspectRatio="none">
-        {segments.map((d) => <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="2" className="text-violet" vectorEffect="non-scaling-stroke" />)}
+        {segments.map((d) => <path key={d} d={d} fill="none" stroke="currentColor" strokeWidth="2" className="text-accent" vectorEffect="non-scaling-stroke" />)}
       </svg>
     </figure>
   );

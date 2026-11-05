@@ -15,7 +15,7 @@
  * success the browser holds the cookie and the app bootstraps from
  * `GET /auth/me`.
  *
- * The page is dressed - artwork, glass, a gradient button - but nothing in
+ * The page uses the shared dark surfaces and accessible action tokens - but nothing in
  * the scene is interactive and nothing in the form is decorative. Every
  * control below posts to an endpoint that exists. There is no OAuth row, no
  * "remember me" and no "contact admin", because there is no OAuth, no
@@ -102,7 +102,7 @@ function LoginForm() {
   }
 
   return (
-    <main className="relative flex min-h-screen flex-col overflow-hidden">
+    <main id="content" className="relative flex min-h-screen flex-col overflow-x-clip bg-canvas">
       <LoginScene />
 
       <div className="relative flex min-h-screen flex-col px-4 py-6 sm:px-8 sm:py-8">
@@ -111,15 +111,16 @@ function LoginForm() {
         </div>
 
         <div className="flex flex-1 items-center justify-center py-8">
-          {/* Below md the card simply centres on the scene. From md up it is
-              positioned against the artwork: 44vh puts its top just under the
-              brick cap, and 34vw keeps it a little narrower than the pillar
-              face behind it, so it always sits on brick rather than sky. The
-              min() is a short-viewport guard - on a window too short for the
-              card at 44vh, the card rises instead of being clipped. */}
-          <div className="w-full max-w-[26rem] md:absolute md:left-1/2 md:top-[min(44vh,calc(100vh-30rem))] md:w-[clamp(20rem,34vw,38rem)] md:max-w-none md:-translate-x-1/2">
+          <div className="grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-24">
+            <section className="hidden max-w-md pr-8 lg:block" aria-label="Welcome">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">A considered next step</p>
+              <h2 className="mt-5 text-4xl font-semibold leading-tight tracking-tight text-ink">Your experience.<br />Your next chapter.</h2>
+              <p className="mt-5 max-w-sm text-base leading-7 text-ink-soft">A focused workspace for thoughtful applications. Review the evidence, shape your story, and keep every decision in your hands.</p>
+              <div className="mt-8 flex items-center gap-3 text-xs text-ink-soft"><span className="h-0.5 w-10 bg-action" />Build. Apply. Grow.</div>
+            </section>
+            <div className="mx-auto w-full max-w-md">
             <LoginCard>
-              <h1 className="sr-only">Sign in to JobForge</h1>
+              <h1 className="mb-5 text-2xl font-semibold tracking-tight text-ink">Sign in to JobForge</h1>
 
               <div className="flex justify-center">
                 <BrandLockup size="card" />
@@ -168,7 +169,7 @@ function LoginForm() {
                 {error && (
                   <p
                     role="alert"
-                    className="rounded-card border border-signal-risk/25 bg-signal-risk/[0.08] px-3 py-2 text-sm text-signal-risk"
+                    className="rounded-card border border-danger bg-inset px-3 py-2 text-sm text-danger"
                   >
                     {error}
                   </p>
@@ -177,7 +178,7 @@ function LoginForm() {
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className="group flex w-full items-center justify-center gap-2 rounded-[0.875rem] bg-gradient-to-r from-[#4A72E8] to-[#7B5AD1] px-3 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_-12px_rgba(74,114,232,0.9)] transition hover:from-[#3F66DE] hover:to-[#6E4DC7] disabled:cursor-not-allowed disabled:opacity-55 disabled:shadow-none"
+                  className="group flex min-h-12 w-full items-center justify-center gap-2 rounded-chip bg-action px-4 py-3 text-sm font-semibold text-action-ink disabled:cursor-not-allowed"
                 >
                   {submitting ? "Signing in…" : "Sign in"}
                   {!submitting && (
@@ -198,6 +199,7 @@ function LoginForm() {
                 </button>
               </form>
             </LoginCard>
+            </div>
           </div>
         </div>
       </div>

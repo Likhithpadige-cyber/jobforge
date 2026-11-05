@@ -101,14 +101,14 @@ export function FactsPanel({ isOwner, reloadKey = 0 }: { isOwner: boolean; reloa
 
         <div role="group" aria-label="Filter facts" className="flex flex-wrap gap-2">
           {FILTERS.map((item) => (
-            <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => { setNotice(null); setFilter(item.value); }} className={`inline-flex min-h-11 items-center rounded-chip border px-4 text-sm font-semibold ${filter === item.value ? "border-violet bg-violet text-white" : "border-edge bg-surface text-ink hover:border-violet/40"}`}>
+            <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => { setNotice(null); setFilter(item.value); }} className={`inline-flex min-h-11 items-center rounded-chip border px-4 text-sm font-semibold ${filter === item.value ? "border-edge bg-action text-action-ink" : "border-edge bg-surface text-ink hover:border-control"}`}>
               {item.label}
             </button>
           ))}
         </div>
 
-        {notice && <p role="status" className="rounded-card border border-signal-strong/25 bg-signal-strong/10 px-4 py-3 text-sm text-ink">{notice}</p>}
-        {error && facts && <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">The latest refresh failed: {error.message}</p>}
+        {notice && <p role="status" className="rounded-card border border-success bg-inset px-4 py-3 text-sm text-ink">{notice}</p>}
+        {error && facts && <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">The latest refresh failed: {error.message}</p>}
 
         {loading ? (
           <ReviewLoading label="Loading facts" />
@@ -135,7 +135,7 @@ export function FactsPanel({ isOwner, reloadKey = 0 }: { isOwner: boolean; reloa
           onCancel={() => setPending(null)}
           onConfirm={() => run(pending.fact, pending.action)}
         >
-          <p className="rounded-chip bg-muted px-3 py-2 text-ink">“{pending.fact.text}”</p>
+          <p className="rounded-chip bg-inset px-3 py-2 text-ink">“{pending.fact.text}”</p>
           <p>{ACTION_COPY[pending.action].body}</p>
         </ConfirmDialog>
       )}
@@ -187,7 +187,7 @@ function FactItem({ fact, isOwner, onAction, onEdited }: { fact: Fact; isOwner: 
           <label htmlFor={`${id}-text`} className="sr-only">Fact text</label>
           <textarea id={`${id}-text`} value={text} onChange={(event) => setText(event.target.value)} maxLength={2000} rows={3} className="w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink" />
           <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void save()} disabled={saving || !text.trim() || text === fact.text} className="inline-flex min-h-11 items-center rounded-chip bg-violet px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving…" : "Save draft"}</button>
+            <button type="button" onClick={() => void save()} disabled={saving || !text.trim() || text === fact.text} className="inline-flex min-h-11 items-center rounded-chip bg-action px-4 text-sm font-semibold text-action-ink">{saving ? "Saving…" : "Save draft"}</button>
             <button type="button" onClick={() => { setEditing(false); setText(fact.text); }} disabled={saving} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink">Cancel</button>
           </div>
         </div>
@@ -195,7 +195,7 @@ function FactItem({ fact, isOwner, onAction, onEdited }: { fact: Fact; isOwner: 
         <p className="mt-2 break-words text-ink">{fact.text}</p>
       )}
       {fact.verified_at && <p className="mt-1 text-xs text-ink-soft">Verified {formatTimestamp(fact.verified_at)}</p>}
-      {error && <p role="alert" className="mt-2 text-sm text-signal-risk">{error}</p>}
+      {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
 
       <div className="mt-3 flex flex-wrap gap-2">
         {isOwner && fact.status === "draft" && !editing && (
@@ -215,7 +215,7 @@ function FactItem({ fact, isOwner, onAction, onEdited }: { fact: Fact; isOwner: 
 
 function ActionButton({ children, onClick, primary = false, expanded }: { children: React.ReactNode; onClick: () => void; primary?: boolean; expanded?: boolean }) {
   return (
-    <button type="button" onClick={onClick} aria-expanded={expanded} className={`inline-flex min-h-11 items-center rounded-chip px-4 text-sm font-semibold ${primary ? "bg-violet text-white hover:bg-violet-deep" : "border border-edge bg-surface text-violet-deep hover:border-violet/40"}`}>
+    <button type="button" onClick={onClick} aria-expanded={expanded} className={`inline-flex min-h-11 items-center rounded-chip px-4 text-sm font-semibold ${primary ? "bg-action text-action-ink hover:bg-action-hover" : "border border-edge bg-surface text-accent hover:border-control"}`}>
       {children}
     </button>
   );
@@ -261,8 +261,8 @@ function EvidenceList({ factId, canAdd }: { factId: string; canAdd: boolean }) {
   }
 
   return (
-    <div className="mt-3 rounded-card bg-muted p-3">
-      {error && <p role="alert" className="mb-2 text-sm text-signal-risk">{error}</p>}
+    <div className="mt-3 rounded-card bg-inset p-3">
+      {error && <p role="alert" className="mb-2 text-sm text-danger">{error}</p>}
       {items === null && !error ? (
         <p role="status" className="text-sm text-ink-soft">Loading evidence…</p>
       ) : items && items.length === 0 ? (
@@ -292,7 +292,7 @@ function EvidenceList({ factId, canAdd }: { factId: string; canAdd: boolean }) {
           <input id={`${id}-note`} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Note" maxLength={2000} className="min-h-11 rounded-chip border border-edge bg-surface px-3 text-sm text-ink" />
           <label className="sr-only" htmlFor={`${id}-url`}>Link</label>
           <input id={`${id}-url`} value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://…" type="url" className="min-h-11 rounded-chip border border-edge bg-surface px-3 text-sm text-ink" />
-          <button type="submit" disabled={saving || (!note.trim() && !url.trim())} className="inline-flex min-h-11 items-center justify-center rounded-chip bg-violet px-4 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Adding…" : "Add"}</button>
+          <button type="submit" disabled={saving || (!note.trim() && !url.trim())} className="inline-flex min-h-11 items-center justify-center rounded-chip bg-action px-4 text-sm font-semibold text-action-ink">{saving ? "Adding…" : "Add"}</button>
         </form>
       )}
     </div>

@@ -40,7 +40,7 @@ export function PasswordField({
         onClick={() => setRevealed((shown) => !shown)}
         aria-pressed={revealed}
         aria-controls="password"
-        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-chip p-2 text-ink-soft transition hover:bg-violet-soft hover:text-violet-deep"
+        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-chip p-2 text-ink-soft transition hover:bg-inset hover:text-accent"
       >
         <span className="sr-only">{revealed ? "Hide password" : "Show password"}</span>
         <svg

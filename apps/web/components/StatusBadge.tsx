@@ -8,12 +8,12 @@
 export type StatusTone = "neutral" | "strong" | "review" | "risk" | "info" | "brass";
 
 const TONES: Record<StatusTone, string> = {
-  neutral: "border-edge bg-muted text-ink-soft",
-  strong: "border-signal-strong/25 bg-signal-strong/10 text-signal-strong",
-  review: "border-signal-review/25 bg-signal-review/10 text-signal-review",
-  risk: "border-signal-risk/25 bg-signal-risk/10 text-signal-risk",
-  info: "border-signal-info/25 bg-signal-info/10 text-signal-info",
-  brass: "border-brass/40 bg-brass-soft text-brass-deep",
+  neutral: "border-edge bg-inset text-ink-soft",
+  strong: "border-success bg-inset text-success",
+  review: "border-attention bg-inset text-attention",
+  risk: "border-danger bg-inset text-danger",
+  info: "border-info bg-inset text-info",
+  brass: "border-edge bg-inset text-attention",
 };
 
 /** Maps a job/application status onto a tone. */

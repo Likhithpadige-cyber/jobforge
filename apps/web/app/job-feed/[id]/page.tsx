@@ -75,7 +75,7 @@ export default function JobDetailPage({
     return (
       <AppShell title="Job not found" description="This posting could not be loaded.">
         <div id="content" className="mx-auto max-w-2xl space-y-4 pt-6">
-          <p role="alert" className="rounded-card border border-edge bg-surface px-4 py-3 text-sm text-signal-risk">
+          <p role="alert" className="rounded-card border border-edge bg-surface px-4 py-3 text-sm text-danger">
             {error ?? "No job with that id."}
           </p>
           {backLink}
@@ -128,7 +128,7 @@ export default function JobDetailPage({
                 href={job.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-flex items-center gap-1.5 rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-brass hover:text-brass-deep"
+                className="inline-flex items-center gap-1.5 rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-control hover:text-attention"
               >
                 View original posting
                 <Icon name="arrow" className="h-3.5 w-3.5" />
@@ -249,7 +249,7 @@ export default function JobDetailPage({
                 <li>Read the requirements above and decide if it is worth applying.</li>
                 <li>Open the original posting to check anything missing here.</li>
               </ul>
-              <p className="mt-4 rounded-chip bg-muted px-3 py-2 text-xs text-ink-soft">
+              <p className="mt-4 rounded-chip bg-inset px-3 py-2 text-xs text-ink-soft">
                 Preparing a resume for this job is not available yet.
               </p>
             </div>

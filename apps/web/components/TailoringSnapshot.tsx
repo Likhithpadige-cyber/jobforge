@@ -41,16 +41,16 @@ export function TailoringSnapshot({ resume }: { resume: ApiResume }) {
         Verification facts only — not an ATS score.
       </p>
       <dl className="mt-3 divide-y divide-edge">
-        <Stat label="Supported claims" value={counts.supported} tone="text-signal-strong" />
+        <Stat label="Supported claims" value={counts.supported} tone="text-success" />
         <Stat
           label="Overreach"
           value={counts.overreach}
-          tone={counts.overreach > 0 ? "text-signal-review" : undefined}
+          tone={counts.overreach > 0 ? "text-attention" : undefined}
         />
         <Stat
           label="Unsupported"
           value={counts.unsupported}
-          tone={counts.unsupported > 0 ? "text-signal-risk" : undefined}
+          tone={counts.unsupported > 0 ? "text-danger" : undefined}
         />
         <Stat label="Total claims" value={counts.total} />
         <Stat label="Resume version" value={`v${resume.version}`} />

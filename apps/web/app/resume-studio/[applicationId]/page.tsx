@@ -63,7 +63,7 @@ export default function Page({
       description="Review the latest persisted version and its verified claims."
     >
       <div id="content" className="mx-auto max-w-[84rem]">
-      <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-2 text-sm text-ink-soft"><Link href="/applications" className="hover:text-violet-deep">Applications</Link><span aria-hidden="true">›</span><Link href={`/applications/${applicationId}`} className="hover:text-violet-deep">{resume?.job_title && resume?.job_company ? `${resume.job_title} at ${resume.job_company}` : "Application"}</Link><span aria-hidden="true">›</span><span className="text-ink">Resume revision</span></nav>
+      <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-2 text-sm text-ink-soft"><Link href="/applications" className="hover:text-accent">Applications</Link><span aria-hidden="true">›</span><Link href={`/applications/${applicationId}`} className="hover:text-accent">{resume?.job_title && resume?.job_company ? `${resume.job_title} at ${resume.job_company}` : "Application"}</Link><span aria-hidden="true">›</span><span className="text-ink">Resume revision</span></nav>
 
       {loading && (
         <div className="space-y-4" data-testid="loading">

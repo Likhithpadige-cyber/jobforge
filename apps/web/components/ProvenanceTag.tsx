@@ -12,17 +12,17 @@ export type Provenance = "deterministic" | "ai-assisted" | "human";
 const STYLES: Record<Provenance, { label: string; className: string; title: string }> = {
   deterministic: {
     label: "Deterministic",
-    className: "border-edge bg-muted text-ink-soft",
+    className: "border-edge bg-inset text-ink-soft",
     title: "Produced by fixed rules. Same input always gives the same result.",
   },
   "ai-assisted": {
     label: "AI-assisted",
-    className: "border-brass/40 bg-brass-soft text-brass-deep",
+    className: "border-edge bg-inset text-attention",
     title: "A model contributed to this. Review before relying on it.",
   },
   human: {
     label: "You",
-    className: "border-signal-info/25 bg-signal-info/10 text-signal-info",
+    className: "border-info bg-inset text-info",
     title: "You did this.",
   },
 };

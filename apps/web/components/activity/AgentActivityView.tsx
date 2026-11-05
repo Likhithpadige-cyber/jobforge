@@ -105,7 +105,7 @@ export function AgentActivityView() {
             </select>
           </div>
         </div>
-        {error && <p role="alert" className="mb-3 rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">The latest refresh failed: {error.message}</p>}
+        {error && <p role="alert" className="mb-3 rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">The latest refresh failed: {error.message}</p>}
         {runs && runs.length === 0 ? (
           <EmptyState title="No runs yet" body={agent || status ? "No runs match these filters." : "Agent runs appear here once JobForge evaluates jobs or prepares an application."} />
         ) : (
@@ -114,7 +114,7 @@ export function AgentActivityView() {
           </ul>
         )}
         {more && (
-          <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="mt-4 inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40 disabled:opacity-50">
+          <button type="button" onClick={() => void loadMore()} disabled={loadingMore} className="mt-4 inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">
             {loadingMore ? "Loading…" : "Load more"}
           </button>
         )}
@@ -161,19 +161,19 @@ function RunItem({ run }: { run: AgentRun }) {
         </div>
         <StatusBadge label={status.label} tone={status.tone} />
       </div>
-      {run.error_type && <p className="mt-2 text-sm text-signal-risk">Stopped with {run.error_type}</p>}
+      {run.error_type && <p className="mt-2 text-sm text-danger">Stopped with {run.error_type}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-3">
-        <button type="button" onClick={() => void toggle()} aria-expanded={open} className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">{open ? "Hide steps" : "Show steps"}</button>
-        {run.application_id && <Link href={`/applications/${run.application_id}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">Open application →</Link>}
+        <button type="button" onClick={() => void toggle()} aria-expanded={open} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">{open ? "Hide steps" : "Show steps"}</button>
+        {run.application_id && <Link href={`/applications/${run.application_id}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">Open application →</Link>}
       </div>
       {open && (
-        error ? <p role="alert" className="text-sm text-signal-risk">{error}</p>
+        error ? <p role="alert" className="text-sm text-danger">{error}</p>
         : !detail ? <p role="status" className="text-sm text-ink-soft">Loading steps…</p>
         : detail.steps.length === 0 ? <p className="text-sm text-ink-soft">No steps were recorded.</p>
         : (
           <ol className="mt-1 space-y-1" aria-label="Steps">
             {detail.steps.map((step) => (
-              <li key={step.step_index} className="flex flex-wrap items-center justify-between gap-2 rounded-chip bg-muted px-3 py-2 text-sm">
+              <li key={step.step_index} className="flex flex-wrap items-center justify-between gap-2 rounded-chip bg-inset px-3 py-2 text-sm">
                 <span className="text-ink">{step.step_index + 1}. {step.step_name.replaceAll("_", " ")}</span>
                 <span className="text-xs text-ink-soft">{RUN_STATUS[step.status].label} · {formatDuration(step.duration_ms)}</span>
               </li>

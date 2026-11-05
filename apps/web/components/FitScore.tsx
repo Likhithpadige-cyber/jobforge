@@ -27,16 +27,16 @@ const BAND_LABEL: Record<FitBand, string> = {
 };
 
 const BAND_BAR: Record<FitBand, string> = {
-  strong: "bg-signal-strong",
-  moderate: "bg-brass",
-  weak: "bg-signal-review",
-  no: "bg-ink-soft/50",
+  strong: "bg-accent",
+  moderate: "bg-action",
+  weak: "bg-action",
+  no: "bg-ink-soft",
 };
 
 const BAND_TEXT: Record<FitBand, string> = {
-  strong: "text-signal-strong",
-  moderate: "text-brass-deep",
-  weak: "text-signal-review",
+  strong: "text-success",
+  moderate: "text-attention",
+  weak: "text-attention",
   no: "text-ink-soft",
 };
 
@@ -63,7 +63,7 @@ export function FitScore({
         )}
       </div>
       <div
-        className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+        className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-inset"
         role="meter"
         aria-valuenow={Math.round(clamped)}
         aria-valuemin={0}

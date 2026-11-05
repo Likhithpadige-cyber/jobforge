@@ -68,12 +68,12 @@ export function CoverLetterReviewView({ applicationId }: { applicationId: string
 
   return (
     <div className="space-y-5">
-      <Link href={`/applications/${applicationId}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">← Application</Link>
-      {notice && <p role="status" className="rounded-card border border-signal-strong/25 bg-signal-strong/10 px-4 py-3 text-sm text-ink">{notice}</p>}
-      {error && <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">{error.message}</p>}
+      <Link href={`/applications/${applicationId}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">← Application</Link>
+      {notice && <p role="status" className="rounded-card border border-success bg-inset px-4 py-3 text-sm text-ink">{notice}</p>}
+      {error && <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">{error.message}</p>}
 
       <header className="rounded-[1.25rem] border border-edge bg-surface p-5 shadow-raised sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">Cover letter</p>
+        <p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">Cover letter</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">
           {state.cover_letter_version ? `Version ${state.cover_letter_version}` : "No version yet"}
         </h2>
@@ -82,7 +82,7 @@ export function CoverLetterReviewView({ applicationId }: { applicationId: string
           {verification && VERIFICATION_LABEL[verification] && <StatusBadge label={VERIFICATION_LABEL[verification]} tone={VERIFICATION_TONE[verification]} />}
         </div>
         {state.changes_requested && (
-          <div className="mt-4 rounded-card border border-edge bg-muted p-3 text-sm">
+          <div className="mt-4 rounded-card border border-edge bg-inset p-3 text-sm">
             <p className="text-xs font-semibold text-ink-soft">Changes requested{state.decided_by_email ? ` by ${state.decided_by_email}` : ""}</p>
             <p className="mt-1 whitespace-pre-wrap text-ink">{state.changes_requested}</p>
           </div>
@@ -92,7 +92,7 @@ export function CoverLetterReviewView({ applicationId }: { applicationId: string
 
       <SectionCard title="Text and evidence">
         {!content && <EmptyState title="No cover letter yet" body="A cover letter is generated after application questions are prepared. If you requested changes, the new version appears here once it has been generated and verified." />}
-        {stale && <p role="alert" className="mb-3 text-sm text-signal-review">A newer version exists than the one shown. Reload before deciding.</p>}
+        {stale && <p role="alert" className="mb-3 text-sm text-attention">A newer version exists than the one shown. Reload before deciding.</p>}
         {content && (
           <ol className="space-y-4">
             {content.claims.map((claim) => (

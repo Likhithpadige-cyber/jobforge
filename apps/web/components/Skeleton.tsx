@@ -5,7 +5,8 @@
 export function Skeleton({ className = "h-4 w-full" }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded bg-muted ${className}`}
+      data-testid="skeleton"
+      className={`rounded bg-inset ${className}`}
       aria-hidden="true"
     />
   );

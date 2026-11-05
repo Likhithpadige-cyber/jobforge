@@ -80,11 +80,11 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
 
   return (
     <div className="space-y-5">
-      <Link href={`/applications/${applicationId}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">← Application</Link>
-      {notice && <p role="status" className="rounded-card border border-signal-strong/25 bg-signal-strong/10 px-4 py-3 text-sm text-ink">{notice}</p>}
-      {error && <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">The latest refresh failed: {error.message} Showing the previous state.</p>}
+      <Link href={`/applications/${applicationId}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">← Application</Link>
+      {notice && <p role="status" className="rounded-card border border-success bg-inset px-4 py-3 text-sm text-ink">{notice}</p>}
+      {error && <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">The latest refresh failed: {error.message} Showing the previous state.</p>}
 
-      <section aria-label="Submission safety switch" data-testid="submission-gate" className={`rounded-[1.25rem] border p-5 sm:p-6 ${gate.live ? "border-signal-risk/30 bg-signal-risk/5" : "border-edge bg-muted"}`}>
+      <section aria-label="Submission safety switch" data-testid="submission-gate" className={`rounded-[1.25rem] border p-5 sm:p-6 ${gate.live ? "border-danger bg-inset" : "border-edge bg-inset"}`}>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge label={gate.submission_mode === "dry_run" ? "Dry-run mode" : "Live mode configured"} tone={gate.submission_mode === "dry_run" ? "neutral" : "risk"} />
           <StatusBadge label={gate.persisted_enabled ? "Submission switch on" : "Submission switch off"} tone={gate.persisted_enabled ? "risk" : "neutral"} />
@@ -95,7 +95,7 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
 
       <SectionCard
         title="Submission readiness"
-        action={<button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-3 text-sm font-semibold text-violet-deep hover:border-violet/40">Refresh</button>}
+        action={<button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-3 text-sm font-semibold text-accent hover:border-control">Refresh</button>}
       >
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge label={status.label} tone={status.tone} />
@@ -104,7 +104,7 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
         <ul className="mt-4 space-y-2" aria-label="Readiness conditions">
           {readiness.checks.map((check) => (
             <li key={check.key} className="flex items-start gap-3 text-sm">
-              <span aria-hidden="true" className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${check.passed ? "bg-signal-strong" : "bg-signal-risk"}`}>{check.passed ? "✓" : "!"}</span>
+              <span aria-hidden="true" className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-bold text-action-ink ${check.passed ? "bg-accent" : "bg-action"}`}>{check.passed ? "✓" : "!"}</span>
               <span className="text-ink"><span className="sr-only">{check.passed ? "Met: " : "Not met: "}</span>{check.summary}</span>
             </li>
           ))}
@@ -114,7 +114,7 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
           {!isOwner && <p data-testid="reviewer-no-submit" className="text-sm text-ink-soft">Only the workspace owner can submit an application. You can review its materials and readiness.</p>}
           {isOwner && (
             <>
-              <button type="button" onClick={() => setConfirming(true)} disabled={!readiness.can_submit} className="inline-flex min-h-11 items-center rounded-chip bg-signal-risk px-5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+              <button type="button" onClick={() => setConfirming(true)} disabled={!readiness.can_submit} className="inline-flex min-h-11 items-center rounded-chip bg-action px-5 text-sm font-semibold text-action-ink disabled:cursor-not-allowed">
                 Submit application…
               </button>
               {!readiness.can_submit && (
@@ -151,7 +151,7 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
                       : "Prepared when the materials were approved. Nothing is sent until the owner submits."}
                   </p>
                 )}
-                {OUTCOME_HELP[attempt.outcome] && <p className={`mt-2 text-sm ${attempt.outcome === "ambiguous" ? "font-medium text-signal-risk" : "text-ink-soft"}`}>{OUTCOME_HELP[attempt.outcome]}</p>}
+                {OUTCOME_HELP[attempt.outcome] && <p className={`mt-2 text-sm ${attempt.outcome === "ambiguous" ? "font-medium text-danger" : "text-ink-soft"}`}>{OUTCOME_HELP[attempt.outcome]}</p>}
               </li>
             ))}
           </ol>
@@ -176,7 +176,7 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
         >
           {gate.live ? (
             <>
-              <p className="font-medium text-signal-risk">This sends a real email to the employer. It cannot be recalled.</p>
+              <p className="font-medium text-danger">This sends a real email to the employer. It cannot be recalled.</p>
               <p>Destination: an authoritative address at <strong className="text-ink">{readiness.destination_domain ?? "the job's domain"}</strong>, taken only from the job&apos;s own record. Attempt {readiness.attempt ?? 1}.</p>
               <p>If the mail server&apos;s response is lost, the outcome is recorded as ambiguous and is never retried automatically.</p>
             </>

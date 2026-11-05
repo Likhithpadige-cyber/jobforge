@@ -94,7 +94,7 @@ export default function JobFeedPage() {
               <button
                 type="button"
                 onClick={() => setFilters(DEFAULT_FILTERS)}
-                className="rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-brass hover:text-brass-deep"
+                className="rounded-chip border border-edge bg-surface px-3 py-1.5 text-sm font-medium text-ink hover:border-control hover:text-attention"
               >
                 Clear filters
               </button>
@@ -113,7 +113,7 @@ export default function JobFeedPage() {
             value={filters.search}
             onChange={(event) => update("search", event.target.value)}
             placeholder="Search roles, locations"
-            className="h-9 min-w-[14rem] flex-1 rounded-chip border border-edge bg-surface px-3 text-sm text-ink placeholder:text-ink-soft/70"
+            className="h-9 min-w-[14rem] flex-1 rounded-chip border border-edge bg-surface px-3 text-sm text-ink placeholder:text-ink-soft"
           />
 
           <label htmlFor="feed-status" className="sr-only">Status</label>
@@ -168,7 +168,7 @@ export default function JobFeedPage() {
         </div>
 
         {error && (
-          <p role="alert" className="rounded-card border border-edge bg-surface px-4 py-3 text-sm text-signal-risk">
+          <p role="alert" className="rounded-card border border-edge bg-surface px-4 py-3 text-sm text-danger">
             {error}
           </p>
         )}
@@ -191,7 +191,7 @@ export default function JobFeedPage() {
                 setOffset(next);
                 void load(next, false);
               }}
-              className="rounded-chip border border-edge bg-surface px-4 py-2 text-sm font-medium text-ink hover:border-brass hover:text-brass-deep disabled:opacity-50"
+              className="rounded-chip border border-edge bg-surface px-4 py-2 text-sm font-medium text-ink hover:border-control hover:text-attention"
             >
               {loading ? "Loading…" : "Load more"}
             </button>

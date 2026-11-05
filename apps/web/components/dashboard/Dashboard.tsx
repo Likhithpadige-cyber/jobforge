@@ -90,24 +90,24 @@ export function Dashboard() {
   return (
     <div className="space-y-10">
       {unavailable && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">
           <span>Some of this dashboard could not be loaded. Counts marked “—” are unknown, not zero.</span>
-          <button type="button" onClick={() => { setData(null); void load(); }} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 font-semibold text-violet-deep hover:border-violet/40">Retry</button>
+          <button type="button" onClick={() => { setData(null); void load(); }} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 font-semibold text-accent hover:border-control">Retry</button>
         </div>
       )}
 
-      <section className="reveal relative overflow-hidden rounded-[1.5rem] border border-violet/10 bg-gradient-to-br from-white via-[#FBFAFF] to-[#F3F0FA] px-6 py-8 shadow-raised sm:px-9 sm:py-10" aria-labelledby="welcome-heading">
+      <section className="reveal relative overflow-hidden rounded-[1.5rem] border border-edge bg-surface px-6 py-8 shadow-raised sm:px-9 sm:py-10" aria-labelledby="welcome-heading">
         <div className="relative grid items-center gap-8 lg:grid-cols-[1.35fr_.65fr]">
           <div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-violet-deep">Your career, in motion</p>
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-accent">Your career, in motion</p>
             <h2 id="welcome-heading" className="max-w-2xl text-3xl font-semibold leading-tight tracking-[-.035em] text-ink sm:text-4xl"><DashboardGreeting name={data.firstName} /></h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-ink-soft">Everything here is read from your workspace. Every decision stays with a person.</p>
           </div>
-          <div className="rounded-card border border-violet/10 bg-white/90 p-5 shadow-raised" data-testid="priority">
-            <div className="mb-4 flex items-center gap-2 text-xs font-semibold text-violet-deep"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-soft"><Icon name={priority.icon} /></span>{priority.eyebrow}</div>
+          <div className="rounded-card border border-edge bg-inset p-5" data-testid="priority">
+            <div className="mb-4 flex items-center gap-2 text-xs font-semibold text-accent"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-inset"><Icon name={priority.icon} /></span>{priority.eyebrow}</div>
             <h3 className="text-lg font-semibold leading-snug text-ink">{priority.title}</h3>
             <p className="mt-2 text-sm leading-6 text-ink-soft">{priority.body}</p>
-            <Link href={priority.href} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-chip bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-deep">{priority.action}<Icon name="arrow" /></Link>
+            <Link href={priority.href} className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-chip bg-action px-4 text-sm font-semibold text-action-ink hover:bg-action-hover">{priority.action}<Icon name="arrow" /></Link>
           </div>
         </div>
       </section>
@@ -128,17 +128,17 @@ export function Dashboard() {
 
       <div className="grid gap-9 lg:grid-cols-2">
         <section aria-labelledby="decisions-heading">
-          <SectionHeader id="decisions-heading" title="Needs a decision" description="The important calls stay with you." action={<Link href="/approvals" className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">All approvals</Link>} />
+          <SectionHeader id="decisions-heading" title="Needs a decision" description="The important calls stay with you." action={<Link href="/approvals" className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">All approvals</Link>} />
           <div className="rounded-card border border-edge bg-surface p-5 shadow-raised">
             {data.approvals === null ? (
-              <p className="text-sm text-signal-risk">Approvals are unavailable right now.</p>
+              <p className="text-sm text-danger">Approvals are unavailable right now.</p>
             ) : data.approvals.length === 0 ? (
               <p className="text-sm text-ink-soft">Nothing is waiting for a decision.</p>
             ) : (
               <ul className="space-y-2">
                 {data.approvals.slice(0, 4).map((item) => (
                   <li key={item.approval_id}>
-                    <Link href={approvalHref(item)} className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-chip border border-edge px-3 py-2 text-sm hover:border-violet/40">
+                    <Link href={approvalHref(item)} className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-chip border border-edge px-3 py-2 text-sm hover:border-control">
                       <span className="min-w-0"><span className="font-medium text-ink">{APPROVAL_KIND_LABEL[item.kind]}</span> <span className="text-ink-soft">· {item.job_title ?? "Untitled role"}{item.job_company ? ` at ${item.job_company}` : ""}</span></span>
                       <span className="text-xs text-ink-soft">since {formatTimestamp(item.requested_at)} →</span>
                     </Link>
@@ -150,10 +150,10 @@ export function Dashboard() {
         </section>
 
         <section aria-labelledby="agents-heading">
-          <SectionHeader id="agents-heading" title="Recent agent activity" description={data.runSummary ? `${data.runSummary.runs} runs in 7 days · ${formatCost(data.runSummary.cost_usd)} model cost` : "What the agents did recently."} action={<Link href="/agent-activity" className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">All activity</Link>} />
+          <SectionHeader id="agents-heading" title="Recent agent activity" description={data.runSummary ? `${data.runSummary.runs} runs in 7 days · ${formatCost(data.runSummary.cost_usd)} model cost` : "What the agents did recently."} action={<Link href="/agent-activity" className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">All activity</Link>} />
           <div className="rounded-card border border-edge bg-surface p-5 shadow-raised">
             {data.runs === null ? (
-              <p className="text-sm text-signal-risk">Agent activity is unavailable right now.</p>
+              <p className="text-sm text-danger">Agent activity is unavailable right now.</p>
             ) : data.runs.length === 0 ? (
               <p className="text-sm text-ink-soft">No agent has run yet.</p>
             ) : (
@@ -175,8 +175,8 @@ export function Dashboard() {
 
 function Metric({ label, value, icon, href, hint }: { label: string; value: number | null; icon: "feed" | "applications" | "approvals" | "spark"; href: string; hint?: string }) {
   return (
-    <Link href={href} className="rounded-card border border-edge bg-surface p-5 shadow-raised hover:border-violet/40">
-      <div className="flex items-center justify-between"><p className="text-sm font-medium text-ink-soft">{label}</p><span className="flex h-9 w-9 items-center justify-center rounded-chip bg-violet-soft text-violet"><Icon name={icon} /></span></div>
+    <Link href={href} className="rounded-card border border-edge bg-surface p-5 shadow-raised hover:border-control">
+      <div className="flex items-center justify-between"><p className="text-sm font-medium text-ink-soft">{label}</p><span className="flex h-9 w-9 items-center justify-center rounded-chip bg-inset text-accent"><Icon name={icon} /></span></div>
       <p className="mt-4 text-3xl font-semibold tracking-tight text-ink" aria-label={value === null ? `${label}: unknown` : undefined}>{value === null ? "—" : value}</p>
       {hint && <p className="mt-1 text-xs text-ink-soft">{hint}</p>}
     </Link>

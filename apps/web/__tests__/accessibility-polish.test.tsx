@@ -63,7 +63,7 @@ describe("account avatar", () => {
     expect(avatar).toHaveTextContent("DC");
     expect(avatar.tagName).toBe("A");
     expect(avatar).toHaveAttribute("href", "/profile");
-    expect(avatar).toHaveAccessibleName("Your profile. Signed in as demo.candidate@example.com");
+    expect(avatar).toHaveAccessibleName("DC. Your profile. Signed in as demo.candidate@example.com");
   });
 
   it("a reviewer sees their own initials and is not sent to the candidate's profile", () => {
@@ -169,7 +169,7 @@ describe("colour contrast tokens", () => {
   const luminance = (hex: string) => {
     const [r, g, b] = [1, 3, 5].map((i) => {
       const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
     });
     return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
   };
@@ -177,15 +177,23 @@ describe("colour contrast tokens", () => {
     const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
     return (hi! + 0.05) / (lo! + 0.05);
   };
-  const tint = (fg: string, alpha: number) =>
-    "#" + [1, 3, 5].map((i) => Math.round(alpha * parseInt(fg.slice(i, i + 2), 16) + (1 - alpha) * 255).toString(16).padStart(2, "0")).join("");
-  const config = readFileSync(path.resolve(__dirname, "../tailwind.config.ts"), "utf8");
-  const token = (name: string) => new RegExp(`${name}:\\s*"(#[0-9A-Fa-f]{6})"`).exec(config)![1]!;
-
-  it.each(["\"ink-soft\"", "strong", "review", "risk", "info"])("%s text meets 4.5:1 on every surface and its own badge tint", (name) => {
-    const colour = token(name);
-    for (const background of ["#FFFFFF", "#FAFAF7", "#F5F2EB", "#F0EDFA", tint(colour, 0.1)]) {
-      expect(ratio(colour, background), `${name} on ${background}`).toBeGreaterThanOrEqual(4.5);
-    }
+  const css = readFileSync(path.resolve(__dirname, "../app/globals.css"), "utf8");
+  const token = (name: string) => new RegExp(`--jf-${name}:\\s*(#[0-9A-Fa-f]{6})`).exec(css)![1]!;
+  it.each([
+    ["cream", "midnight"], ["cream", "deep-teal"],
+    ["aqua", "midnight"], ["aqua", "deep-teal"],
+    ["midnight", "orange"], ["midnight", "cream"],
+  ])("%s text on %s meets 4.5:1", (foreground, background) => {
+    expect(ratio(token(foreground), token(background))).toBeGreaterThanOrEqual(4.5);
+  });
+  it.each([
+    ["aqua", "midnight"], ["aqua", "deep-teal"],
+    ["cream", "orange"], ["orange", "midnight"],
+  ])("%s control boundary on %s meets 3:1", (foreground, background) => {
+    expect(ratio(token(foreground), token(background))).toBeGreaterThanOrEqual(3);
+  });
+  it("does not treat inaccessible palette combinations as body-text pairings", () => {
+    expect(ratio(token("cream"), token("orange"))).toBeLessThan(4.5);
+    expect(ratio(token("cream"), token("muted-teal"))).toBeLessThan(4.5);
   });
 });

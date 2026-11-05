@@ -70,7 +70,7 @@ export function ResolveAlertDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" onKeyDown={onKeyDown}>
-      <button type="button" tabIndex={-1} aria-label="Close dialog" className="absolute inset-0 bg-ink/40" onClick={() => !submitting && onClose()} />
+      <button type="button" tabIndex={-1} aria-label="Close dialog" className="absolute inset-0 bg-canvas" onClick={() => !submitting && onClose()} />
       <div
         ref={dialog}
         role="dialog"
@@ -82,16 +82,16 @@ export function ResolveAlertDialog({
         <h2 id={titleId} className="text-lg font-semibold text-ink">Resolve this incident?</h2>
         <div id={descriptionId} className="mt-3 space-y-3 text-sm text-ink-soft">
           <p><span className="font-medium text-ink">{alert.title}</span>. Resolving records that you reviewed it. The alert is kept as history and cannot be reopened by the same evidence.</p>
-          <p className={alert.auto_paused ? "font-medium text-signal-risk" : ""} data-testid="resolution-impact">{resolutionImpact(alert, pause)}</p>
+          <p className={alert.auto_paused ? "font-medium text-danger" : ""} data-testid="resolution-impact">{resolutionImpact(alert, pause)}</p>
         </div>
         <label className="mt-5 flex min-h-11 items-start gap-3 text-sm text-ink">
-          <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} disabled={submitting} className="mt-0.5 h-5 w-5 accent-violet" />
+          <input type="checkbox" checked={reviewed} onChange={(event) => setReviewed(event.target.checked)} disabled={submitting} className="mt-0.5 h-5 w-5 accent-action" />
           <span>I have reviewed this incident and its cause.</span>
         </label>
-        {error && <p role="alert" className="mt-3 text-sm font-medium text-signal-risk">{error}</p>}
+        {error && <p role="alert" className="mt-3 text-sm font-medium text-danger">{error}</p>}
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onClose} disabled={submitting} className="min-h-11 rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-violet/40">Cancel</button>
-          <button type="button" onClick={confirm} disabled={!reviewed || submitting} className="min-h-11 rounded-chip bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-deep disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={onClose} disabled={submitting} className="min-h-11 rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-control">Cancel</button>
+          <button type="button" onClick={confirm} disabled={!reviewed || submitting} className="min-h-11 rounded-chip bg-action px-4 text-sm font-semibold text-action-ink hover:bg-action-hover disabled:cursor-not-allowed">
             {submitting ? "Resolving…" : "Resolve incident"}
           </button>
         </div>

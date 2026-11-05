@@ -52,7 +52,7 @@ export function ErrorState({ error, onRetry }: { error: LoadError; onRetry: () =
         title="Could not load this view"
         body={error.message}
         action={
-          <button type="button" onClick={onRetry} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40">
+          <button type="button" onClick={onRetry} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">
             Try again
           </button>
         }

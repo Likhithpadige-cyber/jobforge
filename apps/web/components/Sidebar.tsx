@@ -9,8 +9,8 @@ import { useAuth } from "./AuthGuard";
 function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
   return (
     <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined}
-      className={`group relative flex items-center gap-3 rounded-chip px-3.5 py-3 text-sm font-medium transition-[color,background-color,transform] duration-200 hover:translate-x-0.5 ${active ? "bg-violet-soft text-violet-deep" : "text-ink-soft hover:bg-muted hover:text-ink"}`}>
-      <span aria-hidden="true" className={`absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-violet transition-transform duration-300 ${active ? "scale-y-100" : "scale-y-0"}`} />
+      className={`group relative flex items-center gap-3 rounded-chip px-3.5 py-3 text-sm font-medium transition-transform duration-200 hover:translate-x-0.5 ${active ? "bg-inset text-accent" : "text-ink-soft hover:bg-inset hover:text-ink"}`}>
+      <span aria-hidden="true" className={`absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-action transition-transform duration-300 ${active ? "scale-y-100" : "scale-y-0"}`} />
       <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
       <span>{item.label}</span>
     </Link>
@@ -39,10 +39,10 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
       </nav>
-      <div className="m-3 rounded-card border border-violet/10 bg-violet-soft/60 p-4">
-        <p className="text-xs font-semibold text-violet-deep">Decisions stay with you</p>
+      <div className="m-3 rounded-card border border-edge bg-inset p-4">
+        <p className="text-xs font-semibold text-accent">Decisions stay with you</p>
         <p className="mt-1 text-sm text-ink">Anything waiting for a person is in Approvals.</p>
-        <Link href="/approvals" onClick={onNavigate} className="mt-3 inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-violet-deep hover:underline">Open approvals <Icon name="arrow" className="h-3 w-3" /></Link>
+        <Link href="/approvals" onClick={onNavigate} className="mt-3 inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-accent hover:underline">Open approvals <Icon name="arrow" className="h-3 w-3" /></Link>
       </div>
     </div>
   );

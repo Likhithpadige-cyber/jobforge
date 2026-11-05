@@ -68,12 +68,12 @@ export function AnswersPackageView({ applicationId }: { applicationId: string })
   const open = status === "awaiting_approval" && questions.length > 0 && !approved;
   return (
     <div className="space-y-5">
-      <Link href={`/applications/${applicationId}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-violet-deep hover:underline">← Application</Link>
-      {notice && <p role="status" className="rounded-card border border-signal-strong/25 bg-signal-strong/10 px-4 py-3 text-sm text-ink">{notice}</p>}
-      {error && <p role="alert" className="rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">{error.message}</p>}
+      <Link href={`/applications/${applicationId}`} className="inline-flex min-h-11 items-center text-sm font-semibold text-accent hover:underline">← Application</Link>
+      {notice && <p role="status" className="rounded-card border border-success bg-inset px-4 py-3 text-sm text-ink">{notice}</p>}
+      {error && <p role="alert" className="rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">{error.message}</p>}
 
       <header className="rounded-[1.25rem] border border-edge bg-surface p-5 shadow-raised sm:p-7">
-        <p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">Application answers</p>
+        <p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">Application answers</p>
         <h2 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{questions.length} question{questions.length === 1 ? "" : "s"}</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           <StatusBadge label={approved ? "Approved" : open ? "Waiting for your review" : decision?.status === "changes_requested" ? "Changes requested" : "Not open for review"} tone={approved ? "strong" : open ? "review" : "neutral"} />
@@ -145,23 +145,23 @@ function QuestionItem({ applicationId, question, editable, onSaved }: { applicat
       <div className="flex flex-wrap items-start justify-between gap-2">
         <label htmlFor={fieldId} className="font-medium text-ink">
           {question.question_text}
-          {question.is_required && <span className="ml-1 text-signal-risk" aria-label="required">*</span>}
+          {question.is_required && <span className="ml-1 text-danger" aria-label="required">*</span>}
         </label>
         <StatusBadge label={kind.label} tone={kind.tone} />
       </div>
       {answer ? (
         <>
-          <textarea id={fieldId} value={value} aria-required={question.is_required || undefined} disabled={!editable || saving} maxLength={question.max_length ?? 4000} onChange={(event) => setValue(event.target.value)} rows={3} className="mt-3 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink disabled:bg-muted" />
+          <textarea id={fieldId} value={value} aria-required={question.is_required || undefined} disabled={!editable || saving} maxLength={question.max_length ?? 4000} onChange={(event) => setValue(event.target.value)} rows={3} className="mt-3 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink disabled:bg-inset" />
           <p className="mt-1 text-xs text-ink-soft">
             {answer.source === "human" ? "Written by a person" : answer.source === "agent" ? `Drafted from ${answer.fact_ids.length} verified fact${answer.fact_ids.length === 1 ? "" : "s"}` : answer.source === "derived" ? "Derived from your facts" : "Left blank"}
             {answer.requires_human && " · needs your answer"}
           </p>
           {editable && dirty && (
-            <button type="button" onClick={save} disabled={saving} className="mt-2 inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-violet-deep hover:border-violet/40 disabled:opacity-50">
+            <button type="button" onClick={save} disabled={saving} className="mt-2 inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-accent hover:border-control">
               {saving ? "Saving…" : "Save answer"}
             </button>
           )}
-          {error && <p role="alert" className="mt-2 text-sm text-signal-risk">{error}</p>}
+          {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
         </>
       ) : (
         <p className="mt-2 text-sm text-ink-soft">No answer has been prepared for this question.</p>

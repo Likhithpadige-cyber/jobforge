@@ -30,7 +30,7 @@ export function SignOutButton() {
             setBusy(false);
           }
         }}
-        className="rounded-chip border border-edge px-2.5 py-1 font-medium text-ink hover:bg-muted disabled:opacity-60"
+        className="rounded-chip border border-edge px-2.5 py-1 font-medium text-ink hover:bg-inset"
       >
         {busy ? "Signing out…" : "Sign out"}
       </button>

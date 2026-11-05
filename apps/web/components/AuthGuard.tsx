@@ -92,7 +92,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       return (
         <div role="alert" className="p-8 text-sm text-ink-soft">
           <p>{error}</p>
-          <button type="button" className="mt-3 text-violet-deep underline" onClick={() => setAttempt((value) => value + 1)}>
+          <button type="button" className="mt-3 text-accent underline" onClick={() => setAttempt((value) => value + 1)}>
             Retry
           </button>
         </div>

@@ -74,7 +74,7 @@ export function AppShell({
           <button
             type="button"
             tabIndex={-1}
-            className="absolute inset-0 bg-ink/40"
+            className="absolute inset-0 bg-canvas"
             aria-label="Close navigation"
             onClick={() => setNavOpen(false)}
           />

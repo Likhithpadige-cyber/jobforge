@@ -180,38 +180,38 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
   return (
     <div className="space-y-6">
       <nav aria-label="Application location" className="flex flex-wrap items-center gap-2 text-sm text-ink-soft">
-        <Link href="/applications" className="inline-flex min-h-6 items-center hover:text-violet-deep">Applications</Link>
+        <Link href="/applications" className="inline-flex min-h-6 items-center hover:text-accent">Applications</Link>
         <span aria-hidden="true">›</span>
         <span className="text-ink">{resume?.job_title ?? "Application"}</span>
       </nav>
 
       {unavailable.length > 0 && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-signal-review/25 bg-signal-review/10 px-4 py-3 text-sm text-ink">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-attention bg-inset px-4 py-3 text-sm text-ink">
           <span>Part of this application could not be loaded. The sections marked unavailable may be out of date.</span>
-          <button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 font-semibold text-violet-deep hover:border-violet/40">Retry</button>
+          <button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 font-semibold text-accent hover:border-control">Retry</button>
         </div>
       )}
 
-      <header className="rounded-[1.5rem] border border-violet/10 bg-gradient-to-br from-white to-[#F5F1FB] p-6 shadow-raised sm:p-8">
+      <header className="rounded-[1.5rem] border border-edge bg-surface p-6 shadow-raised sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[.14em] text-violet-deep">{resume?.job_company ?? "Company unavailable"}</p>
+            <p className="text-xs font-semibold uppercase tracking-[.14em] text-accent">{resume?.job_company ?? "Company unavailable"}</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{resume?.job_title ?? "Untitled role"}</h2>
           </div>
           <StatusBadge label={status.label} tone={status.tone} />
         </div>
-        <div className="mt-6 rounded-card border border-violet/10 bg-white/85 p-5" data-testid="next-step">
-          <p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">Next step</p>
+        <div className="mt-6 rounded-card border border-edge bg-surface p-5" data-testid="next-step">
+          <p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">Next step</p>
           <p className="mt-2 text-lg font-semibold text-ink">{step.title}</p>
           <p className="mt-1 text-sm text-ink-soft">{step.body}</p>
           {step.href && step.cta && (
-            <Link href={step.href} className="mt-4 inline-flex min-h-11 items-center rounded-chip bg-violet px-5 text-sm font-semibold text-white hover:bg-violet-deep">{step.cta} <span aria-hidden="true" className="ml-2">→</span></Link>
+            <Link href={step.href} className="mt-4 inline-flex min-h-11 items-center rounded-chip bg-action px-5 text-sm font-semibold text-action-ink hover:bg-action-hover">{step.cta} <span aria-hidden="true" className="ml-2">→</span></Link>
           )}
         </div>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <SectionCard title="Resume" action={resume && <Link href={`/resume-studio/${applicationId}`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Resume" action={resume && <Link href={`/resume-studio/${applicationId}`} className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">Open</Link>}>
           {failed("resume") ? (
             <Unavailable />
           ) : resume ? (
@@ -221,7 +221,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
 
-        <SectionCard title="Cover letter" action={coverLetter?.cover_letter_version && <Link href={`/applications/${applicationId}/cover-letter`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Cover letter" action={coverLetter?.cover_letter_version && <Link href={`/applications/${applicationId}/cover-letter`} className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">Open</Link>}>
           {failed("cover_letter") ? (
             <Unavailable />
           ) : coverLetter?.cover_letter_version ? (
@@ -231,7 +231,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
 
-        <SectionCard title="Application answers" action={questions && <Link href={`/applications/${applicationId}/answers`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Application answers" action={questions && <Link href={`/applications/${applicationId}/answers`} className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">Open</Link>}>
           {failed("answers") ? (
             <Unavailable />
           ) : questions ? (
@@ -241,7 +241,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
 
-        <SectionCard title="Submission" action={<Link href={`/applications/${applicationId}/submission`} className="inline-flex min-h-6 items-center text-sm font-semibold text-violet-deep hover:underline">Open</Link>}>
+        <SectionCard title="Submission" action={<Link href={`/applications/${applicationId}/submission`} className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">Open</Link>}>
           <p className="text-sm text-ink">{passed} of {readiness.checks.length} readiness conditions met</p>
           <p className="mt-1 text-sm text-ink-soft">{gateLabel(readiness.gate)}</p>
           {failed("history") ? (
@@ -264,7 +264,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           <ul className="space-y-2">
             {pending.map((item) => (
               <li key={item.approval_id}>
-                <Link href={approvalHref(item)} className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-chip border border-edge px-3 py-2 text-sm hover:border-violet/40">
+                <Link href={approvalHref(item)} className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-chip border border-edge px-3 py-2 text-sm hover:border-control">
                   <span className="font-medium text-ink">{APPROVAL_KIND_LABEL[item.kind]}</span>
                   <span className="text-ink-soft">waiting since {formatTimestamp(item.requested_at)} →</span>
                 </Link>
@@ -278,7 +278,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
 }
 
 function Unavailable() {
-  return <p className="text-sm text-signal-risk">Unavailable right now — retry to load it.</p>;
+  return <p className="text-sm text-danger">Unavailable right now — retry to load it.</p>;
 }
 
 function reviewLabel(status: string): string {

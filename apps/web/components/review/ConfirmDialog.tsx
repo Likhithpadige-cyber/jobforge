@@ -78,18 +78,18 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center" onKeyDown={onKeyDown}>
-      <button type="button" tabIndex={-1} aria-label="Close dialog" className="absolute inset-0 bg-ink/40" onClick={() => !busy && onCancel()} />
+      <button type="button" tabIndex={-1} aria-label="Close dialog" className="absolute inset-0 bg-canvas" onClick={() => !busy && onCancel()} />
       <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={bodyId} className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[1.25rem] border border-edge bg-surface p-6 shadow-raised">
         <h2 id={titleId} className="text-lg font-semibold text-ink">{title}</h2>
         <div id={bodyId} className="mt-3 space-y-3 text-sm text-ink-soft">{children}</div>
         <label className="mt-5 flex min-h-11 items-start gap-3 text-sm text-ink">
-          <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} disabled={busy} className="mt-0.5 h-5 w-5 accent-violet" />
+          <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} disabled={busy} className="mt-0.5 h-5 w-5 accent-action" />
           <span>{acknowledgement}</span>
         </label>
-        {error && <p role="alert" className="mt-3 text-sm font-medium text-signal-risk">{error}</p>}
+        {error && <p role="alert" className="mt-3 text-sm font-medium text-danger">{error}</p>}
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <button type="button" onClick={onCancel} disabled={busy} className="min-h-11 rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-violet/40">Cancel</button>
-          <button type="button" onClick={confirm} disabled={!acknowledged || busy} className={`min-h-11 rounded-chip px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${danger ? "bg-signal-risk hover:opacity-90" : "bg-violet hover:bg-violet-deep"}`}>
+          <button type="button" onClick={onCancel} disabled={busy} className="min-h-11 rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-control">Cancel</button>
+          <button type="button" onClick={confirm} disabled={!acknowledged || busy} className={`min-h-11 rounded-chip px-4 text-sm font-semibold text-action-ink disabled:cursor-not-allowed  ${danger ? "bg-action " : "bg-action hover:bg-action-hover"}`}>
             {busy ? busyLabel : confirmLabel}
           </button>
         </div>

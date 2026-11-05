@@ -39,7 +39,7 @@ export function DecisionForm({
 
   if (!canApprove && !canRequestChanges) {
     return (
-      <p data-testid="decision-blocked" className="rounded-card border border-edge bg-muted px-4 py-3 text-sm text-ink-soft">
+      <p data-testid="decision-blocked" className="rounded-card border border-edge bg-inset px-4 py-3 text-sm text-ink-soft">
         {blockedReason ? asSentence(blockedReason) : `No decision is available for this ${subject} right now.`}
       </p>
     );
@@ -52,7 +52,7 @@ export function DecisionForm({
         <div className="space-y-2">
           <label htmlFor={noteId} className="block text-sm font-medium text-ink">Approval note (optional)</label>
           <textarea id={noteId} value={note} maxLength={NOTE_LIMIT} onChange={(event) => setNote(event.target.value)} rows={2} className="w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink" />
-          <button type="button" onClick={() => setConfirming("approve")} className="inline-flex min-h-11 items-center rounded-chip bg-violet px-4 text-sm font-semibold text-white hover:bg-violet-deep">
+          <button type="button" onClick={() => setConfirming("approve")} className="inline-flex min-h-11 items-center rounded-chip bg-action px-4 text-sm font-semibold text-action-ink hover:bg-action-hover">
             Approve {subject}…
           </button>
         </div>
@@ -63,7 +63,7 @@ export function DecisionForm({
           <textarea id={changesId} value={changes} maxLength={NOTE_LIMIT} onChange={(event) => setChanges(event.target.value)} rows={3} aria-required="true" aria-describedby={`${changesId}-help`} className="w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink" />
           <p id={`${changesId}-help`} className="text-xs text-ink-soft">{changesEffect}</p>
           {!trimmed && <p id={`${changesId}-why`} className="text-xs text-ink-soft">Write what should change to enable this.</p>}
-          <button type="button" onClick={() => setConfirming("changes")} disabled={!trimmed} aria-describedby={trimmed ? undefined : `${changesId}-why`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-violet/40 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="button" onClick={() => setConfirming("changes")} disabled={!trimmed} aria-describedby={trimmed ? undefined : `${changesId}-why`} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-4 text-sm font-semibold text-ink hover:border-control disabled:cursor-not-allowed">
             Request changes…
           </button>
         </div>
@@ -98,7 +98,7 @@ export function DecisionForm({
           }}
         >
           <p>{changesEffect}</p>
-          <blockquote className="whitespace-pre-wrap rounded-chip border border-edge bg-muted px-3 py-2 text-ink">{trimmed}</blockquote>
+          <blockquote className="whitespace-pre-wrap rounded-chip border border-edge bg-inset px-3 py-2 text-ink">{trimmed}</blockquote>
         </ConfirmDialog>
       )}
     </div>

@@ -29,9 +29,9 @@ import {
 type Pending = "start" | "approve" | "changes" | null;
 
 const BUTTON =
-  "rounded-chip border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50";
-const PRIMARY = `${BUTTON} border-brass/50 bg-brass-soft text-brass-deep hover:bg-brass-soft/80`;
-const SECONDARY = `${BUTTON} border-edge bg-surface text-ink hover:bg-muted`;
+  "rounded-chip border px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed ";
+const PRIMARY = `${BUTTON} border-edge bg-inset text-attention hover:bg-inset`;
+const SECONDARY = `${BUTTON} border-edge bg-surface text-ink hover:bg-inset`;
 
 export function ResumeReviewPanel({
   review,
@@ -80,7 +80,7 @@ export function ResumeReviewPanel({
     <section
       aria-labelledby="review-heading"
       data-testid="review-panel"
-      className="rounded-card border border-violet/15 bg-surface p-5 shadow-raised"
+      className="rounded-card border border-edge bg-surface p-5 shadow-raised"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="review-heading" className="text-sm font-semibold text-ink">
@@ -105,7 +105,7 @@ export function ResumeReviewPanel({
       {review.changes_requested && (
         <blockquote
           data-testid="changes-note"
-          className="mt-3 rounded-card border border-signal-review/25 bg-signal-review/[0.06] px-3 py-2 text-sm text-ink"
+          className="mt-3 rounded-card border border-attention bg-inset px-3 py-2 text-sm text-ink"
         >
           {review.changes_requested}
         </blockquote>
@@ -115,14 +115,14 @@ export function ResumeReviewPanel({
         review.decision_note && (
           <blockquote
             data-testid="decision-note"
-            className="mt-3 rounded-card border border-edge bg-muted/40 px-3 py-2 text-sm text-ink"
+            className="mt-3 rounded-card border border-edge bg-inset px-3 py-2 text-sm text-ink"
           >
             {review.decision_note}
           </blockquote>
         )}
 
       {error && (
-        <p role="alert" className="mt-3 text-xs text-signal-risk">
+        <p role="alert" className="mt-3 text-xs text-danger">
           {error}
         </p>
       )}
@@ -173,7 +173,7 @@ export function ResumeReviewPanel({
       {confirming && (
         <div
           data-testid="approve-confirm"
-          className="mt-4 rounded-card border border-edge bg-muted/40 p-3"
+          className="mt-4 rounded-card border border-edge bg-inset p-3"
         >
           <p className="text-sm text-ink">
             Approve version {review.resume_version}? This records your name
@@ -223,7 +223,7 @@ export function ResumeReviewPanel({
       {changesOpen && (
         <form
           data-testid="changes-form"
-          className="mt-4 rounded-card border border-edge bg-muted/40 p-3"
+          className="mt-4 rounded-card border border-edge bg-inset p-3"
           onSubmit={(event) => {
             event.preventDefault();
             if (!isValidChangeNote(note) || !review.approval_id) return;

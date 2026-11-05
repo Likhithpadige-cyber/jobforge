@@ -4,10 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type Readiness } from "@/lib/api";
 
 const STATUS_STYLES: Record<string, string> = {
-  ok: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  degraded: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  unavailable: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200",
-  unknown: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  ok: "bg-inset text-ink",
+  degraded: "bg-inset text-ink",
+  unavailable: "bg-inset text-danger",
+  unknown: "bg-inset text-ink-soft",
 };
 
 export function HealthBadge() {
@@ -39,10 +39,10 @@ export function HealthBadge() {
   return (
     <section
       aria-label="System health"
-      className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      className="rounded-xl border border-edge bg-surface p-6"
     >
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
           System health
         </h2>
         <span
@@ -54,7 +54,7 @@ export function HealthBadge() {
       </div>
 
       {error && (
-        <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">
+        <p role="alert" className="mt-4 text-sm text-danger">
           {error}
         </p>
       )}
@@ -64,15 +64,15 @@ export function HealthBadge() {
           {Object.entries(health.checks).map(([name, check]) => (
             <div key={name} className="flex items-center justify-between" data-testid={`check-${name}`}>
               <dt className="font-medium capitalize">{name}</dt>
-              <dd className="tabular-nums text-slate-600 dark:text-slate-400">
+              <dd className="tabular-nums text-ink-soft">
                 {check.status}
                 {check.latency_ms !== null ? ` · ${check.latency_ms} ms` : ""}
               </dd>
             </div>
           ))}
-          <div className="flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
+          <div className="flex items-center justify-between border-t border-edge pt-2">
             <dt className="font-medium">Migration</dt>
-            <dd className="font-mono text-xs text-slate-600 dark:text-slate-400">
+            <dd className="font-mono text-xs text-ink-soft">
               {health.migration_revision ?? "not applied"}
             </dd>
           </div>
@@ -82,7 +82,7 @@ export function HealthBadge() {
       <button
         type="button"
         onClick={() => void load()}
-        className="mt-5 rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+        className="mt-5 rounded-lg border border-edge px-3 py-1.5 text-sm font-medium hover:bg-inset"
       >
         Refresh
       </button>

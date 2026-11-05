@@ -107,7 +107,7 @@ export function AlertsView({ initialPausingOnly = false }: { initialPausingOnly?
               type="button"
               aria-pressed={status === tab.value}
               onClick={() => setStatus(tab.value)}
-              className={`min-h-11 rounded-full border px-4 text-sm font-medium transition-colors ${status === tab.value ? "border-violet bg-violet text-white" : "border-edge bg-surface text-ink-soft hover:border-violet/40 hover:text-violet-deep"}`}
+              className={`min-h-11 rounded-full border px-4 text-sm font-medium transition-transform ${status === tab.value ? "border-edge bg-action text-action-ink" : "border-edge bg-surface text-ink-soft hover:border-control hover:text-accent"}`}
             >
               {tab.label}
             </button>
@@ -133,7 +133,7 @@ export function AlertsView({ initialPausingOnly = false }: { initialPausingOnly?
             </select>
           </label>
           <label className="flex min-h-11 items-center gap-2 text-sm font-medium text-ink">
-            <input type="checkbox" checked={pausingOnly} onChange={(event) => setPausingOnly(event.target.checked)} className="h-5 w-5 accent-violet" />
+            <input type="checkbox" checked={pausingOnly} onChange={(event) => setPausingOnly(event.target.checked)} className="h-5 w-5 accent-action" />
             Pauses generation only
           </label>
         </div>
@@ -153,11 +153,11 @@ export function AlertsView({ initialPausingOnly = false }: { initialPausingOnly?
             <li key={alert.id}>
               <Link
                 href={`/alerts/${alert.id}`}
-                className="block rounded-card border border-edge bg-surface p-4 shadow-raised transition-colors hover:border-violet/40 focus-visible:border-violet sm:p-5"
+                className="block rounded-card border border-edge bg-surface p-4 shadow-raised transition-transform hover:border-control focus-visible:border-control sm:p-5"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[.12em] text-violet-deep">{kindLabel(alert.kind)}</p>
+                    <p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">{kindLabel(alert.kind)}</p>
                     <p className="mt-1 font-semibold text-ink">{alert.title}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -177,7 +177,7 @@ export function AlertsView({ initialPausingOnly = false }: { initialPausingOnly?
         </ul>
       )}
       {!loading && !error && hasMore && (
-        <button type="button" onClick={loadMore} disabled={loadingMore} className="min-h-11 w-full rounded-chip border border-edge bg-surface text-sm font-semibold text-violet-deep hover:border-violet/40 disabled:opacity-50">
+        <button type="button" onClick={loadMore} disabled={loadingMore} className="min-h-11 w-full rounded-chip border border-edge bg-surface text-sm font-semibold text-accent hover:border-control">
           {loadingMore ? "Loading…" : "Load more alerts"}
         </button>
       )}

@@ -1,37 +1,31 @@
 import type { Config } from "tailwindcss";
 
-/** JobForge's light, warm workspace palette. */
+/** Semantic roles resolve to the six primitives in app/globals.css only. */
 const config: Config = {
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
     "./lib/**/*.{ts,tsx}",
   ],
+  future: { respectDefaultRingColorOpacity: true },
+  corePlugins: { preflight: false },
   theme: {
+    colors: {
+      transparent: "transparent", current: "currentColor", inherit: "inherit",
+      canvas: "var(--jf-midnight)", surface: "var(--jf-deep-teal)",
+      inset: "var(--jf-midnight)", edge: "var(--jf-muted-teal)",
+      control: "var(--jf-aqua)", ink: "var(--jf-cream)",
+      "ink-soft": "var(--jf-aqua)", accent: "var(--jf-aqua)",
+      action: "var(--jf-orange)", "action-ink": "var(--jf-midnight)",
+      "action-hover": "var(--jf-cream)", focus: "var(--jf-aqua)",
+      success: "var(--jf-aqua)", attention: "var(--jf-cream)",
+      danger: "var(--jf-cream)", info: "var(--jf-aqua)",
+    },
+    ringColor: { DEFAULT: "var(--jf-aqua)" },
+    ringOffsetColor: { DEFAULT: "var(--jf-midnight)" },
+    borderColor: ({ theme }) => ({ ...theme("colors"), DEFAULT: "var(--jf-muted-teal)" }),
+    boxShadow: { none: "none", raised: "0 8px 0 var(--jf-midnight)" },
     extend: {
-      colors: {
-        charcoal: "#20243A",
-        graphite: "#303656",
-        canvas: "#FAFAF7",     // warm workspace background
-        surface: "#FFFFFF",    // cards
-        muted: "#F5F2EB",      // cream surfaces
-        edge: "#E8E8E5",
-        ink: "#24283B",
-        "ink-soft": "#636B7C", // ≥4.5:1 on every surface, incl. muted and violet-soft (WCAG AA)
-        violet: { DEFAULT: "#6457B5", soft: "#F0EDFA", deep: "#4D4291" },
-        brass: {
-          DEFAULT: "#C9AE78",
-          soft: "#F6F0E4",
-          deep: "#8B7040",
-        },
-        // Meaning-bearing only. Muted on purpose.
-        signal: {
-          strong: "#33765D",   // soft emerald success (AA on its own badge tint)
-          review: "#8B6427",   // needs review / borderline (AA on its own badge tint)
-          risk: "#A34A42",     // security / failure
-          info: "#4A6785",     // informational
-        },
-      },
       fontFamily: {
         sans: [
           "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont",
@@ -48,10 +42,6 @@ const config: Config = {
       borderRadius: {
         card: "1rem",
         chip: "0.625rem",
-      },
-      boxShadow: {
-        // One shadow, used sparingly. Structure comes from borders.
-        raised: "0 10px 32px rgba(34, 39, 65, 0.045), 0 1px 3px rgba(34, 39, 65, 0.035)",
       },
       spacing: {
         sidebar: "15rem", // 240px

@@ -4,7 +4,7 @@ import type { PipelineStage } from "@/lib/dashboard-priority";
  * Where everything stands.
  *
  * An ordered sequence, because the workflow genuinely is one. The stage that
- * needs a person is marked three ways - brass numeral, brass bar, and a
+ * needs a person is marked three ways - emphasized numeral, orange bar, and a
  * "waiting on you" line - rather than by flooding the cell with colour. Every
  * other stage stays neutral so the one that matters is the one that stands out.
  */
@@ -18,18 +18,18 @@ export function PipelineTrack({ stages }: { stages: PipelineStage[] }) {
         return (
           <li
             key={stage.key}
-            className={`relative bg-surface p-4 ${needsYou ? "bg-brass-soft/25" : ""}`}
+            className={`relative p-4 ${needsYou ? "bg-inset" : "bg-surface"}`}
           >
             {needsYou && (
               <span
-                className="absolute inset-x-0 top-0 h-0.5 bg-brass"
+                className="absolute inset-x-0 top-0 h-0.5 bg-action"
                 aria-hidden="true"
               />
             )}
             <div className="flex items-center gap-1.5">
               <span
                 className={`tabular text-xs font-medium ${
-                  needsYou ? "text-brass-deep" : "text-ink-soft"
+                  needsYou ? "text-attention" : "text-ink-soft"
                 }`}
               >
                 {index + 1}
@@ -38,20 +38,20 @@ export function PipelineTrack({ stages }: { stages: PipelineStage[] }) {
             </div>
             <p
               className={`tabular mt-2 text-xl font-semibold leading-none ${
-                needsYou ? "text-brass-deep" : "text-ink"
+                needsYou ? "text-attention" : "text-ink"
               }`}
             >
               {stage.count}
             </p>
-            <div className="mt-3 h-1 w-full rounded-full bg-muted">
+            <div className="mt-3 h-1 w-full rounded-full bg-inset">
               <div
-                className={`h-full rounded-full ${needsYou ? "bg-brass" : "bg-ink/20"}`}
+                className={`h-full rounded-full ${needsYou ? "bg-action" : "bg-accent"}`}
                 style={{ width: `${Math.max(6, (stage.count / peak) * 100)}%` }}
               />
             </div>
             <p
               className={`mt-2 text-xs ${
-                needsYou ? "font-medium text-brass-deep" : "text-transparent"
+                needsYou ? "font-medium text-attention" : "text-transparent"
               }`}
               aria-hidden={!needsYou}
             >

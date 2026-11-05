@@ -4,53 +4,81 @@
 
 @layer base {
   :root {
-    color-scheme: light;
+    /* The only authored color primitives. No opacity-derived palette shades. */
+    --jf-midnight: #0A0F14;
+    --jf-deep-teal: #0F3D3E;
+    --jf-muted-teal: #2E6F73;
+    --jf-aqua: #7FB3B8;
+    --jf-cream: #EADCC8;
+    --jf-orange: #C6601F;
+    color-scheme: dark;
     scroll-behavior: smooth;
+    scrollbar-color: var(--jf-aqua) var(--jf-midnight);
+    accent-color: var(--jf-orange);
   }
 
-  body {
-    @apply bg-canvas text-ink antialiased;
-    font-feature-settings: "cv05" 1, "ss01" 1;
-  }
+  /* Local reset replaces Tailwind's preflight (which contains off-palette
+     placeholder/shadow defaults). Native controls are themed below. */
+  *, ::before, ::after { box-sizing: border-box; border: 0 solid var(--jf-muted-teal); }
+  html { line-height: 1.5; -webkit-text-size-adjust: 100%; tab-size: 4; font-family: ui-sans-serif, system-ui, sans-serif; }
+  body { margin: 0; background: var(--jf-midnight); color: var(--jf-cream); font-feature-settings: "cv05" 1, "ss01" 1; }
+  h1, h2, h3, h4, h5, h6, p, blockquote, figure, pre { margin: 0; }
+  h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }
+  a { color: inherit; text-decoration: inherit; }
+  button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; margin: 0; padding: 0; }
+  button, [type="button"], [type="reset"], [type="submit"] { appearance: button; background: transparent; cursor: pointer; }
+  button:disabled, input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; }
+  input::placeholder, textarea::placeholder { color: var(--jf-aqua); opacity: 1; }
+  table { border-collapse: collapse; border-color: inherit; text-indent: 0; }
+  ol, ul, menu { list-style: none; margin: 0; padding: 0; }
+  fieldset { margin: 0; padding: 0; } legend { padding: 0; }
+  img, svg, video, canvas { display: block; vertical-align: middle; }
+  img, video { max-width: 100%; height: auto; }
+  textarea { resize: vertical; }
+  [hidden] { display: none; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  ::selection { background: var(--jf-cream); color: var(--jf-midnight); }
 
-  /* Numbers in this product are compared down columns constantly, so they
-     line up rather than jostle. */
-  .tabular {
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Keyboard focus must be visible everywhere, including on the dark
-     sidebar where a default ring disappears. */
-  :focus-visible {
-    @apply outline-none ring-2 ring-brass ring-offset-2 ring-offset-canvas;
-  }
-
-  .on-dark :focus-visible {
-    @apply ring-offset-charcoal;
-  }
-
-  ::selection { background: #ddd6f5; color: #24283b; }
-
-  @keyframes page-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes panel-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: translateX(0); } }
-  @keyframes reveal-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-
-  .animate-page-in { animation: page-in 320ms ease-out both; }
-  .animate-panel-in { animation: panel-in 280ms ease-out both; }
-  .reveal { animation: reveal-in 580ms cubic-bezier(.2,.7,.2,1) both; }
-  .stagger > :nth-child(2) { animation-delay: 60ms; }
-  .stagger > :nth-child(3) { animation-delay: 120ms; }
-  .stagger > :nth-child(4) { animation-delay: 180ms; }
-  .lift { transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease; }
-  .lift:hover { transform: translateY(-5px) scale(1.01); box-shadow: 0 20px 42px rgba(34,39,65,.09); }
-
+  @keyframes panel-in { from { transform: translateX(-12px); } to { transform: translateX(0); } }
+  @keyframes reveal-in { from { transform: translateY(8px); } to { transform: translateY(0); } }
+  .animate-page-in, .reveal { animation: reveal-in 220ms ease-out both; }
+  .animate-panel-in { animation: panel-in 200ms ease-out both; }
+  .stagger > :nth-child(2) { animation-delay: 40ms; }
+  .stagger > :nth-child(3) { animation-delay: 80ms; }
+  .stagger > :nth-child(4) { animation-delay: 120ms; }
+  .lift { transition: transform 180ms ease; }
+  .lift:hover { transform: translateY(-2px); }
   @media (prefers-reduced-motion: reduce) {
     :root { scroll-behavior: auto; }
-    *,
-    *::before,
-    *::after {
-      animation-duration: 0.01ms !important;
-      transition-duration: 0.01ms !important;
-    }
+    *, ::before, ::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   }
 }
+
+/* Meaningful control boundaries use Aqua (5.15:1 on Deep Teal), rather than
+   decorative Muted Teal (2.07:1). Orange buttons use Midnight text (4.67:1). */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  background-color: var(--jf-midnight);
+  color: var(--jf-cream);
+  border: 1px solid var(--jf-aqua);
+  caret-color: var(--jf-cream);
+}
+select, option { background-color: var(--jf-midnight); color: var(--jf-cream); }
+input:-webkit-autofill { -webkit-text-fill-color: var(--jf-cream); box-shadow: 0 0 0 1000px var(--jf-midnight) inset; }
+input[type="checkbox"], input[type="radio"] {
+  appearance: none; display: inline-grid; place-content: center; flex-shrink: 0;
+  width: 1.125rem; height: 1.125rem; border: 2px solid var(--jf-aqua);
+  border-radius: 0.25rem; background: var(--jf-midnight); color: var(--jf-midnight);
+}
+input[type="radio"] { border-radius: 50%; }
+input[type="checkbox"]::after { content: ""; width: 0.55rem; height: 0.3rem; border-left: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg) scale(0); }
+input[type="radio"]::after { content: ""; width: 0.4rem; height: 0.4rem; background: currentColor; border-radius: 50%; transform: scale(0); }
+input:checked { background: var(--jf-orange); border-color: var(--jf-cream); }
+input[type="checkbox"]:checked::after { transform: rotate(-45deg) scale(1); }
+input[type="radio"]:checked::after { transform: scale(1); }
+:is(button, a).bg-action { color: var(--jf-midnight); border: 1px solid var(--jf-cream); }
+:is(button, a).bg-action:hover { background-color: var(--jf-cream); }
+button:disabled { opacity: 1; }
+button.bg-action:disabled { background: var(--jf-midnight); color: var(--jf-aqua); border-color: var(--jf-aqua); }
+:focus-visible { outline: 2px solid var(--jf-aqua) !important; outline-offset: 3px; box-shadow: 0 0 0 3px var(--jf-midnight); }
+button:not(.bg-action) { border-color: var(--jf-aqua); }
+option:checked { background: var(--jf-orange); color: var(--jf-midnight); }

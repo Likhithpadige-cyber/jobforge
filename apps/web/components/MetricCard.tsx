@@ -25,9 +25,9 @@ export function MetricCard({
 }) {
   const accent =
     tone === "brass"
-      ? "text-brass-deep"
+      ? "text-attention"
       : tone === "review"
-        ? "text-signal-review"
+        ? "text-attention"
         : "text-ink-soft";
 
   return (
