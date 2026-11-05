@@ -1590,3 +1590,86 @@ Unresolved finding (preserved, not waived):
 - Hosted Actions and production Docker image builds still await a hosted run.
   No push, infrastructure provisioning, real email/application, unrelated
   container restart or M15 implementation occurred in any M14 phase.
+
+## M15 — production deployment readiness assessment (2026-11-05)
+
+Assessment/blueprint commit: `a5c423a`. Baseline confirmed: clean `dev` at
+M14 final changelog `d9bf368`. Documentation-only milestone; no product,
+runtime, dependency or infrastructure implementation changes.
+
+Deliverables:
+
+- [Readiness report](../outputs/M15_READINESS_REPORT.md): architecture, images,
+  security/operations, official hosting price inputs, resource estimates,
+  exact local commands/results, limits and prioritized blockers B01–B12/A01.
+- [Deployment blueprint](../outputs/M15_DEPLOYMENT_BLUEPRINT.md): proposed
+  topology, environment/secret inventory without real values, migration/release
+  sequencing, backup/DR targets, monitoring/security/demo controls and future
+  deployment/rollback procedures. All deployment/recovery examples are future-only.
+
+**Recommendation: NO-GO today** for production or a public interactive deployment.
+A synthetic, gated read-oriented portfolio demo may become CONDITIONAL GO only
+with closure evidence for its release/security/operational blockers. Real data
+and live delivery require additional recovery/privacy/outbound safeguards.
+
+Critical findings:
+
+- Both Compose definitions use development image stages and source mounts;
+  no production ingress/manifests, private networking or deployment workflow.
+- Web production build lacks configured public API origin and can compile a
+  localhost fallback. Runtime public env changes do not repair compiled code.
+- Production replay config requires a provider key; synthetic probes also
+  confirm empty TOTP encryption key/wildcard CORS are accepted. No MFA bypass
+  is claimed; missing enrollment/key prevents legitimate login. Safe non-local
+  demo/first-account bootstrap is not packaged and verified.
+- Reviewer role is mutable and workspace-wide; no public shared owner credential
+  or real candidate data belongs in a public demo. Perimeter write restrictions
+  and independent replay/dry-run/fake/egress safeguards are required.
+- No tracked backup/restore automation or timed recovery drill. Target-provider
+  extensions/grants/schema ownership and production rollback are unverified.
+- Readiness reports HTTP 200/degraded when Redis fails, despite authentication
+  dependence on Redis. No configured Prometheus endpoint/external paging pipeline.
+- Retention/log-redaction and explicit mandatory SMTP TLS policy require further
+  acceptance evidence before real-data/live-delivery use.
+- Existing 31 upward import occurrences persist across 11 files (21 agent and
+  10 service imports). This is recorded architecture debt, not a proven exploit.
+
+Planning recommendation: 8 GiB VPS + private PG/Redis + private object storage,
+TLS/access gate and independent backups for the synthetic demo. Estimated USD
+**$70.40–84.40/month** (budget $90), assumptions/official sources in the report.
+Lightsail alternative roughly **$50–70**; small managed AWS single-AZ topology
+roughly **$180–270** before contingency. No quotes, purchases or resources created;
+actual region, domain, traffic, backups, logs and HA requirements change cost.
+
+Fresh safe M15 verification:
+
+- Backend unit suite, replay/dry-run/fake: **1786 passed, 1511 deselected,
+  0 failed, 0 skipped**, **11.06 seconds**. No integration data/migrations changed.
+- Frontend under Node **22.23.4**: **321 passed / 24 files**, **4.64 seconds**;
+  lint/typecheck passed; next lint deprecation notice remains. No M15 production
+  build or image build was performed.
+- `pip-audit -r requirements-dev.txt`: **zero known vulnerabilities**;
+  `pip check`: no broken requirements. `npm audit`: **zero vulnerabilities**.
+- Ruff passed; **316 files** already formatted; mypy **167 sources** passed.
+  Schema **12 passed** (38 tables, 20 enums, 10 revisions); shadowing and
+  generated down-migration checks passed without connecting to the database.
+- Both workflows passed actionlint **1.7.7** + ShellCheck **0.11.0**.
+  Scaffold aggregate still **22 passed, 1 failed, 0 warnings** (existing imports).
+- Synthetic `_env_file=None` probes confirmed safe defaults and the configuration
+  findings above, using invented sentinel strings and no network. Narrow inline
+  allowlist comments cover those invented documentation examples; baseline unchanged.
+- Read-only Docker snapshot: 3.825 GiB VM / eight CPUs; existing dev API unhealthy,
+  zero restarts and resetting both health requests; demo API healthy, nine historical
+  restarts and HTTP 200/PG+Redis ok. No root cause or production-capacity claim made;
+  no container was altered/restarted. Idle measurements are not load/soak evidence.
+- Final tracked-file secret scan and `git diff --check` passed. Two local report
+  links, fenced blocks, embedded Python syntax and future shell syntax validated.
+  Only the two output documents were in the assessment commit.
+
+Limitations: production images, hosted CI, real TLS/proxy/MFA deployment,
+managed-provider migration/grant compatibility, backup/restore, failure injection,
+load/soak and release rollback were **not tested** in M15. Historical M14 full
+backend/E2E results are not relabeled as fresh verification. No cloud resources,
+domains/services, deploy, push, real email/application, production credential
+change, database/volume/user-data deletion, unrelated container restart, license
+addition or new product feature occurred.
