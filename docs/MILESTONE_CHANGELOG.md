@@ -1432,3 +1432,42 @@ Commit `c882f11`. This closes M13: Phases 1–4 are all committed and regression
   - Owner initials "DC" and reviewer "DR".
   - The dashboard, agent activity, review screens, profile, facts and settings at 1280 px and 375 px, with no horizontal overflow.
   - The mobile drawer: a dialog, focus inside, Escape returns focus to "More navigation".
+
+## M14 Phase 1 — security and dependencies (2026-11-05)
+
+Implementation: `1601d39`.
+
+- Upgraded pypdf 6.16.0 → 6.21.4, AnyIO 4.7.0 → 4.14.2,
+  pytest 8.3.4 → 9.0.3 and its compatible asyncio plugin → 1.3.0.
+  The pytest major update is required by CVE-2025-71176's first patched version.
+- Kept Next.js on 15.x (15.5.29), paired with eslint-config-next; kept React 19.0.0.
+  Patched ESLint 9.x and PostCSS 8.x. Vitest/coverage move to 4.1.12 because
+  the old test-toolchain major has no fully patched dependency path.
+  Vite 6.4.5 and React plugin 4.7.0 retain compatible APIs.
+- Scoped overrides fix Next.js's internal PostCSS and TypeScript ESLint's
+  minimatch. Refreshed only reviewed public npm SHA-512 checksums in the
+  secrets baseline; no scanner exclusions added.
+- Rationale, advisory links and reproduction commands: `docs/M14_SECURITY.md`.
+
+Verification on the final dependency set:
+
+- Full backend, Python 3.12.14, replay/fake email/dry-run,
+  `REQUIRE_SECURITY_TESTS=1`: **3261 passed, 23 E2E deselected, 0 failed,
+  0 skipped**, 292.08 seconds. Includes renderer and authorization regressions.
+- Frontend under Node 22.23.4: **321 passed, 24 files**; lint, typecheck and
+  production build passed. The same checks also passed under host Node 26.8.2.
+- `pip-audit -r requirements-dev.txt`: **0 known vulnerabilities**, down
+  from 31 advisories in three packages; `pip check`: no broken requirements.
+- Clean `npm ci` and `npm audit`: **0 vulnerabilities**, down from 22 affected
+  packages (4 critical, 4 high, 12 moderate, 2 low).
+- Ruff check passed; format: 313 files already formatted; mypy: 167 source
+  files without issues; schema: 12 passed; model shadowing and down migration
+  checks passed; offline grounding: 61 tests passed, 51 corpus cases, zero
+  provider calls; changed-file secret scan and `git diff --check` passed.
+- No containers modified/restarted, no real messages/applications sent,
+  no cloud infrastructure provisioned, no push.
+
+Known maintenance notes: ESLint 9 reports an upstream support/deprecation
+warning and `next lint` is deprecated in Next.js 15; both still pass. Audit
+results are point-in-time, and the scoped overrides need review on upgrades.
+Browser/API E2E remain opt-in and were not run in this dependency phase.
