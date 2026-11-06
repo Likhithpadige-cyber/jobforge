@@ -2169,3 +2169,15 @@ integration. See [implementation design](design/P0_RESUME_EXPORT.md).
   remains required before integration.
 - [SMTP recovery proposal](design/SMTP_DISPATCH_RECOVERY.md) is design only.
   No push, merge, deployment, Docker change, real email or personal data use.
+
+### M16.6 final verification follow-up
+
+Self-review reproduced and fixed three post-upload approval races, bound download
+checksums to the returned bytes, made contact-bearing artifact access independent
+of template naming, and included custom headings in Unicode validation. Added
+synthetic unit and real-PostgreSQL regressions. SMTP dispatch remains unchanged;
+its unresolved send/commit window is documented as a live-send blocker.
+
+Verification evidence and remaining UI/compatibility limitations are recorded in
+`docs/verification/M16_6_VERIFICATION.md`. The feature is prepared for independent
+review only; no merge, push, deployment or live submission is authorized.

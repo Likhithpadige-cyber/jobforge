@@ -43,3 +43,24 @@ Also cover simultaneous consumers, duplicate outbox delivery, stale fences, chan
 ## Rollout proposal
 
 Implement and test behind a disabled capability flag. Migrate existing pending attempts into a non-dispatchable state requiring fresh authorization; never reconstruct consent from a general resume approval. Run fake transport, then an explicitly approved controlled SMTP trial with synthetic addresses. Require a separate approval before enabling real recipients. Keep a documented rollback that disables new claims while preserving all uncertain/accepted ledger records.
+
+## Failure states requiring human reconciliation before a resend
+
+These are future design requirements, not new behavior in M16.6. The current
+send/commit window remains unresolved and blocks approval to enable live sending.
+
+| Observed state | Why the external result is unknown | Required action before another send |
+| --- | --- | --- |
+| `dispatching` claim expired after process death, including death before opening the socket | A committed claim proves permission, not whether transmission occurred | Mark uncertain; owner reconciles provider evidence against the stable Message-ID |
+| Timeout, disconnect, cancellation or unclassified failure during/after DATA, without a definitive rejection | The server may have accepted the complete message while its reply was lost | No automatic resend; reconcile, then explicitly reauthorize if duplication remains possible |
+| SMTP returned acceptance, but result flush/commit failed or the process died before recording success | Remote acceptance outlives a rolled-back local transaction | Treat as uncertain until provider acceptance evidence is recorded by the owner |
+| Database commit acknowledgement was lost after a send | The result transaction itself may have committed | Re-read the durable ledger first; unresolved outcome still requires human reconciliation |
+| Worker restart, stream redelivery or exhausted lease finds no final result for an already claimed dispatch | Retry machinery cannot infer what the vanished sender did | Observe the same fence; never call SMTP again merely because the queue retried |
+| Recipient-level partial acceptance or ambiguous recipient results | Retrying the entire envelope can duplicate delivery to accepted recipients | Reconcile per recipient; a new authorization must name the exact remaining destinations |
+| Provider accepted the message, but no delivery/ATS acknowledgement exists | Acceptance does not establish delivery, nor establish non-delivery | Do not resend automatically; inspect separately authorized provider/bounce evidence |
+
+A positively proven failure before transmission may be eligible for a bounded
+retry only under a still-valid authorization and unchanged payload. Authentication
+failures and definitive permanent rejections require correction and a new human
+decision, rather than reconciliation of an unknown acceptance. Never interpret a
+missing Sent-folder entry or a missing local success row as proof of non-delivery.
