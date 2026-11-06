@@ -1991,3 +1991,58 @@ Commit `7c984ca`.
 - **Not run:** the full backend suite, because no backend application code changed; only `scripts/demo_env.py` and `scripts/verify_scaffold.py`. `verify_scaffold.py` still reports its existing import-direction failure, unrelated to this change.
 - **Preview:** rebuilt with the same API origin (`http://127.0.0.1:3115`) into a new standalone runtime and restarted on 3116. The 3115 router was not touched, and the preview is left running. The demo dev server on 3100 is also running.
 - **Not done:** no push, deployment, credential reset, TOTP change or change to the seeded owner.
+
+## M16.2 — GitHub publication readiness (2026-11-06)
+
+Local preparation only. Nothing was pushed, no remote or repository was
+created, and nothing was published or deployed.
+
+### Author-email privacy (history rewrite)
+
+- **Before:** all 57 commits carried a personal address (56) or a machine-local address (1) as both author and committer, and so did the tagger of `m1-m7-verified`. No commit or tag was signed. There was no remote.
+- **Backup first:** a full `git bundle` of every ref, verified with `git bundle verify` and a test restore (identical refs and trees, clean `fsck`), plus a manifest of refs and the commit count. It is stored privately outside the repository and was not uploaded.
+- **Method:** `git filter-repo` 2.47.0 with an email-only mailmap and `--preserve-commit-hashes`. Both old addresses map to the owner's GitHub noreply address.
+- **Preserved:** author names, commit messages (byte-identical), dates, every commit's tree, the parent graph, all five branches and the annotated tag's name, message and date.
+- **Hashes:** all 57 commit hashes changed (`dev` `f4047a6` → `dbe3288`). **Commit hashes cited in entries above this one refer to the pre-rewrite history.** The old-to-new map is kept privately with the backup, not in the repository.
+- **Verified:** no old address remains in any author, committer or tagger field, commit message or blob. The HEAD tree is unchanged (`4db88ef2…`), and the repository-local identity now uses the noreply address.
+- **Not changed:** the global git configuration.
+
+### License and notices
+
+- **License:** `LICENSE` is MIT, Copyright (c) 2026 Likhith Sai Padige.
+- **Notices:** `THIRD_PARTY_NOTICES.md` records:
+  - the bundled Inter and Sora fonts (SIL OFL 1.1, licence texts preserved, no Reserved Font Name);
+  - the Sora-derived wordmark outlines;
+  - the owner-supplied, ChatGPT-generated brand reference image;
+  - dependency licences.
+- **Dependency review:** the runtime trees (51 Python packages, 21 npm production packages) are permissive, apart from LGPL-3.0 `psycopg` and `sharp-libvips`, MPL-2.0 `certifi` and CC-BY-4.0 `caniuse-lite`. All are used unmodified and none is vendored. No GPL, AGPL, SSPL or BUSL licence was found, and nothing conflicts with MIT for the project's own code.
+
+### Secrets
+
+- **Scan:** Gitleaks 8.30.1 over all reachable history and the tracked tree reported 1,407 raw `generic-api-key` hits. Every one is a `"hashed_secret"` SHA-1 digest line in `.secrets.baseline`: 773 across the 4 commits that changed it, 634 at HEAD.
+- **Synthetic values:**
+  - the `sk-ant-` value in `tests/unit/test_logging_redaction.py` is a sequential-letter placeholder the redaction test needs;
+  - the `.env.example` app-role passwords equal their role names and are documented as local placeholders.
+- **Result:** no real credential was found, so no rotation was needed.
+- **Gating:** `.gitleaks.toml` keeps every default rule and excludes only that baseline file. A CI step (checksum-verified binary, all commits) and `make history-scan` now gate on Gitleaks; both report no leaks.
+
+### Documentation
+
+- **README:** rewritten as an evidence-grounded overview. It lists implemented capabilities only, adds screenshots, a safety model and an architecture section with pinned versions, and has a status table separating local verification, GitHub CI (not run) and production (NO-GO).
+- **Screenshots:** `docs/screenshots/` holds six 1280×800 captures from the fictional demo on the production-mode preview, signed in as the synthetic reviewer. The list views hide automated-test (`E2E `) rows, which is disclosed in the screenshots README.
+- **Reorganisation:** the M15 readiness report and blueprint moved from `outputs/` to `docs/deployment/`, with their links updated. 66 relative Markdown links in 31 files resolve.
+
+### CI readiness
+
+- **Workflows:** `ci.yml` covers backend lint, types, schema checks, tests, safety and API E2E; frontend lint, types, tests and production build; dependency audits; detect-secrets plus Gitleaks; production image builds (no push); and workflow linting. `playwright.yml` (manual) runs the browser suite against an ephemeral demo, with self-retiring test accounts and no stored secrets.
+- **Not done:** hosted GitHub Actions have never run, so their results are not claimed. actionlint with ShellCheck passes locally.
+
+### Verification (rewritten history, HEAD tree unchanged)
+
+- **Backend:** full suite with `REQUIRE_SECURITY_TESTS=1`: 3274 passed, 0 failed, 0 skipped (32 E2E deselected as opt-in) in 5 min 21 s.
+- **Static checks:** ruff check and format clean (317 files); mypy 167 files clean; verify-schema 12 passed; check-shadowing and down migration clean.
+- **Frontend:** 360 tests passed; typecheck and lint clean; production build succeeded (in a scratch copy, leaving the running servers untouched).
+- **API E2E:** 6 passed.
+- **Browser E2E:** only the demo-read-only tests ran (signed-out redirect and the two login theme checks): 3 passed, 23 not run. The rest create synthetic rows and test accounts in the demo database, which this milestone did not modify. The last full run on the same application code passed 26 of 26.
+- **Audits and secrets:** pip-audit and npm audit report no known vulnerabilities; detect-secrets and Gitleaks are clean.
+- **Unchanged known failure:** `verify_scaffold.py` reports 22 passed and 1 failed, the existing import-direction diagnostic (31 upward imports).
