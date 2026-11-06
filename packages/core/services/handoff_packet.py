@@ -46,11 +46,13 @@ from packages.core.models import (
     ApplicationStatus,
     Artifact,
     CoverLetter,
+    CoverLetterClaim,
     Job,
     Resume,
 )
 from packages.core.services.applications import existing_questions
 from packages.core.services.cover_letters import latest_cover_letter
+from packages.core.services.resume_export import validate_current_evidence, validate_export_records
 from packages.core.services.resume_review import latest_tailored_resume
 from packages.services.ingestion.policy import extract_domain
 from packages.shared.errors import ConflictError
@@ -145,13 +147,37 @@ def _packet_storage_key(
     )
 
 
+async def validate_package_evidence(session: AsyncSession, source: PacketSource) -> None:
+    claims = list(
+        (
+            await session.scalars(
+                select(CoverLetterClaim).where(
+                    CoverLetterClaim.cover_letter_id == source.cover_letter.id
+                )
+            )
+        ).all()
+    )
+    cited = {str(fid) for claim in claims for fid in claim.fact_ids}
+    cited.update(
+        str(fid)
+        for question in source.questions
+        if question.answer
+        for fid in question.answer.fact_ids
+    )
+    await validate_current_evidence(session, source.resume, lock=True, extra_fact_ids=cited)
+
+
 async def _load_source(session: AsyncSession, application: Application) -> PacketSource:
     resume = await latest_tailored_resume(session, application.id)
     if resume is None:
         raise ResumeNotRenderedError(f"no resume exists for application {application.id}")
+    await validate_current_evidence(session, resume, lock=True)
     resume_artifact = (
         await session.execute(
-            select(Artifact).where(Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf")
+            select(Artifact)
+            .where(Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf")
+            .order_by(Artifact.created_at.desc(), Artifact.id.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
     if resume_artifact is None:
@@ -162,13 +188,15 @@ async def _load_source(session: AsyncSession, application: Application) -> Packe
     if cover_letter is None:
         raise NoCoverLetterError(f"no cover letter exists for application {application.id}")
     questions = await existing_questions(session, application.id)
-    return PacketSource(
+    source = PacketSource(
         resume=resume,
         resume_artifact=resume_artifact,
         cover_letter=cover_letter,
         questions=questions,
         answers_digest=_answers_digest(questions),
     )
+    await validate_package_evidence(session, source)
+    return source
 
 
 def _checklist_text(
@@ -430,6 +458,8 @@ async def generate_manual_packet(
     approved_export(approval.subject_snapshot, resume)
     if resume.verification_status != "passed":
         raise ConflictError("Resume verification is no longer passed")
+    await validate_current_evidence(session, resume, lock=True)
+    await validate_export_records(session, approval.subject_snapshot)
     initial_material = frozen_material_digest(resume, approval.subject_snapshot)
     artifacts = list(
         (
@@ -438,13 +468,19 @@ async def generate_manual_packet(
                     Artifact.resume_id == resume.id,
                     Artifact.resume_version == resume.version,
                     Artifact.approval_id == approval.id,
-                    Artifact.template_version == TEMPLATE_VERSION,
+                    Artifact.template_version.in_((TEMPLATE_VERSION, "ats-single-column/2")),
                     Artifact.kind.in_(("resume_pdf", "resume_docx")),
                 )
             )
         ).all()
     )
-    by_kind = {a.kind: a for a in artifacts}
+    by_kind = {}
+    for template in (TEMPLATE_VERSION, "ats-single-column/2"):
+        candidate = {a.kind: a for a in artifacts if a.template_version == template}
+        if set(candidate) == {"resume_pdf", "resume_docx"}:
+            by_kind = candidate
+            artifacts = list(candidate.values())
+            break
     if set(by_kind) != {"resume_pdf", "resume_docx"}:
         raise ResumeNotRenderedError("Both current PDF and DOCX must be rendered")
     cover = await latest_cover_letter(session, application.id)
@@ -454,6 +490,7 @@ async def generate_manual_packet(
     source = PacketSource(
         resume, by_kind["resume_pdf"], cover, questions, _answers_digest(questions)
     )
+    await validate_package_evidence(session, source)
     job = await session.get(Job, application.job_id)
     if job is None:
         raise ConflictError("Job is missing")
@@ -500,6 +537,8 @@ async def generate_manual_packet(
     await store.put(key, data, content_type=PACKET_CONTENT_TYPE)
     sha256 = hashlib.sha256(data).hexdigest()
     await store.verify(key, sha256=sha256)
+    await validate_current_evidence(session, resume, lock=True)
+    await validate_export_records(session, approval.subject_snapshot)
     # Re-read approval/content after external storage activity.
     await session.refresh(resume, with_for_update=True)
     await session.refresh(approval, with_for_update=True)

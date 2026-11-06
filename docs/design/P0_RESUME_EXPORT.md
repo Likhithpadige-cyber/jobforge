@@ -1,54 +1,82 @@
 # P0 resume export implementation
 
-Base: completed commit `7323d42`. Branch: `feature/p0-resume-export`.
+Base: `7323d42`. Branch: `feature/p0-resume-export`. This document supersedes the
+initial assumptions at `2acbaa0` and the partial verification at `09ee084`.
 
-## Data and consent
+## Consent and backward compatibility
 
-`resume_export.preview_export` selects the signed-in owner's profile and current nondeleted structured source rows. All employment and education records and only active, unexpired certifications are previewed. Only an allowlist of contact fields and HTTP(S) links is included; work authorization, salary, secrets, evidence attachments and arbitrary profile fields are excluded. Every cited fact must still be verified, active and within its validity dates. Generated experience/education/certification claims must map to exactly one included source record through their fact IDs. Unknown or cross-employer associations fail rather than guessing or duplicating a bullet.
+The preview selects the authenticated owner's profile and allowlisted contact,
+links and structured employment/education/certifications. Work authorization,
+salary and arbitrary private fields are excluded. Generated claims retain fact
+IDs and source associations; ambiguous employer associations fail.
 
-The preview returns a digest binding the resume ID/version, generated content and exact export document, including profile version and source/fact IDs. The UI shows the contact and structured fields and requires a checkbox before confirming approval. The server reconstructs the preview under the profile lock and compares its digest before recording consent. No request-supplied prose or actor identity is trusted. Export approval stores the frozen data, digest and owner ID in the existing approval JSON snapshot. No database schema migration is required, and no personal contact fields are added to model inputs or event payloads.
+Old text-only approvals continue to authorize their unchanged prose through a
+separate `ats-single-column/legacy-text/1` template, without inferring permission
+to include current contact or profile metadata. The owner can add exact export
+consent to the same approved version using the existing approval endpoint and
+fresh preview digest. This appends the owner, digest, document and consent time
+without rewriting the original reviewer's decision or changing application
+state. Existing valid owner consent cannot be silently replaced. No schema
+migration or automatic consent backfill is required.
 
-Historical API clients can still grant text-only approvals without `export_digest`; these cannot authorize production exports under template v2. An approved text-only version must go through a new review/version to become exportable. The new UI always requires export consent. A changed or missing digest is refused. Snapshot matching now also checks content digests for newly created approvals. Profile edits after approval never silently change previously approved files; use a new resume version/review for changed export details.
+Reviewers can approve text without accessing the private preview. Owners see a
+separate consent action for already-approved text-only versions. The API enforces
+ownership; browser role checks only select the appropriate interaction.
 
-## Rendering and artifact identity
+## Text policy and validity
 
-`ResumeDocument` receives only generated claim content plus the frozen approved export document. Candidate contact details are ordinary body paragraphs. Structured source headings retain employer, title, explicit ISO dates, education and certification details; generated prose and fact IDs stay unchanged. Open-ended employment is explicitly labeled Present, while unknown education dates remain absent. Source record IDs and fact IDs remain in the approval snapshot and document structure, not in employer-facing text.
+NFC normalization applies before new digests and rendering. Tabs in prose expand
+to spaces in both formats. Contact and structured single-line fields reject tabs
+and line separators. HTTP(S) URLs require a hostname and reject whitespace,
+embedded credentials and malformed ports. The owner sees formatted body lines in
+addition to source fields. Stored source dates stay ISO; rendered ranges use
+explicit English month/year labels and `Present`.
 
-Template identity is bumped to `ats-single-column/2`, preserving old storage keys. Production rendering refuses a missing/invalid owner export approval. It revalidates approval, content and application state after upload, and refuses reuse of an artifact tied to another approval/version. Metadata records bind resume/version, approval, template, size and checksum.
+Frozen approval does not keep withdrawn evidence active. Render generation,
+artifact reuse, owner downloads and both package-preparation paths recheck cited
+resume facts. Package validation also checks cited cover-letter and answer facts.
+Certification metadata is checked against current active/expiry/deletion state.
+Render persistence rechecks locked evidence after storage. Application locks are
+taken before evidence locks for rendering; package callers retain the existing
+application lock. These checks change material eligibility, not SMTP transport.
 
-PDFs embed pinned Noto Sans Regular 2.015, SIL OFL 1.1, with Unicode text maps. Latin, Greek and Cyrillic extraction is tested. Unsupported glyphs, combining marks, bidi controls and scripts requiring unimplemented shaping fail explicitly; CJK, emoji, Arabic and Indic rendering are not claimed. No fallback to replacement boxes is permitted. Long tokens split at measured glyph boundaries without inserted hyphens; extraction can contain line breaks, but no token characters are lost. Multi-page tests measure glyph bounds.
+## Rendering and versioning
 
-DOCX uses body contact paragraphs, native headings and bullets, Letter paper and explicit margins. Structured headings stay with following content. No tables, text boxes or contact-bearing headers are introduced. Visual checks use the bundled LibreOffice renderer; actual Word/iPhone behavior is not established by those checks.
+Current complete exports use `ats-single-column/2.1`. Earlier approved v2 PDF/DOCX
+pairs remain packageable; a package selects a complete pair under one template,
+never a PDF from one template and DOCX from another. Different templates address
+different storage objects. Resume version, approval, template, size and checksum
+remain recorded on each artifact.
 
-## Manual package and privacy
+Contact is body text, compacted into a name and two detail/link paragraphs.
+Employment/education/certification headings display conventional date ranges.
+PDF bullets use a Unicode bullet and measured continuation indentation. PDFs
+embed the existing licensed Noto Sans regular font with Unicode maps. PDF bold
+weight is still outstanding (M3). DOCX uses editable paragraphs, native headings
+and bullets with Arial as the requested font; the font is not embedded.
 
-`POST /applications/{id}/manual-packet` is an explicit, CSRF-protected owner action, usable without live submission switches. It requires current reviews and both PDF and DOCX for the same approved resume/version and template. It verifies the actual bytes and builds a deterministic six-member ZIP. Package identity includes artifact IDs/checksums/templates, export approval, cover letter, answers and job metadata. Upload precedes row persistence, and approval is rechecked after storage activity.
+NFC Latin, Greek and Cyrillic extraction is tested. Unsupported glyphs, remaining
+combining marks, bidi controls and unimplemented shaping fail explicitly. This is
+not universal script coverage. Native Word and iPhone rendering remain unverified.
 
-Manual v2 package keys and template IDs are separate from the legacy email packet protocol. Legacy `current_packet` excludes the new manual packages. SMTP dispatch, transport, retry scheduler and submission state machine are unchanged. Contact-bearing v2 artifact downloads require the profile owner; packet downloads are owner-only. Reviewers can still review prose, but are not implicitly granted contact-bearing exports.
+## Packages and privacy
 
-## Affected files
+Manual packages require current approved materials and a matching PDF/DOCX pair,
+verify the actual component bytes, and use a distinct deterministic identity from
+legacy email packets. Download routes hash returned bytes. Artifact content is
+owner-only by default; only explicitly known legacy text templates retain shared
+reviewer access. A contact-bearing approval remains owner-only even if associated
+with a legacy-named artifact. CSRF protects the package action and consent.
 
-- New `packages/core/services/resume_export.py`; approval changes in `resume_review.py` and rendering guards in `artifacts.py`.
-- `apps/api/routers/resume_review.py`, `applications.py`, `artifacts.py` and `schemas/resume_review.py`.
-- `packages/services/rendering/document.py`, `docx.py`, `pdf.py`, `protocol.py`, bundled font/license and third-party notices.
-- `packages/core/services/handoff_packet.py` for the separate manual package builder.
-- Frontend API client, `ResumeReviewPanel.tsx`, `SubmissionView.tsx` and corresponding tests.
-- Synthetic export tests, template-key expectations and authorization route classification.
-- Separate `SMTP_DISPATCH_RECOVERY.md` proposal; no SMTP implementation changes.
+SMTP dispatch, transport, retry scheduling and state-machine implementation are
+unchanged. The send/commit window remains design-only and blocks enabling live
+sending. See `SMTP_DISPATCH_RECOVERY.md` for uncertainty and reconciliation rules.
 
-## Verification and remaining validation
+## Evidence
 
-- Backend unit suite plus offline grounding corpus: 2,077 passed, no failures or skips.
-- Export-specific tests cover consent digest changes, snapshot tampering, foreign owners, reviewer denial, CSRF, source lineage, expired/unheld certifications, two independent PDF extractors, embedded fonts, DOCX structure, long tokens, measured multi-page glyph bounds, orphaned headings, production artifact bindings, checksum failures and changes during storage activity.
-- Route/role classification: 4 passed (349 service-dependent cases deselected).
-- Frontend: 364 tests passed; TypeScript, ESLint and production Next build passed.
-- Ruff check and format passed; canonical mypy scope (`packages apps workers`) passed, 168 files. Changed demo scripts were parsed and linted, not executed. An additional noncanonical mypy invocation including the two demo scripts was rejected for duplicate module naming; it is not counted as a successful check.
-- Schema conformance: 12 passed, with no schema migration.
-- Synthetic PDF and DOCX were rendered and both pages of each inspected. Visual review found an orphaned PDF heading and inherited DOCX title decoration; both were fixed and regression-tested before the final render. DOCX visual conversion used bundled LibreOffice and python-docx 1.2.0; sample PDF generation used bundled ReportLab 4.4.9. Product tests use the repository's pinned environment.
-- New database journeys and updated readiness fixtures collect successfully (24 cases across the two files). They were not executed: no disposable PostgreSQL/Redis stack was provisioned, and the existing database was not used. Browser journeys, actual Word, iPhone Safari, hosted CI and real-person acceptance remain unverified.
-
-No SMTP transport/dispatch/retry implementation, Docker configuration, running
-service, remote branch or deployment was changed. The fictional demo fixture
-code was updated for valid employment source IDs and explicit export consent;
-no seed script was run. This branch remains based on `7323d42`; independently
-completed changes on other branches have not been merged or validated here.
+See `../verification/M16_6_VERIFICATION.md` and
+`../verification/M16_6_FINDINGS.md` for exact code/test locations, full-suite
+counts, preserved-resource accounting and the remaining M3 limitations. Full
+backend and the API/Playwright E2E suites were run separately in new isolated
+resources. The old subset counts and the 52 earlier browser/service assertions
+are historical evidence, not substitutes for those suites.

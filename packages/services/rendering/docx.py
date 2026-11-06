@@ -123,7 +123,7 @@ class DocxResumeRenderer:
         from docx.shared import Inches, Pt, RGBColor
 
         normal = doc.styles["Normal"]
-        normal.font.name = "Noto Sans"
+        normal.font.name = "Arial"
         normal.font.size = Pt(10)
         for style_name, size in (
             ("Title", 18),
@@ -132,7 +132,7 @@ class DocxResumeRenderer:
             (_BULLET_STYLE, 10),
         ):
             style = doc.styles[style_name]
-            style.font.name = "Noto Sans"
+            style.font.name = "Arial"
             style.font.size = Pt(size)
             style.font.color.rgb = RGBColor(0, 0, 0)
             style.paragraph_format.space_after = Pt(4)

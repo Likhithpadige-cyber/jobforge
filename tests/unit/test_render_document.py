@@ -93,10 +93,10 @@ def test_every_rendered_string_comes_from_the_input() -> None:
     assert set(doc().all_text()) == source
 
 
-def test_text_is_copied_verbatim() -> None:
+def test_text_preserves_spacing_and_normalises_tabs() -> None:
     odd = {"summary": {"0": {"text": "  spaced   out\ttext  ", "fact_ids": [], "order": 0}}}
     built = build_document(resume_id=RESUME_ID, resume_version=1, content=odd)
-    assert built.sections[0].entries[0].text == "  spaced   out\ttext  "
+    assert built.sections[0].entries[0].text == "  spaced   out text  "
 
 
 def test_fact_ids_are_carried_through() -> None:

@@ -64,3 +64,36 @@ retry only under a still-valid authorization and unchanged payload. Authenticati
 failures and definitive permanent rejections require correction and a new human
 decision, rather than reconciliation of an unknown acceptance. Never interpret a
 missing Sent-folder entry or a missing local success row as proof of non-delivery.
+
+## Independent-review refinements (still design only)
+
+- Enforce **at most one prepared, dispatching or uncertain dispatch per
+  application**, including when authorizations differ. Attempt/authorization
+  uniqueness alone cannot prevent two active sends. A new authorization never
+  bypasses an unresolved uncertain row.
+- Before the external call, hash the exact immutable MIME bytes again and compare
+  them with the prepared digest. Refuse to begin if the committed claim has too
+  little remaining lease time for the bounded send timeout and receipt write.
+  An expired claim cannot authorize another caller to resend.
+- Append every observed transport outcome to independent receipt evidence even
+  when the domain result transaction or fence update is rejected. Include the
+  dispatch/fence, payload hash, observation time and exact classification; do not
+  discard a late success merely because it lost a compare-and-swap. If durable
+  receipt evidence cannot be written, the dispatch remains uncertain. This does
+  not make SMTP and the database atomic.
+- Keep one Message-ID for retries proven to precede transmission within the same
+  logical dispatch. A separately authorized resend is a **new dispatch with a
+  new Message-ID**, linked to the earlier uncertain/accepted dispatch and the
+  owner's duplication acknowledgement. Neither identifier is a deduplication
+  promise by receiving systems.
+- Define the transport boundary explicitly: distinguish a positively proven
+  failure before complete message-data transmission, complete transmission with
+  an unknown response, and reported server acceptance. If the transport cannot
+  prove which boundary was crossed, classify it as uncertain. Acceptance still
+  does not establish recipient delivery or ATS receipt.
+- Use per-dispatch encryption keys wrapped by a master key held outside the
+  database and repository, in an OS credential store or managed key service.
+  Record key versions; rotate wrapping keys without losing historical receipts.
+  Require an approved retention/expiry policy for encrypted MIME, receipts,
+  backups and key recovery before enabling dispatch. No implicit retention
+  period or plaintext backup is authorized by this design.

@@ -2181,3 +2181,20 @@ its unresolved send/commit window is documented as a live-send blocker.
 Verification evidence and remaining UI/compatibility limitations are recorded in
 `docs/verification/M16_6_VERIFICATION.md`. The feature is prepared for independent
 review only; no merge, push, deployment or live submission is authorized.
+
+### M16.6 Cowork findings reconciliation
+
+The READY statement at 09ee084 was too broad: Cowork's H1-H3 remained open.
+This correction restores legacy text rendering and owner consent on an unchanged
+approved version while preserving reviewer attribution, restores reviewer text
+approval in the UI, and gates exports/packages on current evidence. Tabs,
+single-line fields, URL validation, NFC normalization and default artifact privacy
+are corrected. Template 2.1 preserves prior artifact identities and accepts
+complete earlier approved v2 pairs for manual packages.
+
+Full verification: 3,420 backend tests, 6 API E2E journeys, 26 Playwright tests,
+366 frontend tests, 12 schema checks; final runs have no failures or skips.
+M3 is explicitly PARTIALLY FIXED: dates, contact density, bullet alignment and
+DOCX font selection improved; PDF bold weight and native Word/iPhone validation
+remain outstanding. No integration, push, deployment or SMTP enablement occurred.
+See the verification report and findings matrix for exact evidence and scope.

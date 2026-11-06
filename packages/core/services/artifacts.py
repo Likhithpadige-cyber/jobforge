@@ -36,7 +36,12 @@ from packages.core.events import EventEnvelope, record_event
 from packages.core.events.rendered import ResumeRenderedV2
 from packages.core.models import Application, Approval, Artifact, Resume
 from packages.core.models.enums import ApprovalKind, ApprovalStatus
-from packages.core.services.resume_export import approved_export, frozen_material_digest
+from packages.core.services.resume_export import (
+    approved_export,
+    frozen_material_digest,
+    validate_current_evidence,
+    validate_export_records,
+)
 from packages.core.services.resume_review import snapshot_matches
 from packages.services.rendering import (
     RenderedArtifact,
@@ -63,6 +68,8 @@ RENDERABLE_APPLICATION_STATUSES = frozenset(
         "submitting",
         "submitted",
         "manual_handoff",
+        "policy_blocked",
+        "submission_failed",
     }
 )
 
@@ -135,7 +142,7 @@ async def load_context(session: AsyncSession, resume_id: UUID) -> RenderContext:
     if resume.application_id is None:
         raise NotApprovedError("Only a tailored resume bound to an application is rendered")
 
-    application = await session.get(Application, resume.application_id)
+    application = await session.get(Application, resume.application_id, with_for_update=True)
     if application is None:
         raise NotFoundError("resume not found")
     if str(application.status) not in RENDERABLE_APPLICATION_STATUSES:
@@ -168,6 +175,8 @@ async def _revalidate(session: AsyncSession, context: RenderContext) -> None:
         != context.material_digest
     ):
         raise StaleApprovalError("The approved export inputs changed while rendering")
+    await validate_current_evidence(session, context.resume, lock=True)
+    await validate_export_records(session, context.approval.subject_snapshot or {})
     if not snapshot_matches(context.approval.subject_snapshot or {}, context.resume):
         raise StaleApprovalError("The approval no longer describes this resume version")
 
@@ -224,13 +233,26 @@ async def render_resume(
     """
     context = await load_context(session, resume_id)
     selected = _select_renderers(renderers, allow_non_production=allow_non_production_renderers)
+    await validate_current_evidence(session, context.resume)
+    snapshot = context.approval.subject_snapshot or {}
+    await validate_export_records(session, snapshot)
+    export_data = None
+    if any(r.production for r in selected):
+        if "export_document" in snapshot:
+            export_data = approved_export(snapshot, context.resume)
+        else:
+            # Historical approval authorizes its unchanged prose, never inferred PII.
+            # A separate template keeps these bytes distinct from owner-consented v2.
+            from packages.services.rendering import production_renderers
+            from packages.services.rendering.protocol import LEGACY_TEXT_TEMPLATE
+
+            legacy = {r.kind: r for r in production_renderers(LEGACY_TEXT_TEMPLATE)}
+            selected = tuple(legacy[r.kind] if r.production else r for r in selected)
     document = build_document(
         resume_id=str(context.resume.id),
         resume_version=context.resume.version,
         content=context.resume.content or {},
-        export_data=approved_export(context.approval.subject_snapshot, context.resume)
-        if any(r.production for r in selected)
-        else None,
+        export_data=export_data,
     )
 
     produced: list[Artifact] = []

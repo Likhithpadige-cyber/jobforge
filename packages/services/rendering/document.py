@@ -23,7 +23,10 @@ recomputed here from `order` and never read off the mapping.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
+
+from packages.services.rendering.text import export_url, normalise_text, single_line
 
 #: Sections in the order an ATS-friendly single-column resume reads them.
 #: A section outside this list is not dropped - dropping content silently is
@@ -110,7 +113,7 @@ def _section_sort_key(key: str) -> tuple[int, str]:
 
 
 def _heading(key: str) -> str:
-    return SECTION_HEADINGS.get(key, key.replace("_", " ").strip().title())
+    return normalise_text(SECTION_HEADINGS.get(key, key.replace("_", " ").strip().title()))
 
 
 def build_document(
@@ -162,7 +165,7 @@ def build_document(
                 raise MalformedResumeContentError(f"entry {key}/{index} has malformed fact_ids")
             entries.append(
                 DocumentEntry(
-                    text=text,
+                    text=normalise_text(text),
                     order=order,
                     fact_ids=tuple(str(f) for f in fact_ids),
                 )
@@ -179,9 +182,19 @@ def build_document(
                 "export snapshot needs schema version and candidate name"
             )
         contact = export_data["contact"]
-        contact_lines = tuple(
-            str(contact[k]) for k in ("name", "email", "phone", "location") if contact.get(k)
-        ) + tuple(str(v) for _, v in sorted(export_data.get("links", {}).items()))
+        try:
+            name = single_line(str(contact["name"]))
+            contact_detail = " | ".join(
+                single_line(str(contact[k]))
+                for k in ("email", "phone", "location")
+                if contact.get(k)
+            )
+            links = " | ".join(
+                export_url(str(v)) for _, v in sorted(export_data.get("links", {}).items())
+            )
+            contact_lines = tuple(line for line in (name, contact_detail, links) if line)
+        except ValueError as exc:
+            raise MalformedResumeContentError(str(exc)) from exc
         section_map = {section.key: section for section in sections}
         for key in ("experience", "education", "certifications"):
             originals = section_map.get(key)
@@ -217,7 +230,34 @@ def build_document(
                         "credential_url",
                     ),
                 }[key]
-                label = " | ".join(str(fields[f]) for f in field_order if fields.get(f))
+                try:
+                    values = {f: single_line(str(fields[f])) for f in field_order if fields.get(f)}
+                    for field in ("start_date", "end_date", "issued_date", "expires_date"):
+                        if field in values and values[field] != "Present":
+                            parsed = date.fromisoformat(values[field])
+                            month = (
+                                "Jan",
+                                "Feb",
+                                "Mar",
+                                "Apr",
+                                "May",
+                                "Jun",
+                                "Jul",
+                                "Aug",
+                                "Sep",
+                                "Oct",
+                                "Nov",
+                                "Dec",
+                            )[parsed.month - 1]
+                            values[field] = f"{month} {parsed.year}"
+                    for start, end in (("start_date", "end_date"), ("issued_date", "expires_date")):
+                        if start in values and end in values:
+                            values[start] += " \u2013 " + values.pop(end)
+                    if "credential_url" in values:
+                        values["credential_url"] = export_url(values["credential_url"])
+                    label = " | ".join(values[f] for f in field_order if f in values)
+                except ValueError as exc:
+                    raise MalformedResumeContentError(str(exc)) from exc
                 if not label:
                     raise MalformedResumeContentError("empty structured source record")
                 structured.append(

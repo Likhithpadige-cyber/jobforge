@@ -14,6 +14,7 @@ from typing import Any
 
 from packages.services.rendering.document import DocumentEntry, ResumeDocument
 from packages.services.rendering.protocol import RendererUnavailableError
+from packages.services.rendering.text import normalise_text
 
 PDF_CONTENT_TYPE = "application/pdf"
 _PAGE_WIDTH, _PAGE_HEIGHT = 612.0, 792.0
@@ -37,11 +38,12 @@ def _font() -> Any:
 
 def validate_text(text: str) -> None:
     """Fail before upload for missing glyphs, controls and unsupported shaping."""
+    text = normalise_text(text)
     font = _font()
     glyphs = font.face.charToGlyph
     for char in text:
         code = ord(char)
-        if char in "\n\r\t":
+        if char in "\n\r":
             continue
         if (
             unicodedata.combining(char) != 0
@@ -65,7 +67,7 @@ def wrap_text(text: str, width: float, size: float = _BODY_SIZE) -> list[str]:
 
     _font()
     lines: list[str] = []
-    for paragraph in text.splitlines() or [""]:
+    for paragraph in normalise_text(text).splitlines() or [""]:
         remaining = paragraph
         while stringWidth(remaining, _BODY_FONT, size) > width:
             end = 0
@@ -128,14 +130,19 @@ class PdfResumeRenderer:
             text: str, size: float = _BODY_SIZE, bullet: bool = False, keep: bool = False
         ) -> None:
             nonlocal y
-            indent = 12.0 if bullet else 0.0
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+
+            prefix = "•   " if bullet else ""
+            indent = stringWidth(prefix, _BODY_FONT, size)
             lines = wrap_text(text, width - indent, size)
             room(min(len(lines) + int(keep), 4) * _LEADING)
             for index, line in enumerate(lines):
                 room(_LEADING)
                 pdf.setFont(_BODY_FONT, size)
-                prefix = "- " if bullet and index == 0 else ""
-                pdf.drawString(_MARGIN if prefix else _MARGIN + indent, y, prefix + line)
+                if bullet and index == 0:
+                    pdf.drawString(_MARGIN, y, prefix + line)
+                else:
+                    pdf.drawString(_MARGIN + indent, y, line)
                 y -= _LEADING
 
         for index, line in enumerate(document.contact_lines):

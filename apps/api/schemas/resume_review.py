@@ -89,6 +89,7 @@ class ResumeReviewRead(BaseModel):
     can_request_changes: bool = False
     #: Why no action is offered, in a sentence a reviewer can act on.
     blocked_reason: str | None = None
+    export_consent_required: bool = False
 
     @classmethod
     def from_state(cls, state: ReviewState) -> ResumeReviewRead:
@@ -118,4 +119,5 @@ class ResumeReviewRead(BaseModel):
             can_approve=state.can_approve,
             can_request_changes=state.can_request_changes,
             blocked_reason=state.blocked_reason,
+            export_consent_required=state.export_consent_required,
         )

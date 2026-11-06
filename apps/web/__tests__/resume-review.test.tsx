@@ -360,3 +360,28 @@ describe("export approval safety", () => {
     expect(screen.getByRole("button", { name: /Confirm Approval/ })).toBeDisabled();
   });
 });
+
+it("lets a reviewer approve text without owner contact preview", async () => {
+  const auth = await import("@/components/AuthGuard");
+  const role = vi.spyOn(auth, "useAuth").mockReturnValue({
+    user: { id: "reviewer", email: "reviewer@example.invalid", role: "reviewer", last_login_at: null },
+    loading: false, signOut: async () => {},
+  });
+  const approve = vi.spyOn(api, "approveResume").mockResolvedValue(approved);
+  const preview = vi.spyOn(api, "exportPreview");
+  try {
+    render(<ResumeReviewPanel review={awaiting} onReviewed={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Approve Resume" }));
+    expect(screen.getByText(/Approve the resume text only/)).toBeInTheDocument();
+    expect(preview).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Approval" }));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith("a1", undefined, undefined));
+  } finally { role.mockRestore(); }
+});
+
+it("offers owner consent after an already-decided text approval", async () => {
+  render(<ResumeReviewPanel review={{...approved, export_consent_required:true}} onReviewed={() => {}} />);
+  fireEvent.click(screen.getByRole("button", { name: "Review Export Details" }));
+  await consentToExport();
+  expect(screen.getByRole("button", { name: "Confirm Approval" })).toBeEnabled();
+});

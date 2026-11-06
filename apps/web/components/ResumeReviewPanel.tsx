@@ -17,6 +17,7 @@
  */
 
 import { useState } from "react";
+import { useAuth } from "@/components/AuthGuard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ApiError, api, type ApiExportPreview, type ApiResumeReview } from "@/lib/api";
 import {
@@ -41,6 +42,8 @@ export function ResumeReviewPanel({
   /** Hand the new state back so the page re-renders from the server's answer. */
   onReviewed: (next: ApiResumeReview) => void;
 }) {
+  const { user } = useAuth();
+  const reviewer = user?.role === "reviewer";
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -55,8 +58,9 @@ export function ResumeReviewPanel({
     setConfirming(true);
     setExportPreview(null);
     setExportConsent(false);
-    setPreviewLoading(true);
+    setPreviewLoading(!reviewer);
     setError(null);
+    if (reviewer) return;
     try { setExportPreview(await api.exportPreview(review.application_id)); }
     catch (cause) { setError(errorMessage(cause)); }
     finally { setPreviewLoading(false); }
@@ -162,7 +166,7 @@ export function ResumeReviewPanel({
       )}
 
       {/* --- awaiting_approval: the decision itself ------------------------ */}
-      {review.can_approve && !changesOpen && !confirming && (
+      {(review.can_approve || (!reviewer && review.export_consent_required)) && !changesOpen && !confirming && (
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -170,7 +174,7 @@ export function ResumeReviewPanel({
             disabled={busy}
             onClick={() => void openApproval()}
           >
-            Approve Resume
+            {review.export_consent_required ? "Review Export Details" : "Approve Resume"}
           </button>
           <button
             type="button"
@@ -193,7 +197,9 @@ export function ResumeReviewPanel({
             against the resume as it stands.
           </p>
           {previewLoading && <p role="status">Loading export details…</p>}
+          {reviewer && <p className="mt-3 text-sm">Approve the resume text only. The owner can separately approve contact details for export.</p>}
           {exportPreview && <div className="mt-3 space-y-3" aria-label="Exact resume export details">
+            {exportPreview.rendered_lines && <div aria-label="Formatted export preview" className="whitespace-pre-wrap break-words">{exportPreview.rendered_lines.map((line, index) => <p key={index}>{line}</p>)}</div>}
             <h3 className="font-semibold">Contact details in the resume body</h3>
             {Object.entries(exportPreview.document.contact).map(([key, value]) => <p className="break-all" key={key}>{key}: {value}</p>)}
             {Object.entries(exportPreview.document.links).map(([key, value]) => <p className="break-all" key={key}>{key}: {value}</p>)}
@@ -221,13 +227,13 @@ export function ResumeReviewPanel({
             <button
               type="button"
               className={PRIMARY}
-              disabled={busy || !exportPreview || !exportConsent}
+              disabled={busy || (!reviewer && (!exportPreview || !exportConsent))}
               onClick={() =>
                 void run("approve", () =>
                   api.approveResume(
                     review.application_id,
                     approvalNote.trim() || undefined,
-                    exportPreview?.digest,
+                    reviewer ? undefined : exportPreview?.digest,
                   ),
                 )
               }

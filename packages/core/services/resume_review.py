@@ -392,6 +392,7 @@ class ReviewState:
     can_approve: bool = False
     can_request_changes: bool = False
     blocked_reason: str | None = None
+    export_consent_required: bool = False
 
 
 #: `review_status` values. Derived from the application status and the
@@ -407,7 +408,7 @@ CHANGES_REQUESTED = "changes_requested"
 def _review_status(application: Application, approval: Approval | None) -> str:
     if application.status is ApplicationStatus.AWAITING_APPROVAL:
         return IN_REVIEW
-    if application.status is ApplicationStatus.APPROVED:
+    if approval is not None and approval.status is ApprovalStatus.APPROVED:
         return APPROVED
     if application.status is ApplicationStatus.CHANGES_REQUESTED:
         return CHANGES_REQUESTED
@@ -481,6 +482,12 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
         can_approve=decidable,
         can_request_changes=decidable,
         blocked_reason=blocked,
+        export_consent_required=bool(
+            current
+            and approval
+            and approval.status is ApprovalStatus.APPROVED
+            and "export_document" not in approval.subject_snapshot
+        ),
     )
 
 
@@ -708,16 +715,66 @@ async def approve(
     completion gate ever queries for it.
     """
     context = await _context(session, application_id, lock=True)
-    if (
-        export_digest is not None
-        and _already_decided(context, status=ApprovalStatus.APPROVED, application_status=None)
-        and (
-            context.approval is None
-            or context.approval.subject_snapshot.get("export_digest") != export_digest
-            or context.approval.subject_snapshot.get("export_owner_id") != str(actor.id)
-        )
+    if export_digest is not None and _already_decided(
+        context, status=ApprovalStatus.APPROVED, application_status=None
     ):
-        raise StaleResumeError("Export approval differs; request a new resume review")
+        approval = context.approval
+        assert approval is not None
+        if "export_document" in approval.subject_snapshot:
+            if approval.subject_snapshot.get(
+                "export_digest"
+            ) != export_digest or approval.subject_snapshot.get("export_owner_id") != str(actor.id):
+                raise StaleResumeError("Export approval differs; request a new resume review")
+        else:
+            if str(context.application.status) not in {
+                "awaiting_approval",
+                "approved",
+                "submission_ready",
+                "manual_handoff",
+                "policy_blocked",
+                "submission_failed",
+            }:
+                raise ReviewStateError("Export consent is unavailable in this application state")
+            readiness = evaluate_readiness(
+                verification_status=context.resume.verification_status,
+                claims=context.claims,
+                content=context.resume.content,
+            )
+            if not readiness.ready:
+                raise ReviewStateError(readiness.reason or "Resume is not ready for export consent")
+            export = await preview_export(session, context.resume, actor)
+            if export["digest"] != export_digest:
+                raise StaleResumeError("Export details changed; reload and review them again")
+            approval.subject_snapshot = {
+                **approval.subject_snapshot,
+                "content_digest": digest(context.resume.content),
+                "export_document": export["document"],
+                "export_digest": export_digest,
+                "export_owner_id": str(actor.id),
+                "export_consented_at": utc_now().isoformat(),
+            }
+            await session.flush()
+            # Records the separate owner consent without overwriting the original
+            # reviewer's decision or replaying application approval transitions.
+            await emit(
+                session,
+                type="resume.render.requested",
+                aggregate_type="resume",
+                aggregate_id=context.resume.id,
+                correlation_id=context.application.id,
+                actor_type="human",
+                actor_id=str(actor.id),
+                payload={
+                    "resume_id": str(context.resume.id),
+                    "resume_version": context.resume.version,
+                    "application_id": str(context.application.id),
+                    "approval_id": str(approval.id),
+                    "formats": list(RENDER_FORMATS),
+                    "export_digest": export_digest,
+                    "owner_export_consent": True,
+                },
+            )
+        return await review_state(session, application_id)
     if _already_decided(
         context,
         status=ApprovalStatus.APPROVED,

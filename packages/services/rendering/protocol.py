@@ -18,7 +18,9 @@ from packages.shared.errors import AppError
 #: tweak, a font change, a library upgrade that moves a glyph. It is part of
 #: the artifact's identity and of its uniqueness key, so a bump produces a new
 #: artifact rather than silently replacing the file a human already downloaded.
-TEMPLATE_VERSION = "ats-single-column/2"
+TEMPLATE_VERSION = "ats-single-column/2.1"
+LEGACY_TEXT_TEMPLATE = "ats-single-column/legacy-text/1"
+LEGACY_REVIEWER_TEMPLATES = frozenset({"ats-single-column/1", LEGACY_TEXT_TEMPLATE})
 
 #: The only content types M8 will ever store. Asserted, never inferred from a
 #: filename or echoed from a request.

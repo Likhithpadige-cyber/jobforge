@@ -1,9 +1,10 @@
-"""Owner-reviewed export data. Never sent to inference or read from live profile at render time."""
+"""Frozen owner-reviewed body details, gated by current evidence validity at export time."""
 
 from __future__ import annotations
 
 import hashlib
 import json
+import unicodedata
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -18,13 +19,26 @@ from packages.core.models import (
     Resume,
     User,
 )
+from packages.services.rendering.text import export_url, single_line
 from packages.shared.clock import utc_today
 from packages.shared.errors import ConflictError, NotFoundError
 
 
+def _canonical_text(value: Any) -> Any:
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, dict):
+        return {k: _canonical_text(v) for k, v in value.items()}
+    if isinstance(value, list | tuple):
+        return [_canonical_text(v) for v in value]
+    return value
+
+
 def digest(value: Any) -> str:
     return hashlib.sha256(
-        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+        json.dumps(
+            _canonical_text(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode()
     ).hexdigest()
 
 
@@ -55,6 +69,61 @@ def frozen_material_digest(resume: Resume, snapshot: dict[str, Any]) -> str:
     )
 
 
+async def validate_current_evidence(
+    session: AsyncSession,
+    resume: Resume,
+    *,
+    lock: bool = False,
+    extra_fact_ids: set[str] | None = None,
+) -> None:
+    """Frozen consent cannot keep withdrawn, expired or unverified evidence active."""
+    cited = {
+        str(fid)
+        for section in (resume.content or {}).values()
+        for entry in section.values()
+        for fid in entry.get("fact_ids", [])
+    }
+    cited.update(extra_fact_ids or set())
+    if not cited:
+        return
+    query = select(ProfileFact).where(ProfileFact.profile_id == resume.profile_id)
+    if lock:
+        query = query.with_for_update()
+    facts = list((await session.scalars(query.execution_options(populate_existing=True))).all())
+    by_id = {str(f.id): f for f in facts}
+    today = utc_today()
+    for fid in cited:
+        fact = by_id.get(fid)
+        if (
+            fact is None
+            or str(fact.status) != "verified"
+            or fact.deleted_at is not None
+            or (fact.valid_from and fact.valid_from > today)
+            or (fact.valid_to and fact.valid_to < today)
+        ):
+            raise ConflictError("Resume cites inactive evidence; regenerate before export")
+
+
+async def validate_export_records(session: AsyncSession, snapshot: dict[str, Any]) -> None:
+    """A frozen credential must not continue to be presented as currently held."""
+    from uuid import UUID
+
+    today = utc_today()
+    for record in snapshot.get("export_document", {}).get("records", []):
+        if record.get("source_table") != "certifications":
+            continue
+        credential = await session.get(
+            Certification, UUID(record["source_id"]), populate_existing=True, with_for_update=True
+        )
+        if (
+            credential is None
+            or credential.deleted_at is not None
+            or credential.status != "active"
+            or (credential.expires_date and credential.expires_date < today)
+        ):
+            raise ConflictError("Export certification evidence is no longer active")
+
+
 async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> dict[str, Any]:
     # Lock the profile: all supported source mutations bump its version and take
     # this lock. Approval compares exactly the preview, including source version.
@@ -75,7 +144,7 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
             )
         ).all()
     )
-    by_id = {str(f.id): f for f in facts}
+    await validate_current_evidence(session, resume)
     cited = {
         str(fid)
         for section in (resume.content or {}).values()
@@ -83,17 +152,7 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
         for fid in entry.get("fact_ids", [])
     }
     today = utc_today()
-    for fid in cited:
-        f = by_id.get(fid)
-        if (
-            f is None
-            or str(f.status) != "verified"
-            or f.deleted_at is not None
-            or (f.valid_from and f.valid_from > today)
-            or (f.valid_to and f.valid_to < today)
-        ):
-            raise ConflictError("Resume cites inactive evidence; regenerate before export approval")
-    records = []
+    records: list[dict[str, Any]] = []
     definitions: tuple[
         tuple[type[Experience] | type[Education] | type[Certification], str, str, tuple[str, ...]],
         ...,
@@ -173,7 +232,7 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
         for k, v in (profile.links or {}).items()
         if isinstance(v, str) and v.startswith(("https://", "http://"))
     }
-    document = {
+    document: dict[str, Any] = {
         "schema_version": 1,
         "profile_id": str(profile.id),
         "profile_version": profile.version,
@@ -181,6 +240,13 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
         "links": links,
         "records": records,
     }
+    try:
+        document["contact"] = {k: single_line(str(v)) for k, v in contact.items()}
+        document["links"] = {k: export_url(v) for k, v in links.items()}
+        for record in records:
+            record["fields"] = {k: single_line(str(v)) for k, v in record["fields"].items()}
+    except ValueError as exc:
+        raise ConflictError(str(exc)) from exc
     # Validate association and renderability before asking a person to approve.
     from packages.services.rendering.document import MalformedResumeContentError, build_document
     from packages.services.rendering.pdf import validate_text
@@ -195,7 +261,12 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
     except MalformedResumeContentError as exc:
         raise ConflictError(str(exc)) from exc
     validate_text("\n".join(doc.all_text()))
-    return {"document": document, "digest": export_binding(resume, document)}
+    validate_text("\n".join(section.heading for section in doc.sections))
+    return {
+        "document": document,
+        "digest": export_binding(resume, document),
+        "rendered_lines": list(doc.all_text()),
+    }
 
 
 def approved_export(snapshot: dict[str, Any], resume: Resume) -> dict[str, Any]:

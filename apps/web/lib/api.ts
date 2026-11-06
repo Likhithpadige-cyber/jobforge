@@ -452,6 +452,7 @@ export interface ApiResumeReview {
   can_approve: boolean;
   can_request_changes: boolean;
   blocked_reason: string | null;
+  export_consent_required?: boolean;
 }
 
 export interface ApiApplication {
@@ -469,6 +470,7 @@ export interface ApiApplication {
 
 export interface ApiExportPreview {
   digest: string;
+  rendered_lines?: string[];
   document: {
     schema_version: number; profile_id: string; profile_version: number;
     contact: Record<string, string>; links: Record<string, string>;

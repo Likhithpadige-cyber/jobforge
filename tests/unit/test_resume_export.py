@@ -40,6 +40,18 @@ from packages.shared.errors import ConflictError, NotFoundError
 pytestmark = [pytest.mark.unit, pytest.mark.safety]
 
 
+@pytest.fixture(autouse=True)
+def isolate_new_evidence_dependency():
+    with (
+        patch("packages.core.services.artifacts.validate_current_evidence", AsyncMock()),
+        patch("packages.core.services.artifacts.validate_export_records", AsyncMock()),
+        patch("packages.core.services.handoff_packet.validate_export_records", AsyncMock()),
+        patch("packages.core.services.handoff_packet.validate_package_evidence", AsyncMock()),
+        patch("packages.core.services.handoff_packet.validate_current_evidence", AsyncMock()),
+    ):
+        yield
+
+
 def sample():
     content = {
         "summary": {"0": {"text": "Maintained synthetic systems.", "fact_ids": [], "order": 0}},
@@ -167,7 +179,8 @@ def test_grouping_preserves_every_claim_and_source_identity():
     experience = next(s for s in doc.sections if s.key == "experience")
     assert experience.entries[0].heading
     assert (
-        experience.entries[0].text == "Systems Engineer | Synthetic Company | 2020-01-01 | Present"
+        experience.entries[0].text
+        == "Systems Engineer | Synthetic Company | Jan 2020 \u2013 Present"
     )
     assert experience.entries[1].fact_ids == (str(UUID(int=4)),)
     assert [e.text for s in doc.sections for e in s.entries].count(
@@ -212,13 +225,13 @@ def test_exports_contain_approved_contact_and_structured_records_in_reading_orde
         "candidate@example.invalid",
         "Systems Engineer",
         "Synthetic Company",
-        "2020-01-01",
+        "Jan 2020",
         "Present",
         "Example University",
         "Computer Science",
         "Example Certificate",
         "Example Issuer",
-        "2030-01-01",
+        "Jan 2030",
     ):
         assert expected in text
     assert (
@@ -359,6 +372,7 @@ def preview_session(*, fact_status="verified", cert_status="active", expires=Non
     session = AsyncMock()
     session.scalar.return_value = None if foreign else profile
     session.scalars.side_effect = [
+        MagicMock(all=lambda: [fact]),
         MagicMock(all=lambda: [fact]),
         MagicMock(all=lambda: [exp]),
         MagicMock(all=lambda: [education]),
@@ -673,6 +687,7 @@ async def test_download_hashes_returned_bytes_instead_of_a_second_store_read():
         resume_id=UUID(int=1),
         kind="resume_pdf",
         storage_key="synthetic/test.pdf",
+        template_version="ats-single-column/1",
         content_type="application/pdf",
         sha256=hashlib.sha256(b"approved bytes").hexdigest(),
     )
