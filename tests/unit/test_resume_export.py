@@ -692,7 +692,11 @@ async def test_download_hashes_returned_bytes_instead_of_a_second_store_read():
         sha256=hashlib.sha256(b"approved bytes").hexdigest(),
     )
     session = AsyncMock()
-    session.get.return_value = artifact
+    session.get.side_effect = (
+        lambda model, identifier: artifact
+        if model is Artifact
+        else Resume(id=UUID(int=1), content={})
+    )
     store = AsyncMock()
     store.get.return_value = b"corrupted response bytes"
     # The old code verified a second read, which can differ from the response.
@@ -749,7 +753,7 @@ def test_pdf_rejects_unsupported_characters_in_custom_section_headings():
 @pytest.mark.asyncio
 async def test_historical_text_only_artifact_remains_readable_by_reviewer():
     from apps.api.routers import artifacts as route
-    from packages.core.models import Approval, Artifact
+    from packages.core.models import Approval, Artifact, Resume
 
     raw = b"historical synthetic artifact without contact details"
     artifact = Artifact(
@@ -767,9 +771,11 @@ async def test_historical_text_only_artifact_remains_readable_by_reviewer():
         subject_snapshot={"resume_id": str(UUID(int=1)), "resume_version": 1}
     )
     session = AsyncMock()
-    session.get.side_effect = lambda model, identifier: {Artifact: artifact, Approval: approval}[
-        model
-    ]
+    session.get.side_effect = lambda model, identifier: {
+        Artifact: artifact,
+        Approval: approval,
+        Resume: SimpleNamespace(content={}),
+    }[model]
     store = AsyncMock()
     store.get.return_value = raw
     with patch.object(route, "artifact_store", return_value=store):

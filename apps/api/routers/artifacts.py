@@ -92,17 +92,23 @@ async def download_artifact(
     )
     from packages.services.rendering.protocol import LEGACY_REVIEWER_TEMPLATES
 
+    resume = await session.get(Resume, artifact.resume_id)
+    if resume is None:
+        raise NotFoundError(_MISSING)
     if contact_snapshot or artifact.template_version not in LEGACY_REVIEWER_TEMPLATES:
         from packages.core.models import Profile
 
-        resume = await session.get(Resume, artifact.resume_id)
         profile = await session.get(Profile, resume.profile_id) if resume else None
         if user.role != "owner" or profile is None or profile.user_id != user.id:
             raise NotFoundError(_MISSING)
-        if resume is not None:
-            from packages.core.services.resume_export import validate_current_evidence
+    from packages.core.services.resume_export import (
+        validate_current_evidence,
+        validate_export_records,
+    )
 
-            await validate_current_evidence(session, resume, lock=True)
+    await validate_current_evidence(session, resume, lock=True)
+    if approval is not None:
+        await validate_export_records(session, approval.subject_snapshot or {})
     if artifact.content_type not in ALLOWED_CONTENT_TYPES:
         # Not served, not guessed. The row is wrong and that is a defect.
         log.error("artifact.content_type_rejected", artifact_id=str(artifact_id))

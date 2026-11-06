@@ -368,8 +368,13 @@ async def generate_handoff_packet(
     assert job is not None  # application.job_id is NOT NULL with FK RESTRICT
 
     resume_bytes = await store.get(source.resume_artifact.storage_key)
-    if source.resume_artifact.sha256:
-        await store.verify(source.resume_artifact.storage_key, sha256=source.resume_artifact.sha256)
+    if (
+        source.resume_artifact.sha256
+        and hashlib.sha256(resume_bytes).hexdigest() != source.resume_artifact.sha256
+    ):
+        from packages.services.rendering.store import ArtifactIntegrityError
+
+        raise ArtifactIntegrityError("Resume artifact checksum mismatch")
 
     checklist = _checklist_text(
         status=application.status,

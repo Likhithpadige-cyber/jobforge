@@ -126,3 +126,85 @@ def test_docx_uses_editable_paragraphs_and_portable_font():
     word.save(saved)
     assert docx.Document(io.BytesIO(saved.getvalue())).paragraphs[0].text == "Edited Fictional Name"
     assert not word.tables
+
+
+@pytest.mark.asyncio
+async def test_legacy_packet_hashes_the_actual_pdf_bytes_before_assembly():
+    import hashlib
+
+    from packages.core.models import Job
+    from packages.core.services import handoff_packet as service
+    from packages.services.rendering.store import ArtifactIntegrityError
+
+    resume, _ = sample()
+    source = SimpleNamespace(
+        resume=resume,
+        resume_artifact=SimpleNamespace(
+            storage_key="synthetic/legacy.pdf", sha256=hashlib.sha256(b"approved PDF").hexdigest()
+        ),
+        cover_letter=SimpleNamespace(id=UUID(int=12), version=1, body_text="Synthetic letter"),
+        questions=[],
+        answers_digest="synthetic",
+    )
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.execute.return_value = MagicMock(scalar_one_or_none=lambda: None)
+    db.get.return_value = Job(
+        id=UUID(int=10), title="Synthetic role", url="https://example.invalid/job"
+    )
+    store = AsyncMock()
+    store.get.return_value = b"corrupted bytes"
+    with (
+        patch.object(service, "_load_source", AsyncMock(return_value=source)),
+        pytest.raises(ArtifactIntegrityError),
+    ):
+        await service.generate_handoff_packet(
+            db,
+            application=SimpleNamespace(
+                id=UUID(int=8), job_id=UUID(int=10), status="manual_handoff"
+            ),
+            store=store,
+            method="human_handoff",
+            blocked_reason=None,
+        )
+    store.put.assert_not_awaited()
+    store.verify.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_legacy_packet_download_refuses_different_source_versions():
+    from apps.api.routers import applications as route
+    from packages.core.services import handoff_packet as service
+    from packages.shared.errors import ConflictError
+
+    application = SimpleNamespace(id=UUID(int=8), profile_id=UUID(int=2))
+    profile = SimpleNamespace(user_id=UUID(int=9))
+    artifact = SimpleNamespace(
+        content_type=service.PACKET_CONTENT_TYPE,
+        storage_key=service.packet_storage_key(
+            application_id=application.id,
+            resume_id=UUID(int=1),
+            resume_version=1,
+            cover_letter_id=UUID(int=12),
+            cover_letter_version=1,
+            answers_digest="old",
+        ),
+    )
+    source = SimpleNamespace(
+        resume=SimpleNamespace(id=UUID(int=3), version=2),
+        cover_letter=SimpleNamespace(id=UUID(int=14), version=2),
+        answers_digest="new",
+    )
+    session = AsyncMock()
+    session.get.return_value = profile
+    with (
+        patch.object(route, "_existing_application", AsyncMock(return_value=application)),
+        patch.object(route, "current_packet", AsyncMock(return_value=artifact)),
+        patch.object(service, "load_packet_source", AsyncMock(return_value=source)),
+        patch.object(route, "artifact_store") as storage,
+        pytest.raises(ConflictError, match="stale"),
+    ):
+        await route.download_packet(
+            application.id, session, MagicMock(), SimpleNamespace(id=profile.user_id)
+        )
+    storage.assert_not_called()

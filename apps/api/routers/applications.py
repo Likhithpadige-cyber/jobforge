@@ -70,7 +70,7 @@ from packages.core.services.submission_execution import request_submission
 from packages.services.rendering.keys import sanitize_filename
 from packages.services.rendering.store import ArtifactIntegrityError
 from packages.shared.config import Settings
-from packages.shared.errors import NotFoundError
+from packages.shared.errors import ConflictError, NotFoundError
 
 router = APIRouter(
     prefix="/applications", tags=["applications"], dependencies=[Depends(authenticated_api)]
@@ -259,6 +259,21 @@ async def download_packet(
     if artifact.content_type != PACKET_CONTENT_TYPE:
         raise ArtifactIntegrityError("packet artifact has an unsupported content type")
 
+    from packages.core.services.handoff_packet import load_packet_source, packet_storage_key
+
+    # Validate exactly the materials represented by the cached packet. Checking
+    # newer sources would say nothing about evidence in historical ZIP bytes.
+    source = await load_packet_source(session, application)
+    expected_key = packet_storage_key(
+        application_id=application.id,
+        resume_id=source.resume.id,
+        resume_version=source.resume.version,
+        cover_letter_id=source.cover_letter.id,
+        cover_letter_version=source.cover_letter.version,
+        answers_digest=source.answers_digest,
+    )
+    if artifact.storage_key != expected_key:
+        raise ConflictError("Handoff packet is stale; regenerate from current approved materials")
     store = artifact_store(settings)
     data = await store.get(artifact.storage_key)
     if artifact.sha256 and hashlib.sha256(data).hexdigest() != artifact.sha256:

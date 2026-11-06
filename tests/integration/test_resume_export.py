@@ -358,3 +358,50 @@ async def test_existing_approved_v2_artifact_pair_remains_packageable(
         assert archive.read("resume." + artifact.kind.split("_")[-1]) == await store.get(
             artifact.storage_key
         )
+
+
+@pytest.mark.parametrize("download", ["legacy_artifact", "legacy_packet"])
+async def test_legacy_downloads_cannot_bypass_withdrawn_evidence(
+    session, demo_profile, demo_job, demo_application, inputs, store, tmp_path, download
+):
+    from unittest.mock import MagicMock, patch
+
+    from apps.api.routers import applications as app_route
+    from apps.api.routers import artifacts as artifact_route
+    from packages.core.models import Artifact, FactStatus
+    from packages.shared.errors import ConflictError
+    from tests.integration import test_legacy_m166_readiness as legacy
+
+    _, _, facts = inputs
+    resume, _, actor = await legacy._approve_everything(
+        session,
+        demo_profile=demo_profile,
+        demo_job=demo_job,
+        demo_application=demo_application,
+        facts=facts,
+        store=store,
+        tmp_path=tmp_path,
+    )
+    await legacy._trigger_readiness(session, demo_application["id"], store=store)
+    cited = {
+        str(fid)
+        for section in resume.content.values()
+        for entry in section.values()
+        for fid in entry.get("fact_ids", [])
+    }
+    next(f for f in facts if str(f.id) in cited).status = FactStatus.RETIRED
+    await session.flush()
+    artifact = await session.scalar(
+        select(Artifact).where(Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf")
+    )
+    with (
+        patch.object(artifact_route, "artifact_store") as direct,
+        patch.object(app_route, "artifact_store") as packet,
+        pytest.raises(ConflictError, match="evidence"),
+    ):
+        if download == "legacy_artifact":
+            await artifact_route.download_artifact(artifact.id, session, MagicMock(), actor)
+        else:
+            await app_route.download_packet(demo_application["id"], session, MagicMock(), actor)
+    direct.assert_not_called()
+    packet.assert_not_called()
