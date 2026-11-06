@@ -173,7 +173,9 @@ def test_all_workspace_routes(signed_in, fresh, role: str, viewport: dict[str, i
     ]
     if role == "owner":
         routes += ["/monitoring", "/alerts"]
-        alerts = page.request.get("/api/v1/alerts?limit=1").json()
+        # Any alert will do for the detail page; a fresh demo's seeded pause
+        # incidents are resolved by the E2E fixture, so do not require an open one.
+        alerts = page.request.get("/api/v1/alerts?status=all&limit=1").json()
         assert alerts, "seeded demo alert required for detail-page verification"
         routes.append(f"/alerts/{alerts[0]['id']}")
     for route in routes:

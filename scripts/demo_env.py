@@ -586,13 +586,15 @@ async def e2e_fixture() -> int:
     if generation is paused, this fails closed rather than bypassing it.
     """
     import json
+    from uuid import NAMESPACE_URL, uuid5
 
     from sqlalchemy import select
 
     from packages.core.auth.passwords import hash_password
     from packages.core.db import dispose_engine, init_engine, session_scope
     from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
-    from packages.core.models import Experience, FactType, User
+    from packages.core.generation_safety import generation_is_paused, resolve_alert
+    from packages.core.models import Alert, Experience, FactType, User
     from packages.core.repositories import FactRepository
     from packages.core.services import resume_review
     from packages.core.services.applications import RawQuestion, prepare_application
@@ -611,6 +613,48 @@ async def e2e_fixture() -> int:
             if owner is None or profile is None:
                 raise DemoGuardError("run `make demo-seed` before the browser E2E suite")
             profile_id, user_id = profile
+            # Run-unique test accounts. The caller generates their passwords
+            # in memory and passes them in the environment; they are hashed
+            # here and never printed. `e2e-retire` disables them afterwards.
+            # The seeded demo owner and reviewer are never touched.
+            accounts = {}
+            created: dict[str, Any] = {}
+            for role, variable in (
+                ("owner", "JOBFORGE_E2E_OWNER_PASSWORD"),
+                ("reviewer", "JOBFORGE_E2E_REVIEWER_PASSWORD"),
+            ):
+                password = os.environ.get(variable, "")
+                if len(password) < 16:
+                    raise DemoGuardError(f"{variable} must be set (16+ characters) by the caller")
+                user = User(
+                    id=uuid7(),
+                    email=f"e2e-{role}-{run}@example.com",
+                    role=role,
+                    password_hash=hash_password(password),
+                )
+                session.add(user)
+                created[role] = user
+                accounts[f"{role}_email"] = user.email
+            await session.flush()
+
+            # A freshly seeded demo is deliberately paused by its two synthetic
+            # incidents (_seed_incidents). Resolve exactly those, through the
+            # real owner-resolution service and attributed to this run's test
+            # owner -- the same action as Resolve in the Alerts UI. Any other
+            # pausing incident is left alone and stops the run (fail closed).
+            for index in (1, 2):
+                alert_id = uuid5(
+                    NAMESPACE_URL, f"jobforge:guardrail-alert:{_id(f'guardrail:{index}')}"
+                )
+                alert = await session.get(Alert, alert_id)
+                if alert is not None and alert.status != "resolved":
+                    await resolve_alert(session, alert_id, actor=created["owner"])
+            await session.flush()
+            if await generation_is_paused(session):
+                raise DemoGuardError(
+                    "generation is paused by an incident the demo seed did not create; "
+                    "review and resolve it in Alerts before running the browser suite"
+                )
             facts = await studio._facts(session, profile_id, user_id)
             application, _ = await studio.build_tailored_application(
                 session,
@@ -649,26 +693,6 @@ async def e2e_fixture() -> int:
                 source_table="experiences",
                 source_id=experience or uuid7(),
             )
-            # Run-unique test accounts. The caller generates their passwords
-            # in memory and passes them in the environment; they are hashed
-            # here and never printed. `e2e-retire` disables them afterwards.
-            # The seeded demo owner and reviewer are never touched.
-            accounts = {}
-            for role, variable in (
-                ("owner", "JOBFORGE_E2E_OWNER_PASSWORD"),
-                ("reviewer", "JOBFORGE_E2E_REVIEWER_PASSWORD"),
-            ):
-                password = os.environ.get(variable, "")
-                if len(password) < 16:
-                    raise DemoGuardError(f"{variable} must be set (16+ characters) by the caller")
-                user = User(
-                    id=uuid7(),
-                    email=f"e2e-{role}-{run}@example.com",
-                    role=role,
-                    password_hash=hash_password(password),
-                )
-                session.add(user)
-                accounts[f"{role}_email"] = user.email
             await session.flush()
             print(
                 json.dumps(
