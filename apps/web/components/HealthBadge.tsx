@@ -72,7 +72,7 @@ export function HealthBadge() {
           ))}
           <div className="flex items-center justify-between border-t border-edge pt-2">
             <dt className="font-medium">Migration</dt>
-            <dd className="font-mono text-xs text-ink-soft">
+            <dd className="font-sans tabular-nums text-xs text-ink-soft">
               {health.migration_revision ?? "not applied"}
             </dd>
           </div>

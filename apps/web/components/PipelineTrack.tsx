@@ -37,7 +37,7 @@ export function PipelineTrack({ stages }: { stages: PipelineStage[] }) {
               <p className="truncate text-xs text-ink-soft">{stage.label}</p>
             </div>
             <p
-              className={`tabular mt-2 text-xl font-semibold leading-none ${
+              className={`metric-value tabular mt-2 text-xl leading-none ${
                 needsYou ? "text-attention" : "text-ink"
               }`}
             >

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { BrandSymbol } from "./Brand";
 import { Icon } from "./Icon";
 import { PRIMARY_NAV, SECONDARY_NAV } from "@/lib/navigation";
 import { useAuth } from "./AuthGuard";
@@ -24,6 +25,7 @@ export function Header({ title, description, onOpenNav }: { title: string; descr
     <header className="sticky top-0 z-30 border-b border-edge bg-canvas">
       <div className="flex min-h-[76px] items-center gap-3 px-5 lg:px-9">
         <button type="button" onClick={onOpenNav} className="rounded-chip border border-edge bg-surface p-2 text-ink lg:hidden" aria-label="Open navigation" aria-haspopup="dialog"><Icon name="feed" className="h-5 w-5" /></button>
+        <BrandSymbol className="hidden h-7 w-6 shrink-0 lg:block" />
         <div className="min-w-0 flex-1">
           {segment.length > 0 && <nav aria-label="Breadcrumb" className="mb-0.5 flex items-center gap-1.5 text-xs text-ink-soft"><Link href="/" className="inline-flex min-h-6 items-center hover:text-accent">Dashboard</Link><span aria-hidden="true">/</span><span className="truncate">{title}</span></nav>}
           <h1 className="truncate text-lg font-semibold tracking-tight text-ink lg:text-xl">{title}</h1>
@@ -33,7 +35,7 @@ export function Header({ title, description, onOpenNav }: { title: string; descr
           <form onSubmit={event => { event.preventDefault(); if (results[0]) { router.push(results[0].href); setFocused(false); setQuery(""); } }}>
             <label htmlFor="global-search" className="sr-only">Search pages</label>
             <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" />
-            <input id="global-search" type="search" autoComplete="off" placeholder="Search your workspace" value={query} onChange={event => setQuery(event.target.value)} onFocus={() => setFocused(true)} onBlur={() => window.setTimeout(() => setFocused(false), 150)} className="h-10 w-full rounded-chip border border-edge bg-surface pl-9 pr-3 text-sm text-ink placeholder:text-ink-soft focus:border-control" />
+            <input id="global-search" type="search" autoComplete="off" placeholder="Search your workspace" value={query} onChange={event => setQuery(event.target.value)} onFocus={() => setFocused(true)} onBlur={() => window.setTimeout(() => setFocused(false), 150)} className="h-10 w-full rounded-chip border border-edge pl-9 pr-3 text-sm text-ink placeholder:text-ink-soft focus:border-control" />
           </form>
           {focused && query.trim() && <div className="absolute left-0 right-0 top-[calc(100%+8px)] overflow-hidden rounded-card border border-edge bg-surface p-1 shadow-raised" role="listbox" aria-label="Search results">
             {results.length ? results.map(item => <Link key={item.href} role="option" aria-selected="false" href={item.href} onClick={() => { setFocused(false); setQuery(""); }} className="flex items-center gap-2 rounded-chip px-3 py-2 text-sm text-ink hover:bg-inset"><Icon name={item.icon} />{item.label}</Link>) : <p className="px-3 py-2 text-sm text-ink-soft">No pages found</p>}

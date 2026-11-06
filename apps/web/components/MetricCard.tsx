@@ -36,7 +36,7 @@ export function MetricCard({
         <p className="text-sm text-ink-soft">{label}</p>
         {icon && <Icon name={icon} className={`h-4 w-4 ${accent}`} />}
       </div>
-      <p className="tabular mt-4 text-metric font-semibold text-ink">{value}</p>
+      <p className="metric-value tabular mt-4 text-metric text-ink">{value}</p>
       {hint && <p className="mt-1.5 text-xs leading-relaxed text-ink-soft">{hint}</p>}
       {children}
     </div>

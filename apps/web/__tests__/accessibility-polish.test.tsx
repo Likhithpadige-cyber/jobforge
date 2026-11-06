@@ -182,18 +182,20 @@ describe("colour contrast tokens", () => {
   it.each([
     ["cream", "midnight"], ["cream", "deep-teal"],
     ["aqua", "midnight"], ["aqua", "deep-teal"],
-    ["midnight", "orange"], ["midnight", "cream"],
+    ["midnight", "orange"], ["midnight", "cream"], ["deep-teal", "cream"],
   ])("%s text on %s meets 4.5:1", (foreground, background) => {
     expect(ratio(token(foreground), token(background))).toBeGreaterThanOrEqual(4.5);
   });
   it.each([
     ["aqua", "midnight"], ["aqua", "deep-teal"],
     ["cream", "orange"], ["orange", "midnight"],
+    ["deep-teal", "cream"], ["orange", "cream"], ["muted-teal", "cream"],
   ])("%s control boundary on %s meets 3:1", (foreground, background) => {
     expect(ratio(token(foreground), token(background))).toBeGreaterThanOrEqual(3);
   });
   it("does not treat inaccessible palette combinations as body-text pairings", () => {
     expect(ratio(token("cream"), token("orange"))).toBeLessThan(4.5);
     expect(ratio(token("cream"), token("muted-teal"))).toBeLessThan(4.5);
+    expect(ratio(token("aqua"), token("cream"))).toBeLessThan(3);
   });
 });

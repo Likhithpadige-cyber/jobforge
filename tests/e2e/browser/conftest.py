@@ -26,7 +26,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -63,10 +63,10 @@ def _demo_env() -> dict[str, str]:
 class Demo:
     base_url: str
     owner_email: str
-    owner_password: str
+    owner_password: str = field(repr=False)
     reviewer_email: str
-    reviewer_password: str
-    env: dict[str, str]
+    reviewer_password: str = field(repr=False)
+    env: dict[str, str] = field(repr=False)
 
 
 @pytest.fixture(scope="session")
@@ -115,7 +115,12 @@ def _storage(
         ("owner", demo.owner_email, demo.owner_password),
         ("reviewer", demo.reviewer_email, demo.reviewer_password),
     ):
-        context = browser.new_context(base_url=demo.base_url, viewport=DESKTOP)
+        # Optional existing owner session supports a locally changed password.
+        # It is still authenticated and identity-checked against this demo API.
+        owner_state = os.getenv("JOBFORGE_E2E_OWNER_STATE") if role == "owner" else None
+        context = browser.new_context(
+            base_url=demo.base_url, viewport=DESKTOP, storage_state=owner_state
+        )
         context.set_default_timeout(TIMEOUT_MS)
         page = context.new_page()
         try:
@@ -123,7 +128,20 @@ def _storage(
         except Exception as exc:  # any failure here means "not running"
             context.close()
             pytest.skip(f"demo web is not reachable at {demo.base_url}: {exc}")
-        _sign_in(page, email, password)
+        if owner_state:
+            identity = page.request.get("/api/v1/auth/me")
+            if (
+                identity.status != 200
+                or identity.json().get("email") != email
+                or (identity.json().get("role") != role)
+            ):
+                context.close()
+                pytest.exit(
+                    "refusing: supplied owner session is expired or has the wrong identity",
+                    returncode=2,
+                )
+        else:
+            _sign_in(page, email, password)
         gate = page.request.get("/api/v1/settings/submission-gate").json()
         if gate.get("submission_mode") != "dry_run" or gate.get("live") is not False:
             context.close()

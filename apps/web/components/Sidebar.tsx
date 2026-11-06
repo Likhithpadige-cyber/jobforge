@@ -9,7 +9,7 @@ import { useAuth } from "./AuthGuard";
 function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
   return (
     <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined}
-      className={`group relative flex items-center gap-3 rounded-chip px-3.5 py-3 text-sm font-medium transition-transform duration-200 hover:translate-x-0.5 ${active ? "bg-inset text-accent" : "text-ink-soft hover:bg-inset hover:text-ink"}`}>
+      className={`group relative flex items-center gap-3 rounded-chip px-3.5 py-3 text-sm font-medium transition-transform duration-200 hover:translate-x-0.5 ${active ? "bg-action text-action-ink" : "text-ink-soft hover:bg-inset hover:text-ink"}`}>
       <span aria-hidden="true" className={`absolute bottom-2 left-0 top-2 w-[3px] rounded-r-full bg-action transition-transform duration-300 ${active ? "scale-y-100" : "scale-y-0"}`} />
       <Icon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
       <span>{item.label}</span>

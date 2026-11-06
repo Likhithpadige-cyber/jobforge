@@ -25,7 +25,7 @@ export function NotWiredNotice({
           <p className="text-sm font-medium text-ink">{title}</p>
           <p className="mt-1 text-sm leading-relaxed text-ink-soft">{body}</p>
           {needs && (
-            <p className="mt-2 font-mono text-xs text-ink-soft">Needs: {needs}</p>
+            <p className="mt-2 font-sans tabular-nums text-xs text-ink-soft">Needs: {needs}</p>
           )}
         </div>
       </div>

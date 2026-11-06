@@ -29,7 +29,11 @@ PAINT_CHECK = """() => {
     if (!rect.width || !rect.height || style.visibility === 'hidden' || style.opacity === '0') {
       continue;
     }
-    for (const property of ['color','backgroundColor','borderTopColor','outlineColor']) {
+    for (const property of ['color','backgroundColor','borderTopColor','outlineColor','fill']) {
+      // HTML and SVG containers have a default black fill but paint no geometry.
+      if (property === 'fill' && !element.matches(
+        'svg path,svg polygon,svg rect,svg circle,svg ellipse,svg polyline,svg text,svg use'
+      )) continue;
       const value = style[property];
       const match = value.match(/^rgba?\\(([^)]+)\\)$/);
       if (!match) continue;
@@ -49,6 +53,33 @@ def check_page(page: Page, label: str, *, settled: bool = True) -> None:
         page.wait_for_load_state("networkidle")
     expect(page.get_by_role("heading", level=1)).to_be_visible()
     no_horizontal_overflow(page)
+    assert page.locator("body").evaluate("e => getComputedStyle(e).backgroundColor") == (
+        "rgb(234, 220, 200)"
+    )
+    fonts = page.evaluate("""async () => {
+      await document.fonts.ready;
+      const heading = document.querySelector('h1');
+      const brand = document.querySelector('.brand-wordmark');
+      return {body:getComputedStyle(document.body).fontFamily,
+        heading: heading ? getComputedStyle(heading).fontFamily : '',
+        headingWeight: heading ? getComputedStyle(heading).fontWeight : '',
+        brandWeight: brand ? getComputedStyle(brand).fontWeight : null};
+    }""")
+    assert "inter" in fonts["body"].lower()
+    assert "sora" in fonts["heading"].lower()
+    assert fonts["headingWeight"] == "700"
+    if fonts["brandWeight"]:
+        assert fonts["brandWeight"] == "800"
+    typography = page.evaluate("""() => {
+      const metric = document.querySelector('.metric-value');
+      const nav = [...document.querySelectorAll('nav a,nav button')]
+        .filter(e => e.getBoundingClientRect().width > 0);
+      return {metric: metric ? getComputedStyle(metric).fontWeight : null,
+        navigation: nav.map(e => getComputedStyle(e).fontWeight)};
+    }""")
+    if typography["metric"]:
+        assert typography["metric"] == "700"
+    assert all(weight == "500" for weight in typography["navigation"])
     paint = page.evaluate(PAINT_CHECK)
     assert not paint, f"{label}: off-palette computed styles: {paint}"
     page.add_script_tag(path=str(AXE))
@@ -74,6 +105,10 @@ def test_login_theme_and_focus(anonymous: Page, viewport: dict[str, int]) -> Non
     anonymous.set_viewport_size(viewport)
     anonymous.goto("/login")
     check_page(anonymous, "login")
+    font_requests = anonymous.evaluate("""() => performance.getEntriesByType('resource')
+      .filter(e => e.name.includes('.woff2')).map(e => e.name)""")
+    assert len(set(font_requests)) == 2
+    assert all(url.startswith(anonymous.url.split("/login")[0]) for url in font_requests)
     # Tab to each form control and prove the visible indicator survives the reset.
     anonymous.get_by_label("Email").focus()
     anonymous.keyboard.press("Tab")
@@ -90,7 +125,8 @@ def test_login_theme_and_focus(anonymous: Page, viewport: dict[str, int]) -> Non
     assert submit.evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(198, 96, 31)"
     assert submit.evaluate("e => getComputedStyle(e).color") == "rgb(10, 15, 20)"
     submit.hover()
-    assert submit.evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(234, 220, 200)"
+    assert submit.evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(10, 15, 20)"
+    assert submit.evaluate("e => getComputedStyle(e).color") == "rgb(234, 220, 200)"
     # Exercise the error presentation without making a login attempt at the API.
     anonymous.route(
         "**/api/v1/auth/login",
@@ -139,7 +175,7 @@ def test_all_workspace_routes(signed_in, fresh, role: str, viewport: dict[str, i
     for route in routes:
         page.goto(route)
         check_page(page, f"{role} {viewport['width']} {route}")
-        if route in ("/", "/profile", "/settings"):
+        if route in ("/", "/applications", "/approvals", "/profile", "/settings"):
             evidence(page, f"{role}-{route.strip('/') or 'dashboard'}-{viewport['width']}")
         elif role == "owner":
             labels = {
@@ -199,6 +235,7 @@ def test_navigation_and_feedback_states(owner: Page, viewport: dict[str, int]) -
         opener = owner.get_by_role("button", name="Open navigation", exact=True)
         opener.click()
         check_page(owner, "mobile navigation")
+        evidence(owner, "owner-navigation-375")
         owner.keyboard.press("Escape")
         expect(opener).to_be_focused()
     else:

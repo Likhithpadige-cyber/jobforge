@@ -12,27 +12,24 @@ const config: Config = {
   theme: {
     colors: {
       transparent: "transparent", current: "currentColor", inherit: "inherit",
-      canvas: "var(--jf-midnight)", surface: "var(--jf-deep-teal)",
+      canvas: "var(--jf-cream)", surface: "var(--jf-deep-teal)",
       inset: "var(--jf-midnight)", edge: "var(--jf-muted-teal)",
-      control: "var(--jf-aqua)", ink: "var(--jf-cream)",
-      "ink-soft": "var(--jf-aqua)", accent: "var(--jf-aqua)",
+      control: "var(--ui-control)", ink: "var(--ui-ink)",
+      "ink-soft": "var(--ui-ink-soft)", accent: "var(--ui-accent)",
       action: "var(--jf-orange)", "action-ink": "var(--jf-midnight)",
-      "action-hover": "var(--jf-cream)", focus: "var(--jf-aqua)",
-      success: "var(--jf-aqua)", attention: "var(--jf-cream)",
-      danger: "var(--jf-cream)", info: "var(--jf-aqua)",
+      "action-hover": "var(--jf-midnight)", focus: "var(--ui-focus)",
+      success: "var(--ui-success)", attention: "var(--ui-attention)",
+      danger: "var(--ui-danger)", info: "var(--ui-info)",
     },
-    ringColor: { DEFAULT: "var(--jf-aqua)" },
-    ringOffsetColor: { DEFAULT: "var(--jf-midnight)" },
+    ringColor: { DEFAULT: "var(--ui-focus)" },
+    ringOffsetColor: { DEFAULT: "var(--ui-focus-gap)" },
     borderColor: ({ theme }) => ({ ...theme("colors"), DEFAULT: "var(--jf-muted-teal)" }),
-    boxShadow: { none: "none", raised: "0 8px 0 var(--jf-midnight)" },
+    boxShadow: { none: "none", raised: "none" },
+    fontFamily: {
+      sans: ["var(--font-inter)", "sans-serif"],
+      display: ["var(--font-sora)", "sans-serif"],
+    },
     extend: {
-      fontFamily: {
-        sans: [
-          "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont",
-          "Segoe UI", "Inter", "Helvetica Neue", "Arial", "sans-serif",
-        ],
-        mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
-      },
       fontSize: {
         // A deliberate scale rather than Tailwind's defaults everywhere.
         micro: ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.04em" }],

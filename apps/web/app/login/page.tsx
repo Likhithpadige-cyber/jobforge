@@ -106,13 +106,13 @@ function LoginForm() {
       <LoginScene />
 
       <div className="relative flex min-h-screen flex-col px-4 py-6 sm:px-8 sm:py-8">
-        <div className="hidden sm:block">
+        <div className="login-corner hidden sm:block">
           <BrandLockup size="corner" />
         </div>
 
         <div className="flex flex-1 items-center justify-center py-8">
           <div className="grid w-full max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-24">
-            <section className="hidden max-w-md pr-8 lg:block" aria-label="Welcome">
+            <section className="theme-dark hidden max-w-md pr-8 lg:block" aria-label="Welcome">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">A considered next step</p>
               <h2 className="mt-5 text-4xl font-semibold leading-tight tracking-tight text-ink">Your experience.<br />Your next chapter.</h2>
               <p className="mt-5 max-w-sm text-base leading-7 text-ink-soft">A focused workspace for thoughtful applications. Review the evidence, shape your story, and keep every decision in your hands.</p>

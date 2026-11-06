@@ -1,3 +1,5 @@
+import { Brand } from "./Brand";
+
 /**
  * Inline icon set.
  *
@@ -67,21 +69,7 @@ export function Icon({ name, className = "h-4 w-4" }: IconProps) {
   );
 }
 
-/**
- * The JobForge mark: a struck anvil face reduced to three planes. A forge
- * motif, but geometric - no flames, no sparks, no circuitry.
- */
+/** Compact shared brand lockup, retaining the existing sidebar link. */
 export function Wordmark({ className = "" }: { className?: string }) {
-  return (
-    <span className={`flex items-center gap-2.5 ${className}`}>
-      <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true" focusable="false">
-        <path d="M3 8h13l-2.2 4.2H8.8L11 8" className="fill-accent" />
-        <path d="M8.8 12.2h5L12 17H6.4l2.4-4.8Z" className="fill-ink" />
-        <path d="M15.4 12.2H21L18.6 17H13l2.4-4.8Z" className="fill-action" />
-      </svg>
-      <span className="text-[1rem] font-semibold tracking-tight text-ink">
-        JobForge
-      </span>
-    </span>
-  );
+  return <Brand className={className} variant="teal" />;
 }

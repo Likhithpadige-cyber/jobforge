@@ -100,7 +100,7 @@ export function Dashboard() {
         <div className="relative grid items-center gap-8 lg:grid-cols-[1.35fr_.65fr]">
           <div>
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-accent">Your career, in motion</p>
-            <h2 id="welcome-heading" className="max-w-2xl text-3xl font-semibold leading-tight tracking-[-.035em] text-ink sm:text-4xl"><DashboardGreeting name={data.firstName} /></h2>
+            <h2 id="welcome-heading" className="page-heading max-w-2xl text-3xl font-semibold leading-tight tracking-[-.035em] text-ink sm:text-4xl"><DashboardGreeting name={data.firstName} /></h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-ink-soft">Everything here is read from your workspace. Every decision stays with a person.</p>
           </div>
           <div className="rounded-card border border-edge bg-inset p-5" data-testid="priority">
@@ -177,7 +177,7 @@ function Metric({ label, value, icon, href, hint }: { label: string; value: numb
   return (
     <Link href={href} className="rounded-card border border-edge bg-surface p-5 shadow-raised hover:border-control">
       <div className="flex items-center justify-between"><p className="text-sm font-medium text-ink-soft">{label}</p><span className="flex h-9 w-9 items-center justify-center rounded-chip bg-inset text-accent"><Icon name={icon} /></span></div>
-      <p className="mt-4 text-3xl font-semibold tracking-tight text-ink" aria-label={value === null ? `${label}: unknown` : undefined}>{value === null ? "—" : value}</p>
+      <p className="metric-value mt-4 text-3xl tracking-tight text-ink" aria-label={value === null ? `${label}: unknown` : undefined}>{value === null ? "—" : value}</p>
       {hint && <p className="mt-1 text-xs text-ink-soft">{hint}</p>}
     </Link>
   );

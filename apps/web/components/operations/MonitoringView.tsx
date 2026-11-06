@@ -197,7 +197,7 @@ function ConsumerLag({ ops }: { ops: Operations }) {
           <tbody>
             {entries.map(([key, lag]) => (
               <tr key={key} className="border-t border-edge">
-                <th scope="row" className="break-all py-2 pr-3 font-mono text-xs font-normal text-ink">{key}</th>
+                <th scope="row" className="break-all py-2 pr-3 font-sans tabular-nums text-xs font-normal text-ink">{key}</th>
                 <td className="py-2 text-right text-ink">{lag === null ? "Unknown" : formatMetric(lag)}</td>
               </tr>
             ))}

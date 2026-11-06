@@ -30,7 +30,7 @@ function audit(file, built = false) {
   if (!built && /(?:bg|text|border|ring|fill|stroke|from|via|to)-(?:white|black|slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:[-/\s"`]|$)/.test(s)) fail("stock/legacy color utility");
   if (!built && /(?:bg|text|border|ring|fill|stroke)-[\w-]+\/(?:\d|\[)/.test(s)) fail("alpha-derived paint");
 }
-for (const dir of ["app", "components", "lib"]) for (const file of files(path.join(root, dir))) if (/\.(tsx?|css)$/.test(file)) audit(file);
+for (const dir of ["app", "components", "lib"]) for (const file of files(path.join(root, dir))) if (/\.(tsx?|css|svg)$/.test(file)) audit(file);
 audit(path.join(root, "tailwind.config.ts"));
 for (const file of files(path.join(root, "public"))) if (/\.(png|webp|jpe?g|gif|avif)$/.test(file)) failures.push(`${file}: unreviewed raster UI asset`); else if (/\.svg$/.test(file)) audit(file);
 if (process.argv.includes("--built")) {

@@ -41,7 +41,7 @@ function ClaimDetails({ claim }: { claim: ApiClaim }) {
       </div>
       <div>
         <dt className="font-medium text-ink">Cited facts</dt>
-        <dd className="mt-0.5 break-all font-mono text-[11px] text-ink-soft">
+        <dd className="mt-0.5 break-all font-sans tabular-nums text-[11px] text-ink-soft">
           {claim.fact_ids.length > 0 ? claim.fact_ids.join(", ") : "None"}
         </dd>
       </div>
