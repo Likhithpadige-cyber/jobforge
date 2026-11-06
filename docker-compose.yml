@@ -33,7 +33,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-jobforge}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -55,7 +55,7 @@ services:
       --maxmemory 256mb
       --maxmemory-policy noeviction
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -78,7 +78,7 @@ services:
       REDIS_HOST: redis
       S3_ENDPOINT_URL: http://minio:9000
     ports:
-      - "${API_PORT:-8000}:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - ./apps:/app/apps
       - ./packages:/app/packages
@@ -154,7 +154,7 @@ services:
       NEXT_PUBLIC_API_PREFIX: /api/v1
       WATCHPACK_POLLING: "true"
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
     volumes:
       - ./apps/web:/app
       - web_node_modules:/app/node_modules
@@ -206,8 +206,8 @@ services:
     container_name: jobforge-mailhog
     restart: unless-stopped
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
     profiles: ["full"]
 
 volumes:
