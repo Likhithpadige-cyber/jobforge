@@ -80,3 +80,8 @@ counts, preserved-resource accounting and the remaining M3 limitations. Full
 backend and the API/Playwright E2E suites were run separately in new isolated
 resources. The old subset counts and the 52 earlier browser/service assertions
 are historical evidence, not substitutes for those suites.
+
+
+## Cowork H3 residual correction
+
+`b9031f6` checked live status but did not bind fact content. See `M16_6_EVIDENCE_BINDING.md` for the immutable material-version schema, fail-closed compatibility rules and owner-authorized source replacement. Rendering and exports never refresh approved fingerprints. Historical dangling-source repair requires new evidence IDs and freshly approved generated materials; it cannot silently relink an approved résumé.

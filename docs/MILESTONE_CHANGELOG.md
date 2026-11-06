@@ -2201,3 +2201,17 @@ Final download corrections also reject inactive legacy evidence and stale packet
 versions, hash the exact PDF bytes inserted into legacy ZIPs, revalidate older contact
 snapshots before reuse, and reject superseded contact approval on downloads. See the
 verification report and findings matrix for exact evidence and scope.
+
+
+### M16.6 final H3 residual and source integrity
+
+Cowork correctly reproduced edited-and-reverified evidence bypassing b9031f6.
+Immutable per-fact material versions now bind text and owner export approval;
+render, reuse, package and download refuse changed or missing proof. Source
+creation validates ownership/existence. Owner-authorized source repair preserves
+original facts, creates unverified replacements and records linked history.
+It never relinks an approved résumé; fresh generation/reapproval is required,
+with existing terminal-state reopening limits documented. Full backend 3,535,
+safety 1,642, API E2E 6, Playwright 26, frontend 366 and schema 12 pass.
+See the verification report and evidence-binding design. No live data repair,
+merge, push, deployment or SMTP behavior change was made.

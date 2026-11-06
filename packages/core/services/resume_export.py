@@ -116,6 +116,7 @@ def _required_fingerprint(value: dict[str, Any], fact_id: str) -> dict[str, str]
         not isinstance(record, dict)
         or set(record) != {"version", "sha256"}
         or any(
+            # pragma: allowlist nextline secret (public hexadecimal alphabet)
             not isinstance(v, str) or len(v) != 64 or any(c not in "0123456789abcdef" for c in v)
             for v in record.values()
         )
