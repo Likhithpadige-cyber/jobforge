@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ResumeReviewPanel } from "@/components/ResumeReviewPanel";
 import { ApiError, api, type ApiResumeReview } from "@/lib/api";
@@ -13,6 +13,14 @@ import { decisionLine, hasReviewAction, isValidChangeNote } from "@/lib/resumes"
  * offer an action the API refuses, and the reviewer would learn about it only
  * from a 409.
  */
+
+const exportDigest = "a".repeat(64);
+beforeEach(() => {
+  vi.spyOn(api, "exportPreview").mockResolvedValue({ digest: exportDigest, document: { schema_version: 1, profile_id: "p1", profile_version: 1, contact: { name: "Synthetic Candidate", email: "candidate@example.invalid" }, links: {}, records: [] } });
+});
+async function consentToExport() {
+  fireEvent.click(await screen.findByRole("checkbox", { name: /I approve these exact/ }));
+}
 
 function review(overrides: Partial<ApiResumeReview> = {}): ApiResumeReview {
   return {
@@ -153,8 +161,9 @@ describe("approve flow", () => {
     expect(screen.getByTestId("approve-confirm")).toBeInTheDocument();
     expect(spy).not.toHaveBeenCalled();
 
+    await consentToExport();
     fireEvent.click(screen.getByRole("button", { name: /Confirm Approval/ }));
-    await waitFor(() => expect(spy).toHaveBeenCalledWith("a1", undefined));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith("a1", undefined, exportDigest));
   });
 
   it("sends the optional note when one was typed", async () => {
@@ -165,10 +174,11 @@ describe("approve flow", () => {
     fireEvent.change(screen.getByLabelText(/Note \(optional\)/), {
       target: { value: "  Checked every citation.  " },
     });
+    await consentToExport();
     fireEvent.click(screen.getByRole("button", { name: /Confirm Approval/ }));
 
     await waitFor(() =>
-      expect(spy).toHaveBeenCalledWith("a1", "Checked every citation."),
+      expect(spy).toHaveBeenCalledWith("a1", "Checked every citation.", exportDigest),
     );
   });
 
@@ -178,6 +188,7 @@ describe("approve flow", () => {
     render(<ResumeReviewPanel review={awaiting} onReviewed={onReviewed} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Approve Resume/ }));
+    await consentToExport();
     fireEvent.click(screen.getByRole("button", { name: /Confirm Approval/ }));
 
     await waitFor(() => expect(onReviewed).toHaveBeenCalledWith(approved));
@@ -271,6 +282,7 @@ describe("loading and errors", () => {
     render(<ResumeReviewPanel review={awaiting} onReviewed={onReviewed} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Approve Resume/ }));
+    await consentToExport();
     fireEvent.click(screen.getByRole("button", { name: /Confirm Approval/ }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("stale");
@@ -324,5 +336,27 @@ describe("review helpers", () => {
     expect(
       decisionLine({ ...approved, decided_by_email: null }),
     ).toContain("a reviewer");
+  });
+});
+
+
+describe("export approval safety", () => {
+  it("requires explicit contact consent after showing exact details", async () => {
+    const spy = vi.spyOn(api, "approveResume");
+    render(<ResumeReviewPanel review={awaiting} onReviewed={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Approve Resume/ }));
+    expect(await screen.findByText("email: candidate@example.invalid")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Confirm Approval/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Confirm Approval/ }));
+    expect(spy).not.toHaveBeenCalled();
+    await consentToExport();
+    expect(screen.getByRole("button", { name: /Confirm Approval/ })).toBeEnabled();
+  });
+  it("cannot approve when preview access is refused", async () => {
+    vi.mocked(api.exportPreview).mockRejectedValue(new ApiError("Owner access required", 403));
+    render(<ResumeReviewPanel review={awaiting} onReviewed={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /Approve Resume/ }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("button", { name: /Confirm Approval/ })).toBeDisabled();
   });
 });

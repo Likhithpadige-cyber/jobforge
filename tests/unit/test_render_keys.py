@@ -29,7 +29,7 @@ APPLICATION = UUID("0192f000-0000-7000-8000-0000000000aa")
 # --------------------------------------------------------------- storage key
 def test_the_key_is_opaque_and_deterministic() -> None:
     key = storage_key(resume_id=RESUME, template_version=TEMPLATE_VERSION, extension="docx")
-    assert key == f"resumes/{RESUME}/ats-single-column-1/resume.docx"
+    assert key == f"resumes/{RESUME}/ats-single-column-2/resume.docx"
     assert key == storage_key(
         resume_id=str(RESUME), template_version=TEMPLATE_VERSION, extension="docx"
     )
@@ -37,7 +37,7 @@ def test_the_key_is_opaque_and_deterministic() -> None:
 
 def test_the_key_contains_only_identifiers_and_fixed_words() -> None:
     key = storage_key(resume_id=RESUME, template_version=TEMPLATE_VERSION, extension="pdf")
-    assert set(key.split("/")) <= {"resumes", str(RESUME), "ats-single-column-1", "resume.pdf"}
+    assert set(key.split("/")) <= {"resumes", str(RESUME), "ats-single-column-2", "resume.pdf"}
 
 
 def test_a_template_change_addresses_a_different_object() -> None:

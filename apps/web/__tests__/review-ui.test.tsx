@@ -499,3 +499,28 @@ describe("no demo data in review views", () => {
     }
   });
 });
+
+// Manual exports do not call the live submission action.
+describe("manual application package", () => {
+  it("is available in dry-run mode and reports missing approved artifacts", async () => {
+    vi.spyOn(review, "readiness").mockResolvedValue(readiness());
+    vi.spyOn(review, "submissions").mockResolvedValue([]);
+    const submit = vi.spyOn(review, "submit");
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 409 }));
+    render(<SubmissionView applicationId="a1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Download manual package" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalled());
+    expect(String(fetch.mock.calls[0]?.[0])).toContain("/applications/a1/manual-packet");
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({ method: "POST", credentials: "include" });
+    expect(await screen.findByRole("alert")).toHaveTextContent("PDF, DOCX");
+    expect(submit).not.toHaveBeenCalled();
+  });
+  it("does not offer contact-bearing packages to reviewers", async () => {
+    auth.role = "reviewer";
+    vi.spyOn(review, "readiness").mockResolvedValue(readiness());
+    vi.spyOn(review, "submissions").mockResolvedValue([]);
+    render(<SubmissionView applicationId="a1" />);
+    await screen.findByTestId("submission-gate");
+    expect(screen.queryByRole("button", { name: "Download manual package" })).not.toBeInTheDocument();
+  });
+});

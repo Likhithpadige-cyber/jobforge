@@ -43,6 +43,7 @@ from packages.core.services.handoff_packet import (
     current_packet,
     generate_handoff_packet,
 )
+from packages.core.services.resume_export import preview_export
 from packages.services.rendering import production_renderers
 from packages.services.rendering.store import FilesystemArtifactStore
 from packages.shared.ids import uuid7
@@ -83,6 +84,15 @@ async def _get_application(session, application_id) -> Application:
     ).scalar_one()
 
 
+async def _approve_export(session, app_id, actor):
+    """Explicit synthetic owner consent, using the same preview as the UI."""
+    resume = await resume_review.latest_tailored_resume(session, app_id)
+    preview = await preview_export(session, resume, actor)
+    return await resume_review.approve(
+        session, application_id=app_id, actor=actor, export_digest=preview["digest"]
+    )
+
+
 async def _approve_everything(
     session, *, demo_profile, demo_job, demo_application, facts, store, tmp_path
 ):
@@ -104,7 +114,7 @@ async def _approve_everything(
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
 
     resume = await resume_review.latest_tailored_resume(session, app_id)
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     await render_resume(
         session,
         store=store,
@@ -199,7 +209,7 @@ async def test_incomplete_approval_set_never_reaches_approved(
         event_id=UUID(int=900),
     )
     # Cover letter generated but not yet approved; approve only the resume.
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
 
     application = await _get_application(session, app_id)
     assert application.status is ApplicationStatus.AWAITING_APPROVAL
@@ -300,7 +310,7 @@ async def test_stale_cover_letter_approval_cannot_satisfy_readiness(
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
 
     resume = await resume_review.latest_tailored_resume(session, app_id)
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     await render_resume(session, store=store, renderers=production_renderers(), resume_id=resume.id)
 
     # The real v2 approval, current and correct, satisfies readiness.
@@ -362,7 +372,7 @@ async def test_stale_resume_approval_cannot_satisfy_readiness(
     # staleness check itself exactly as `test_resume_review.py`'s own
     # `approve_refuses_a_stale_resume` does.
     resume = await resume_review.latest_tailored_resume(session, app_id)
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     await render_resume(session, store=store, renderers=production_renderers(), resume_id=resume.id)
 
     approval = (
@@ -437,7 +447,7 @@ async def test_stale_answers_snapshot_cannot_complete_review(
     # now stale it must NOT complete the set - the application stays
     # awaiting_approval, and rendering (which requires an approved-or-later
     # status) correctly refuses.
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     application = await _get_application(session, app_id)
     assert application.status is ApplicationStatus.AWAITING_APPROVAL
     assert not await sr._readiness_satisfied(session, application)
@@ -806,7 +816,7 @@ async def test_packet_generation_without_a_rendered_resume_is_refused(
         event_id=UUID(int=900),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     # No render_resume() call - the artifact does not exist yet.
 
     await _allow_via_email(session)
@@ -904,7 +914,7 @@ async def test_approval_order_does_not_matter(
 
     for step, kind in enumerate(order):
         if kind == "resume":
-            await resume_review.approve(session, application_id=app_id, actor=actor)
+            await _approve_export(session, app_id, actor)
         elif kind == "cover_letter":
             await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
         elif kind == "answers":
@@ -949,7 +959,7 @@ async def test_zero_question_approval_order_does_not_matter(
 
     for step, kind in enumerate(order):
         if kind == "resume":
-            await resume_review.approve(session, application_id=app_id, actor=actor)
+            await _approve_export(session, app_id, actor)
         else:
             await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
 
@@ -980,7 +990,7 @@ async def test_final_approval_causes_approved_exactly_once(
         event_id=UUID(int=802),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
 
     application = await _get_application(session, app_id)
     assert application.status is ApplicationStatus.APPROVED
@@ -1002,7 +1012,7 @@ async def test_final_approval_causes_approved_exactly_once(
 
     # Replaying the completing decision (resume approve, idempotent by its
     # own snapshot check) must not attempt a second transition.
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     approved_history_after = (
         (
             await session.execute(
@@ -1047,7 +1057,7 @@ async def test_packet_becomes_available_through_resume_rendered_retry(
         event_id=UUID(int=803),
     )
     await cl_service.approve_cover_letter(session, application_id=app_id, actor=actor)
-    await resume_review.approve(session, application_id=app_id, actor=actor)
+    await _approve_export(session, app_id, actor)
     # No render_resume() call yet - readiness must run before the PDF exists.
 
     outcome = await _trigger_readiness(session, app_id, store=store)

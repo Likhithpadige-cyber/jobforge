@@ -37,6 +37,7 @@ class ApproveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     decision_note: str | None = Field(default=None, max_length=4000)
+    export_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class RequestChangesRequest(BaseModel):

@@ -266,18 +266,24 @@ def build_packet_zip(
     answers_text: str,
     job_metadata: str,
     checklist: str,
+    resume_docx: bytes | None = None,
 ) -> bytes:
     """Pure: identical inputs produce identical bytes (fixed member order,
     no timestamps beyond zipfile's own fixed epoch default)."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for name, content in (
+        members: tuple[tuple[str, str | bytes], ...] = (
             ("00-CHECKLIST.txt", checklist),
             ("resume.pdf", resume_pdf),
             ("cover_letter.txt", cover_letter_text),
             ("answers.txt", answers_text),
             ("job.json", job_metadata),
-        ):
+        )
+        if resume_docx is not None:
+            if not resume_docx:
+                raise ConflictError("Manual handoff requires a nonempty DOCX")
+            members += (("resume.docx", resume_docx),)
+        for name, content in members:
             info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
             info.compress_type = zipfile.ZIP_DEFLATED
             data = content if isinstance(content, bytes) else content.encode("utf-8")
@@ -389,7 +395,11 @@ async def current_packet(session: AsyncSession, application_id: UUID) -> Artifac
     return (
         await session.execute(
             select(Artifact)
-            .where(Artifact.application_id == application_id, Artifact.kind == PACKET_KIND)
+            .where(
+                Artifact.application_id == application_id,
+                Artifact.kind == PACKET_KIND,
+                Artifact.template_version.is_(None),
+            )
             .order_by(Artifact.created_at.desc(), Artifact.id.desc())
             .limit(1)
         )
@@ -399,3 +409,114 @@ async def current_packet(session: AsyncSession, application_id: UUID) -> Artifac
 load_packet_source = _load_source
 packet_storage_key = _packet_storage_key
 existing_packet = _existing_packet
+
+
+async def generate_manual_packet(
+    session: AsyncSession, *, application: Application, store: ArtifactStore
+) -> Artifact:
+    """Owner-requested PDF+DOCX packet, separate from the email packet protocol."""
+    from packages.core.services.resume_export import approved_export, digest
+    from packages.core.services.review_completion import current_resume_approval, review_is_complete
+    from packages.services.rendering.protocol import TEMPLATE_VERSION
+
+    if application.status not in PACKET_ELIGIBLE_STATUSES or not await review_is_complete(
+        session, application
+    ):
+        raise ConflictError("Manual packet requires current approved materials")
+    resume = await latest_tailored_resume(session, application.id)
+    approval = await current_resume_approval(session, application)
+    if resume is None or approval is None:
+        raise ConflictError("No current approved resume")
+    approved_export(approval.subject_snapshot, resume)
+    artifacts = list(
+        (
+            await session.scalars(
+                select(Artifact).where(
+                    Artifact.resume_id == resume.id,
+                    Artifact.resume_version == resume.version,
+                    Artifact.approval_id == approval.id,
+                    Artifact.template_version == TEMPLATE_VERSION,
+                    Artifact.kind.in_(("resume_pdf", "resume_docx")),
+                )
+            )
+        ).all()
+    )
+    by_kind = {a.kind: a for a in artifacts}
+    if set(by_kind) != {"resume_pdf", "resume_docx"}:
+        raise ResumeNotRenderedError("Both current PDF and DOCX must be rendered")
+    cover = await latest_cover_letter(session, application.id)
+    if cover is None:
+        raise NoCoverLetterError("No approved cover letter")
+    questions = await existing_questions(session, application.id)
+    source = PacketSource(
+        resume, by_kind["resume_pdf"], cover, questions, _answers_digest(questions)
+    )
+    job = await session.get(Job, application.job_id)
+    if job is None:
+        raise ConflictError("Job is missing")
+    identity = digest(
+        {
+            "resume": str(resume.id),
+            "version": resume.version,
+            "approval": str(approval.id),
+            "export": approval.subject_snapshot["export_digest"],
+            "artifacts": [
+                (a.kind, str(a.id), a.sha256, a.template_version)
+                for a in sorted(artifacts, key=lambda a: a.kind)
+            ],
+            "cover": (
+                str(source.cover_letter.id),
+                source.cover_letter.version,
+                source.cover_letter.body_text,
+            ),
+            "answers": source.answers_digest,
+            "job": _job_metadata_text(job),
+        }
+    )
+    key = f"applications/{application.id}/manual-v2/{identity}/packet.zip"
+    existing = await _existing_packet(session, application.id, key)
+    if existing is not None:
+        return existing
+    payloads = {}
+    for kind, artifact in by_kind.items():
+        data = await store.get(artifact.storage_key)
+        if not data or not artifact.sha256 or hashlib.sha256(data).hexdigest() != artifact.sha256:
+            raise ConflictError("Resume artifact integrity check failed")
+        payloads[kind] = data
+    data = build_packet_zip(
+        resume_pdf=payloads["resume_pdf"],
+        resume_docx=payloads["resume_docx"],
+        cover_letter_text=source.cover_letter.body_text or "",
+        answers_text=_answers_text(source.questions),
+        job_metadata=_job_metadata_text(job),
+        checklist=(
+            "Manual application package\n"
+            "Submit these approved materials yourself. Creating this package sends nothing.\n"
+        ),
+    )
+    await store.put(key, data, content_type=PACKET_CONTENT_TYPE)
+    sha256 = hashlib.sha256(data).hexdigest()
+    await store.verify(key, sha256=sha256)
+    # Re-read approval/content after external storage activity.
+    await session.refresh(resume)
+    await session.refresh(approval)
+    approved_export(approval.subject_snapshot, resume)
+    if str(approval.status) != "approved" or not await review_is_complete(session, application):
+        raise ConflictError("Approval changed while assembling packet")
+    artifact = Artifact(
+        id=uuid7(),
+        kind=PACKET_KIND,
+        application_id=application.id,
+        resume_id=resume.id,
+        resume_version=resume.version,
+        approval_id=approval.id,
+        template_version=f"manual-handoff/2/{identity}",
+        storage_key=key,
+        bucket=store.bucket,
+        content_type=PACKET_CONTENT_TYPE,
+        size_bytes=len(data),
+        sha256=sha256,
+    )
+    session.add(artifact)
+    await session.flush()
+    return artifact

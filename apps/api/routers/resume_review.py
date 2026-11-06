@@ -31,12 +31,13 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 
 from apps.api.deps import (
     CsrfProtected,
     CurrentHumanActor,
     DbSession,
+    RequireOwner,
     RevisionClient,
     authenticated_api,
     rate_limited,
@@ -112,6 +113,7 @@ async def approve_resume(
         application_id=application_id,
         actor=user,
         decision_note=payload.decision_note,
+        export_digest=payload.export_digest,
     )
     await session.commit()
     return ResumeReviewRead.from_state(state)
@@ -152,3 +154,17 @@ async def request_resume_changes(
         client=client,
     )
     return ResumeReviewRead.from_state(state)
+
+
+@router.get(f"{REVIEW}/export-preview", summary="Owner-only exact export preview")
+async def export_preview(
+    application_id: UUID, session: DbSession, user: RequireOwner, response: Response
+) -> Any:
+    from packages.core.services.resume_export import preview_export
+    from packages.shared.errors import NotFoundError
+
+    resume = await service.latest_tailored_resume(session, application_id)
+    if resume is None:
+        raise NotFoundError("resume export not found")
+    response.headers["Cache-Control"] = "private, no-store"
+    return await preview_export(session, resume, user)

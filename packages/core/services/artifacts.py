@@ -36,6 +36,7 @@ from packages.core.events import EventEnvelope, record_event
 from packages.core.events.rendered import ResumeRenderedV2
 from packages.core.models import Application, Approval, Artifact, Resume
 from packages.core.models.enums import ApprovalKind, ApprovalStatus
+from packages.core.services.resume_export import approved_export
 from packages.core.services.resume_review import snapshot_matches
 from packages.services.rendering import (
     RenderedArtifact,
@@ -152,6 +153,9 @@ async def _revalidate(session: AsyncSession, context: RenderContext) -> None:
     abandoned - the uploaded object becomes an orphan, which is the cheap
     failure, and nothing durable claims the stale version was rendered.
     """
+    await session.refresh(context.application)
+    if str(context.application.status) not in RENDERABLE_APPLICATION_STATUSES:
+        raise StaleApprovalError("Application is no longer in an approved state")
     await session.refresh(context.resume)
     await session.refresh(context.approval)
     if context.approval.status != ApprovalStatus.APPROVED:
@@ -216,6 +220,9 @@ async def render_resume(
         resume_id=str(context.resume.id),
         resume_version=context.resume.version,
         content=context.resume.content or {},
+        export_data=approved_export(context.approval.subject_snapshot, context.resume)
+        if any(r.production for r in selected)
+        else None,
     )
 
     produced: list[Artifact] = []
@@ -232,6 +239,12 @@ async def render_resume(
             # re-rendered: the unique index says there is one artifact per
             # (resume, format, template), and honouring that here means a
             # redelivery cannot produce a second set of bytes for the same row.
+            if (
+                existing.approval_id != context.approval.id
+                or existing.resume_version != context.resume.version
+            ):
+                raise StaleApprovalError("Existing artifact belongs to another approval or version")
+            await _revalidate(session, context)
             produced.append(existing)
             continue
 

@@ -53,6 +53,7 @@ from packages.core.models import (
     ResumeClaim,
     User,
 )
+from packages.core.services.resume_export import digest, export_binding, preview_export
 from packages.core.state_machines.application import transition_application
 from packages.shared.clock import utc_now
 from packages.shared.errors import ConflictError, NotFoundError, ValidationError
@@ -220,6 +221,13 @@ def snapshot_matches(snapshot: dict[str, Any], resume: Resume) -> bool:
     return (
         str(snapshot.get("resume_id")) == str(resume.id)
         and snapshot.get("resume_version") == resume.version
+        and (
+            "content_digest" not in snapshot or snapshot["content_digest"] == digest(resume.content)
+        )
+        and (
+            "export_document" not in snapshot
+            or snapshot.get("export_digest") == export_binding(resume, snapshot["export_document"])
+        )
     )
 
 
@@ -228,16 +236,16 @@ def build_subject_snapshot(
 ) -> dict[str, Any]:
     """Exactly what the reviewer was shown, recorded at request time.
 
-    Identifiers, counts and verdict tallies only. No claim prose, no job
-    description, no profile payload: the audit trail needs to prove *which*
-    artefact was approved, and it can point at the rows that still hold the
-    text. Copying the text here would duplicate it into a second place that
-    nothing keeps in sync.
+    At review opening this stores identifiers, counts and a content digest.
+    On explicit owner export approval, `approve` adds the frozen contact and
+    structured export document. Generated claim prose is never duplicated.
+    The export snapshot is immutable historical consent, not a live profile.
     """
     return {
         "resume_id": str(resume.id),
         "resume_version": resume.version,
         "resume_kind": resume.kind,
+        "content_digest": digest(resume.content),
         "verification_status": resume.verification_status,
         "claim_count": len(claims),
         "application_id": str(application.id),
@@ -679,6 +687,7 @@ async def approve(
     application_id: UUID,
     actor: User,
     decision_note: str | None = None,
+    export_digest: str | None = None,
 ) -> ReviewState:
     """Record a human approval of the resume.
 
@@ -699,6 +708,16 @@ async def approve(
     completion gate ever queries for it.
     """
     context = await _context(session, application_id, lock=True)
+    if (
+        export_digest is not None
+        and _already_decided(context, status=ApprovalStatus.APPROVED, application_status=None)
+        and (
+            context.approval is None
+            or context.approval.subject_snapshot.get("export_digest") != export_digest
+            or context.approval.subject_snapshot.get("export_owner_id") != str(actor.id)
+        )
+    ):
+        raise StaleResumeError("Export approval differs; request a new resume review")
     if _already_decided(
         context,
         status=ApprovalStatus.APPROVED,
@@ -709,6 +728,17 @@ async def approve(
 
     approval = await _decidable_approval(context, session, application_id)
     application, resume = context.application, context.resume
+    if export_digest is not None:
+        export = await preview_export(session, resume, actor)
+        if export["digest"] != export_digest:
+            raise StaleResumeError("Export details changed; reload and review them again")
+        approval.subject_snapshot = {
+            **approval.subject_snapshot,
+            "content_digest": digest(resume.content),
+            "export_document": export["document"],
+            "export_digest": export_digest,
+            "export_owner_id": str(actor.id),
+        }
     decided_at = utc_now()
 
     approval.status = ApprovalStatus.APPROVED

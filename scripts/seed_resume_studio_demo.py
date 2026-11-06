@@ -57,6 +57,7 @@ from packages.core.models import (
     ApplicationStatus,
     ClaimVerdict,
     Company,
+    Experience,
     FactStatus,
     FactType,
     IngestionMethod,
@@ -172,6 +173,14 @@ async def _company(session) -> Company:
 
 async def _facts(session, profile_id: UUID, user_id: UUID) -> dict[str, ProfileFact]:
     """Verified facts, reusing any this script created on an earlier run."""
+    source = await session.scalar(
+        select(Experience)
+        .where(Experience.profile_id == profile_id, Experience.deleted_at.is_(None))
+        .order_by(Experience.display_order, Experience.id)
+        .limit(1)
+    )
+    if source is None:
+        raise RuntimeError("Run make seed first: the fictional demo needs its employment record")
     created: dict[str, ProfileFact] = {}
     for spec in DEMO_FACTS:
         existing = (
@@ -190,13 +199,17 @@ async def _facts(session, profile_id: UUID, user_id: UUID) -> dict[str, ProfileF
                 text=spec["text"],
                 structured=spec["structured"],
                 source_table="experiences",
-                source_id=uuid7(),
+                source_id=source.id,
                 status=FactStatus.VERIFIED,
                 verified_by=user_id,
                 verified_at=utc_now(),
             )
             session.add(existing)
             await session.flush()
+        # Only these hardcoded fictional demo facts are repaired. Older demo
+        # fixtures used nonexistent random source IDs.
+        if await session.get(Experience, existing.source_id) is None:
+            existing.source_id = source.id
         created[spec["key"]] = existing
     return created
 

@@ -235,7 +235,7 @@ async def request_package_changes(
     dependencies=[Depends(rate_limited(artifact_download_limit))],
 )
 async def download_packet(
-    application_id: UUID, session: DbSession, settings: AppSettings
+    application_id: UUID, session: DbSession, settings: AppSettings, user: RequireOwner
 ) -> Response:
     """The bytes, with the checksum re-checked on the way out - the same
     three-step discipline `download_artifact` uses in `artifacts.py`: read
@@ -243,11 +243,15 @@ async def download_packet(
     echoing it, re-hash before returning. Serves the packet M10 Phase 2's
     readiness step already generated; does not generate one on the fly.
 
-    Owner and reviewer alike, matching every other application-review route
-    in this file - this system has no per-resource ACL beyond that role
-    check (SECURITY.md's own threat model excludes multi-tenant isolation).
+    Owner-only: the PDF can now contain explicitly approved contact details.
+    Review access does not implicitly authorize downloading those details.
     """
-    await _existing_application(session, application_id)
+    application = await _existing_application(session, application_id)
+    from packages.core.models import Profile
+
+    profile = await session.get(Profile, application.profile_id)
+    if profile is None or profile.user_id != user.id:
+        raise NotFoundError("no handoff packet exists yet for this application")
     artifact = await current_packet(session, application_id)
     if artifact is None:
         raise NotFoundError("no handoff packet exists yet for this application")
@@ -306,4 +310,43 @@ async def submit_application(
         submission_id=submission.id,
         status="submitting",
         attempt=submission.attempt,
+    )
+
+
+@router.post(
+    "/{application_id}/manual-packet",
+    response_class=Response,
+    dependencies=[Depends(rate_limited(artifact_download_limit))],
+)
+async def manual_packet(
+    application_id: UUID, session: DbSession, settings: AppSettings, user: RequireOwner
+) -> Response:
+    from sqlalchemy import select
+
+    from packages.core.models import Profile
+    from packages.core.services.handoff_packet import generate_manual_packet
+
+    application = await session.scalar(
+        select(Application)
+        .join(Profile, Application.profile_id == Profile.id)
+        .where(Application.id == application_id, Profile.user_id == user.id)
+        .with_for_update(of=Application)
+    )
+    if application is None:
+        raise NotFoundError("application not found")
+    store = artifact_store(settings)
+    artifact = await generate_manual_packet(session, application=application, store=store)
+    data = await store.get(artifact.storage_key)
+    import hashlib
+
+    if hashlib.sha256(data).hexdigest() != artifact.sha256:
+        raise ArtifactIntegrityError("Manual packet integrity check failed")
+    await session.commit()
+    return Response(
+        content=data,
+        media_type=PACKET_CONTENT_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="jobforge-manual-{application_id}.zip"',
+            "Cache-Control": "private, no-store",
+        },
     )

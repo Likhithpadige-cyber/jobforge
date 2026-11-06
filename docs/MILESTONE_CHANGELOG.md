@@ -2148,3 +2148,24 @@ Playwright was not re-run after `6ca02a0`. The later commits changed only the se
 - **The stopped fresh stack** still has an all-interfaces port mapping, so starting it again would re-expose it. Remove it, or recreate it on loopback, before any further use.
 - **Default local credentials:** development services keep their local default credentials. They are now reachable only from this machine.
 - **Not done:** production remains NO-GO (M15); the repository is still private; the profile README is unpublished.
+
+## P0 resume export — isolated implementation (2026-11-06)
+
+Implemented on `feature/p0-resume-export` from `7323d42`, for review before
+integration. See [implementation design](design/P0_RESUME_EXPORT.md).
+
+- Owner-reviewed contact and structured source snapshots, digest-bound to the
+  exact resume version/content; model inputs remain free of contact data.
+- Body contact paragraphs, employment/education/certification grouping, embedded
+  Noto Sans PDF font, measured long-token wrapping and pagination safeguards.
+- Template v2 artifact identities and approval revalidation, plus a separate
+  owner-only manual PDF+DOCX packet action. Existing SMTP dispatch is unchanged.
+- Synthetic consent, provenance, extraction, layout, integrity and authorization
+  regression coverage. Historical text-only approvals cannot authorize v2 exports.
+- 2,077 offline backend tests and 364 frontend tests passed; schema conformance
+  12 passed; route policy checks 4 passed; Ruff, canonical mypy, frontend types,
+  lint and production build passed. Final two-page PDF/DOCX samples visually
+  inspected. Database/browser suites were not run; disposable-stack verification
+  remains required before integration.
+- [SMTP recovery proposal](design/SMTP_DISPATCH_RECOVERY.md) is design only.
+  No push, merge, deployment, Docker change, real email or personal data use.

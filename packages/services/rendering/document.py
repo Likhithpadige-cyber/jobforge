@@ -1,9 +1,9 @@
 """The canonical document M8 renders. Nothing here invents content.
 
-Every string that reaches a renderer comes out of `resumes.content`, which B6
-wrote and a human approved. This module reorders and groups; it never edits,
-summarises, infers or completes. That is the whole reason it exists as a
-separate, pure, dependency-free step: the property "M8 cannot fabricate" is
+Generated prose comes from `resumes.content`; contact details and structured
+record headings come from the exact owner-approved export snapshot. This
+module reorders and groups; it never rewrites claims, summarises or infers.
+This pure, dependency-free step makes "M8 cannot fabricate" a property that is
 provable by reading one file, and `tests/unit/test_render_document.py` asserts
 it against the persisted shape rather than trusting the claim.
 
@@ -67,6 +67,7 @@ class DocumentEntry:
     text: str
     order: int
     fact_ids: tuple[str, ...]
+    heading: bool = False
 
 
 @dataclass(frozen=True)
@@ -80,14 +81,15 @@ class DocumentSection:
 class ResumeDocument:
     """Everything a renderer is allowed to know.
 
-    Deliberately small. There is no profile, no job, no evaluation and no
-    contact block: a renderer that cannot see them cannot leak them into a
-    document, and cannot be tempted to fill a gap with something plausible.
+    Contact lines and structured headings come only from the exact owner-
+    approved export snapshot. No renderer receives a live profile, job or
+    evaluation, and generated claim text and its fact citations stay intact.
     """
 
     resume_id: str
     resume_version: int
     sections: tuple[DocumentSection, ...]
+    contact_lines: tuple[str, ...] = ()
 
     @property
     def entry_count(self) -> int:
@@ -95,7 +97,9 @@ class ResumeDocument:
 
     def all_text(self) -> tuple[str, ...]:
         """Every renderable string, for the no-fabrication assertion."""
-        return tuple(entry.text for section in self.sections for entry in section.entries)
+        return self.contact_lines + tuple(
+            entry.text for section in self.sections for entry in section.entries
+        )
 
 
 def _section_sort_key(key: str) -> tuple[int, str]:
@@ -110,7 +114,11 @@ def _heading(key: str) -> str:
 
 
 def build_document(
-    *, resume_id: str, resume_version: int, content: dict[str, Any]
+    *,
+    resume_id: str,
+    resume_version: int,
+    content: dict[str, Any],
+    export_data: dict[str, Any] | None = None,
 ) -> ResumeDocument:
     """Turn persisted content into the canonical document.
 
@@ -164,8 +172,65 @@ def build_document(
             entries.sort(key=lambda e: (e.order, e.text))
             sections.append(DocumentSection(key=key, heading=_heading(key), entries=tuple(entries)))
 
+    contact_lines: tuple[str, ...] = ()
+    if export_data is not None:
+        if export_data.get("schema_version") != 1 or not export_data.get("contact", {}).get("name"):
+            raise MalformedResumeContentError(
+                "export snapshot needs schema version and candidate name"
+            )
+        contact = export_data["contact"]
+        contact_lines = tuple(
+            str(contact[k]) for k in ("name", "email", "phone", "location") if contact.get(k)
+        ) + tuple(str(v) for _, v in sorted(export_data.get("links", {}).items()))
+        section_map = {section.key: section for section in sections}
+        for key in ("experience", "education", "certifications"):
+            originals = section_map.get(key)
+            entries = list(originals.entries) if originals else []
+            records = [r for r in export_data.get("records", []) if r["section"] == key]
+            grouped: dict[str, list[DocumentEntry]] = {r["source_id"]: [] for r in records}
+            for entry in entries:
+                matches = [r for r in records if set(r["fact_ids"]) & set(entry.fact_ids)]
+                if len(matches) != 1:
+                    raise MalformedResumeContentError(
+                        f"{key} claim needs exactly one active source record; "
+                        "regenerate or correct evidence"
+                    )
+                grouped[matches[0]["source_id"]].append(entry)
+            structured: list[DocumentEntry] = []
+            for record in records:
+                fields = record["fields"]
+                field_order = {
+                    "experience": ("title", "company_name", "start_date", "end_date", "location"),
+                    "education": (
+                        "degree",
+                        "field_of_study",
+                        "institution",
+                        "start_date",
+                        "end_date",
+                        "location",
+                    ),
+                    "certifications": (
+                        "name",
+                        "issuer",
+                        "issued_date",
+                        "expires_date",
+                        "credential_url",
+                    ),
+                }[key]
+                label = " | ".join(str(fields[f]) for f in field_order if fields.get(f))
+                if not label:
+                    raise MalformedResumeContentError("empty structured source record")
+                structured.append(
+                    DocumentEntry(label, len(structured), tuple(record["fact_ids"]), heading=True)
+                )
+                structured.extend(grouped[record["source_id"]])
+            if structured:
+                section_map[key] = DocumentSection(key, _heading(key), tuple(structured))
+        sections = sorted(section_map.values(), key=lambda section: _section_sort_key(section.key))
+
     return ResumeDocument(
         resume_id=str(resume_id),
         resume_version=int(resume_version),
         sections=tuple(sections),
+        contact_lines=contact_lines,
     )

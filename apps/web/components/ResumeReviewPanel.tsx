@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ApiError, api, type ApiResumeReview } from "@/lib/api";
+import { ApiError, api, type ApiExportPreview, type ApiResumeReview } from "@/lib/api";
 import {
   REVIEW_LABEL,
   REVIEW_TONE,
@@ -48,6 +48,19 @@ export function ResumeReviewPanel({
   const [note, setNote] = useState("");
   const [approvalNote, setApprovalNote] = useState("");
 
+  const [exportPreview, setExportPreview] = useState<ApiExportPreview | null>(null);
+  const [exportConsent, setExportConsent] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  async function openApproval() {
+    setConfirming(true);
+    setExportPreview(null);
+    setExportConsent(false);
+    setPreviewLoading(true);
+    setError(null);
+    try { setExportPreview(await api.exportPreview(review.application_id)); }
+    catch (cause) { setError(errorMessage(cause)); }
+    finally { setPreviewLoading(false); }
+  }
   const busy = pending !== null;
   const decided = decisionLine(review);
 
@@ -155,7 +168,7 @@ export function ResumeReviewPanel({
             type="button"
             className={PRIMARY}
             disabled={busy}
-            onClick={() => setConfirming(true)}
+            onClick={() => void openApproval()}
           >
             Approve Resume
           </button>
@@ -179,6 +192,18 @@ export function ResumeReviewPanel({
             Approve version {review.resume_version}? This records your name
             against the resume as it stands.
           </p>
+          {previewLoading && <p role="status">Loading export details…</p>}
+          {exportPreview && <div className="mt-3 space-y-3" aria-label="Exact resume export details">
+            <h3 className="font-semibold">Contact details in the resume body</h3>
+            {Object.entries(exportPreview.document.contact).map(([key, value]) => <p className="break-all" key={key}>{key}: {value}</p>)}
+            {Object.entries(exportPreview.document.links).map(([key, value]) => <p className="break-all" key={key}>{key}: {value}</p>)}
+            <h3 className="font-semibold">Employment, education and certifications</h3>
+            {exportPreview.document.records.map(record => <div key={`${record.source_table}/${record.source_id}`} className="rounded-card border border-edge p-2">
+              <p className="text-xs text-ink-soft">{record.section}</p>
+              {Object.entries(record.fields).map(([key, value]) => <p className="break-all" key={key}>{key}: {value}</p>)}
+            </div>)}
+            <label className="flex gap-2"><input type="checkbox" checked={exportConsent} onChange={event => setExportConsent(event.target.checked)} />I approve these exact contact and structured details for export with this resume.</label>
+          </div>}
           <label
             htmlFor="approval-note"
             className="mt-3 block text-xs font-medium text-ink"
@@ -196,12 +221,13 @@ export function ResumeReviewPanel({
             <button
               type="button"
               className={PRIMARY}
-              disabled={busy}
+              disabled={busy || !exportPreview || !exportConsent}
               onClick={() =>
                 void run("approve", () =>
                   api.approveResume(
                     review.application_id,
                     approvalNote.trim() || undefined,
+                    exportPreview?.digest,
                   ),
                 )
               }

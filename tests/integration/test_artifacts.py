@@ -643,11 +643,20 @@ async def test_store_outage_is_considered_only_for_readable_artifacts(
     monkeypatch.setattr(router, "artifact_store", unavailable)
     app = client._transport.app
     app.dependency_overrides[get_session] = database
+    from apps.api.deps import current_user
+    from packages.core.models import Profile, User
+
+    if resource == "known" and role == "owner":
+        resume = await session.get(Resume, approved_resume_fixtures["approved_resume_id"])
+        profile = await session.get(Profile, resume.profile_id)
+        actor = await session.get(User, profile.user_id)
+        app.dependency_overrides[current_user] = lambda: actor
     try:
         response = await client.get(f"/api/v1/artifacts/{artifact_id}/content")
     finally:
         app.dependency_overrides.pop(get_session)
-    if resource == "known":
+        app.dependency_overrides.pop(current_user, None)
+    if resource == "known" and role == "owner":
         assert response.status_code == 503
         assert response.json()["detail"] == "synthetic storage outage"
         assert calls == [True]

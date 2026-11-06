@@ -280,6 +280,9 @@ OWNER_ONLY = frozenset(
         # M9. Preparation is the one cost-shaped, pipeline-triggering action,
         # same as first-draft above - owner only.
         ("POST", "/api/v1/applications/{application_id}/prepare"),
+        ("GET", "/api/v1/applications/{application_id}/resume-review/export-preview"),
+        ("POST", "/api/v1/applications/{application_id}/manual-packet"),
+        ("GET", "/api/v1/applications/{application_id}/packet"),
         ("PUT", "/api/v1/profile"),
         ("POST", "/api/v1/profile/certifications"),
         ("PATCH", "/api/v1/profile/certifications/{entity_id}"),
@@ -371,7 +374,6 @@ OWNER_AND_REVIEWER = frozenset(
         # the application review routes above already expose piece by piece
         # (resume, cover letter, answers) - owner + reviewer, same as
         # GET /artifacts/{id}/content is for a single rendered artifact.
-        ("GET", "/api/v1/applications/{application_id}/packet"),
         # M11 Phase 1. Reading the persisted submission-dispatch switch is
         # shared, same as every other read in this workspace; only changing
         # it is owner-only (OWNER_ONLY above).

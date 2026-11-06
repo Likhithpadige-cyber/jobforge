@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Response
 
 from apps.api.deps import (
     AppSettings,
+    CurrentUser,
     DbSession,
     artifact_download_limit,
     artifact_store,
@@ -68,7 +69,7 @@ async def list_resume_artifacts(resume_id: UUID, session: DbSession) -> Any:
     dependencies=[Depends(rate_limited(artifact_download_limit))],
 )
 async def download_artifact(
-    artifact_id: UUID, session: DbSession, settings: AppSettings
+    artifact_id: UUID, session: DbSession, settings: AppSettings, user: CurrentUser
 ) -> Response:
     """The bytes, with the checksum re-checked on the way out.
 
@@ -84,6 +85,16 @@ async def download_artifact(
     artifact = await session.get(Artifact, artifact_id)
     if artifact is None or artifact.resume_id is None:
         raise NotFoundError(_MISSING)
+    if artifact.template_version and (
+        artifact.template_version.startswith("ats-single-column/2")
+        or artifact.template_version.startswith("manual-handoff/2")
+    ):
+        from packages.core.models import Profile
+
+        resume = await session.get(Resume, artifact.resume_id)
+        profile = await session.get(Profile, resume.profile_id) if resume else None
+        if user.role != "owner" or profile is None or profile.user_id != user.id:
+            raise NotFoundError(_MISSING)
     if artifact.content_type not in ALLOWED_CONTENT_TYPES:
         # Not served, not guessed. The row is wrong and that is a defect.
         log.error("artifact.content_type_rejected", artifact_id=str(artifact_id))
