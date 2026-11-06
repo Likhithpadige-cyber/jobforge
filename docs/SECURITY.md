@@ -21,8 +21,8 @@ TLS termination, retention enforcement, image/IaC scanning and branch protection
 must not be inferred from this design. M14 did not provision or deploy anything.
 Current blocking CI checks are documented in [CI.md](CI.md); secret scanning uses
 detect-secrets on tracked files plus a full-history Gitleaks scan, and Python
-pins are not a hashed production lock. To report a vulnerability, follow the
-private process in the [security policy](../.github/SECURITY.md); this document
+pins are not a hashed production lock. To report a vulnerability, see the
+[security policy](../.github/SECURITY.md); this document
 describes the security design, not the reporting process.
 
 ## 1. Security posture

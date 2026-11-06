@@ -351,8 +351,8 @@ fixtures are intentional tracked assets.
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for a security problem. Follow the private
-process in the [security policy](.github/SECURITY.md).
+Please never put details of a security problem in a public issue. The
+[security policy](.github/SECURITY.md) explains how to arrange a private report.
 
 ## License
 
