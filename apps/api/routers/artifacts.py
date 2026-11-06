@@ -102,12 +102,19 @@ async def download_artifact(
         if user.role != "owner" or profile is None or profile.user_id != user.id:
             raise NotFoundError(_MISSING)
     from packages.core.services.resume_export import (
+        approved_export,
         validate_current_evidence,
         validate_export_records,
     )
 
     await validate_current_evidence(session, resume, lock=True)
     if approval is not None:
+        if contact_snapshot:
+            from packages.shared.errors import ConflictError
+
+            if str(approval.status) != "approved":
+                raise ConflictError("Export approval is no longer granted")
+            approved_export(approval.subject_snapshot, resume)
         await validate_export_records(session, approval.subject_snapshot or {})
     if artifact.content_type not in ALLOWED_CONTENT_TYPES:
         # Not served, not guessed. The row is wrong and that is a defect.

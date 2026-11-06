@@ -184,6 +184,18 @@ async def _load_source(session: AsyncSession, application: Application) -> Packe
         raise ResumeNotRenderedError(
             f"resume {resume.id} v{resume.version} has no rendered PDF artifact yet"
         )
+    if resume_artifact.approval_id is not None:
+        from packages.core.models import Approval
+        from packages.core.services.resume_export import approved_export
+
+        approval = await session.get(
+            Approval, resume_artifact.approval_id, populate_existing=True, with_for_update=True
+        )
+        if approval is not None and "export_document" in (approval.subject_snapshot or {}):
+            if str(approval.status) != "approved":
+                raise ConflictError("Export approval is no longer granted")
+            approved_export(approval.subject_snapshot, resume)
+            await validate_export_records(session, approval.subject_snapshot)
     cover_letter = await latest_cover_letter(session, application.id)
     if cover_letter is None:
         raise NoCoverLetterError(f"no cover letter exists for application {application.id}")

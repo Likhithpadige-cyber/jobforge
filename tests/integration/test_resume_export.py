@@ -405,3 +405,53 @@ async def test_legacy_downloads_cannot_bypass_withdrawn_evidence(
             await app_route.download_packet(demo_application["id"], session, MagicMock(), actor)
     direct.assert_not_called()
     packet.assert_not_called()
+
+
+@pytest.mark.parametrize("problem", ["malformed_snapshot", "superseded_approval"])
+@pytest.mark.parametrize("operation", ["manual", "artifact", "legacy_packet"])
+async def test_old_contact_consent_cannot_bypass_current_export_safety(
+    session, demo_profile, demo_job, demo_application, inputs, store, tmp_path, problem, operation
+):
+    from unittest.mock import MagicMock, patch
+
+    from apps.api.routers import applications as app_route
+    from apps.api.routers import artifacts as artifact_route
+    from packages.core.models import ApprovalStatus, Artifact
+    from packages.core.services.resume_export import export_binding
+    from packages.shared.errors import ConflictError
+
+    resume, application, owner = await prepare(
+        session, demo_profile, demo_job, demo_application, inputs, store, tmp_path
+    )
+    # Pre-existing package bytes must not preserve permission after withdrawal
+    # or bypass today's single-line/URL validation of an older frozen snapshot.
+    await generate_manual_packet(session, application=application, store=store)
+    approval = await session.scalar(
+        select(Approval).where(
+            Approval.application_id == application.id, Approval.kind == ApprovalKind.RESUME
+        )
+    )
+    if problem == "superseded_approval":
+        approval.status = ApprovalStatus.SUPERSEDED
+    else:
+        altered = deepcopy(approval.subject_snapshot)
+        altered["export_document"]["contact"]["name"] = "Fictional Name\nHidden Line"
+        altered["export_digest"] = export_binding(resume, altered["export_document"])
+        approval.subject_snapshot = altered
+    await session.flush()
+    artifact = await session.scalar(
+        select(Artifact).where(Artifact.resume_id == resume.id, Artifact.kind == "resume_pdf")
+    )
+    with (
+        patch.object(artifact_route, "artifact_store") as direct,
+        patch.object(app_route, "artifact_store") as legacy_store,
+        pytest.raises(ConflictError),
+    ):
+        if operation == "manual":
+            await generate_manual_packet(session, application=application, store=store)
+        elif operation == "artifact":
+            await artifact_route.download_artifact(artifact.id, session, MagicMock(), owner)
+        else:
+            await app_route.download_packet(application.id, session, MagicMock(), owner)
+    direct.assert_not_called()
+    legacy_store.assert_not_called()

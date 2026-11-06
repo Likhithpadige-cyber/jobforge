@@ -279,4 +279,19 @@ def approved_export(snapshot: dict[str, Any], resume: Resume) -> dict[str, Any]:
         raise ConflictError(
             "Complete export requires fresh owner approval of contact and structured details"
         )
+    # Revalidate older frozen snapshots too: manual/cached artifact paths do
+    # not necessarily rebuild a document through a renderer before reuse.
+    from packages.services.rendering.document import MalformedResumeContentError, build_document
+
+    try:
+        build_document(
+            resume_id=str(resume.id),
+            resume_version=resume.version,
+            content=resume.content or {},
+            export_data=document,
+        )
+    except MalformedResumeContentError as exc:
+        raise ConflictError(
+            "Approved export details are invalid; review a new resume version"
+        ) from exc
     return document
