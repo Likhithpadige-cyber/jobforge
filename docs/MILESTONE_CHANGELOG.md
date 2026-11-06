@@ -1936,3 +1936,58 @@ Backend regression, production Docker images and hosted CI were not rerun.
 The 31 existing upward imports and M15 deployment blockers remain outside scope.
 No push, deployment, cloud resources, real email/application, credential reset,
 data deletion, unrelated container restart or project license addition occurred.
+
+## Post-M15 — smooth navigation and interaction polish (2026-11-06)
+
+Commit `7c984ca`.
+
+### Root cause of the navigation flash
+
+- **No persistent layout:** every protected `page.tsx` rendered its own `AppShell`, so each route change unmounted and remounted the sidebar, header, `AuthGuard` and `OperationsProvider`.
+- **A blanking session check:** `AuthGuard` re-ran its session check on every `pathname` change and set `loading` back to true. While loading, it replaced the entire UI, sidebar included, with a "Checking your session…" line.
+- **Measured on the demo before the fix (MutationObserver, sidebar navigation):** in 7 of 7 navigations the sidebar node was replaced and the session screen appeared, and the sidebar, header and content were all absent for 16–64 ms each time.
+- **Also contributing:** each page translated 8 px while the sections inside it translated again, staggered, so content moved twice.
+- **Ruled out:** fonts (local, preloaded once, metric-adjusted fallback), the body background (cream on `body`), opacity animations (transform only), and route `loading.tsx` or Suspense boundaries (none).
+
+### Fix
+
+- **Persistent shell:** `app/(workspace)/layout.tsx` mounts `WorkspaceShell` once: the guard, the operations state, the sidebar, the mobile drawer and the bottom navigation.
+  - All signed-in pages moved into the route group with `git mv`; URLs are unchanged.
+  - `/login` stays outside the group, so it can never render the protected frame.
+  - `AppShell` is now the per-page header, banner and content.
+- **Quiet re-validation:** `AuthGuard` blocks only on the first check; on navigation it re-validates in the background.
+  - A 401 still redirects to sign-in, and a transient failure keeps the page.
+  - The router is held in a ref, so the session effects cannot re-run on router identity. A new test caught a refetch loop from this.
+- **First load:** the first check renders `ShellPlaceholder`, the shell's frame on the cream canvas with an announced status.
+- **No `loading.tsx`:** the current page stays visible until the next one is ready, and per-page data keeps its sized skeletons.
+- **Motion:**
+  - One transform-only settle per page: 4 px over 160 ms, with no opacity change. Nested and staggered reveals are off inside pages, so long lists stay still.
+  - Sidebar and mobile selection animate colour and indicator over 180 ms; previously the colour snapped and the indicator took 300 ms.
+  - Tabs and toggles 150 ms; buttons 120 ms colour easing with a 1 px press. `prefers-reduced-motion` disables all of it, as before.
+- **Unchanged:** colours, fonts, logo, spacing and layout; business logic, authentication rules, permissions, APIs and submission safeguards.
+
+### Browser E2E authentication
+
+- **Problem:** the seeded demo owner now uses TOTP with a changed password, so the suite could not sign in as that owner. The account was not modified.
+- **Isolated accounts:** each run's `demo_env e2e-fixture` creates `e2e-owner-<run>` and `e2e-reviewer-<run>`. pytest generates their passwords in memory and passes them only through the script's environment; they are hashed there and never printed, written to disk or logged.
+- **Retirement:** `demo_env e2e-retire` clears the accounts' password hashes when the session ends, and it refuses any email that is not an E2E account. The rows are kept because approvals and facts still name them.
+- **Earlier accounts:** the 15 reviewer accounts left over from earlier Phase 4 runs were retired the same way. No E2E account can sign in now.
+- **Replaced option:** `JOBFORGE_E2E_OWNER_STATE`, which reused a real owner session, is gone; tests no longer sign in as the seeded owner.
+- **Submission check:** the isolated owner does not own the candidate profile, so Submit is refused with the non-enumerating 404. The profile owner's dry-run 409 stays covered by the API journeys.
+- **Theme tests:**
+  - colour assertions now wait for the settled value after the new 120 ms easing;
+  - the palette audit samples only when no animation is running;
+  - held job requests are all released. Development Strict Mode can issue a request twice for a subtree revealed after the guard; with Strict Mode off it is one request, the same as before the change.
+
+### Verification
+
+- **After the fix, on the demo dev server:**
+  - 14 desktop sidebar navigations: 0 sidebar replacements, 0 session screens, 0 ms of missing sidebar, header or content, and the correct selection every time.
+  - 7 bottom-bar navigations at 375 px: the same results, with no horizontal overflow.
+- **On the production preview (3115 → 3116):** 14 navigations, 0 replacements, 0 session screens, 0 gaps.
+- **Frontend:** 360 tests passed, 11 of them new in `navigation-stability.test.tsx`. Typecheck and lint clean, production build succeeded.
+- **Browser E2E:** 26 passed (17 M13 and 9 theme), 0 failed, 0 skipped, on two consecutive runs. API journeys: 6 passed.
+- **Backend:** scaffold unit tests 4 passed. ruff check and format clean, `git diff --check` clean, secrets scan clean. The normal suite collects 3274 and deselects 32 E2E tests.
+- **Not run:** the full backend suite, because no backend application code changed; only `scripts/demo_env.py` and `scripts/verify_scaffold.py`. `verify_scaffold.py` still reports its existing import-direction failure, unrelated to this change.
+- **Preview:** rebuilt with the same API origin (`http://127.0.0.1:3115`) into a new standalone runtime and restarted on 3116. The 3115 router was not touched, and the preview is left running. The demo dev server on 3100 is also running.
+- **Not done:** no push, deployment, credential reset, TOTP change or change to the seeded owner.
