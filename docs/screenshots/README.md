@@ -1,10 +1,14 @@
 # Screenshots
 
-Captured on 2026-11-06 with Playwright (Chromium, 1280×800, PNG) from the
-production-mode build of the frontend, running against the **fictional demo
-dataset** ([demo environment](../DEMO_ENVIRONMENT.md)) in dry-run mode, signed
-in as the seeded synthetic reviewer (`demo.reviewer@example.com`). No real
-person, applicant record, employer, credential or token appears in any image.
+Captured on 2026-11-06 with Playwright (Chromium, 1280×800, PNG, reduced
+motion) from the production-mode build of the frontend, running against a
+**freshly seeded, throwaway copy of the fictional demo**
+([demo environment](../DEMO_ENVIRONMENT.md)) in dry-run mode, signed in as the
+seeded synthetic reviewer (`demo.reviewer@example.com`). The copy had its own
+database, ports and generated local credentials, and was used only for these
+captures.
+No real person, applicant record, employer, credential or token appears in any
+image.
 
 | File | Shows |
 |---|---|
@@ -15,9 +19,5 @@ person, applicant record, employer, credential or token appears in any image.
 | `cover-letter-review.png` | Cover-letter review: each paragraph with its cited-evidence verdict |
 | `submission-readiness.png` | Submission readiness checklist, blocked by dry-run mode |
 
-**Disclosure.** The demo database also holds rows created by automated browser
-tests (job titles beginning `E2E `). For the Applications and Approvals list
-captures, those test rows were hidden from the browser's copy of the list
-responses so the two seeded examples are visible; nothing else was altered and
-nothing was written to the demo. The dashboard is unfiltered, so its totals
-include the test rows.
+Every image shows the seed data as served, with nothing filtered or edited, so
+the totals agree across pages: 2 applications, 2 items awaiting review.
