@@ -415,7 +415,7 @@ async def generate_manual_packet(
     session: AsyncSession, *, application: Application, store: ArtifactStore
 ) -> Artifact:
     """Owner-requested PDF+DOCX packet, separate from the email packet protocol."""
-    from packages.core.services.resume_export import approved_export, digest
+    from packages.core.services.resume_export import approved_export, digest, frozen_material_digest
     from packages.core.services.review_completion import current_resume_approval, review_is_complete
     from packages.services.rendering.protocol import TEMPLATE_VERSION
 
@@ -428,6 +428,9 @@ async def generate_manual_packet(
     if resume is None or approval is None:
         raise ConflictError("No current approved resume")
     approved_export(approval.subject_snapshot, resume)
+    if resume.verification_status != "passed":
+        raise ConflictError("Resume verification is no longer passed")
+    initial_material = frozen_material_digest(resume, approval.subject_snapshot)
     artifacts = list(
         (
             await session.scalars(
@@ -498,8 +501,10 @@ async def generate_manual_packet(
     sha256 = hashlib.sha256(data).hexdigest()
     await store.verify(key, sha256=sha256)
     # Re-read approval/content after external storage activity.
-    await session.refresh(resume)
-    await session.refresh(approval)
+    await session.refresh(resume, with_for_update=True)
+    await session.refresh(approval, with_for_update=True)
+    if frozen_material_digest(resume, approval.subject_snapshot) != initial_material:
+        raise ConflictError("Approved export inputs changed while assembling packet")
     approved_export(approval.subject_snapshot, resume)
     if str(approval.status) != "approved" or not await review_is_complete(session, application):
         raise ConflictError("Approval changed while assembling packet")

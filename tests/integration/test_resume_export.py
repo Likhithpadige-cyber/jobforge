@@ -82,3 +82,91 @@ async def test_tampered_export_snapshot_cannot_reuse_existing_artifacts(
         await render_resume(
             session, store=store, renderers=production_renderers(), resume_id=resume.id
         )
+
+
+@pytest.mark.parametrize("target", ["verification", "render_snapshot", "packet_snapshot"])
+async def test_export_rechecks_exact_inputs_after_storage(
+    session, demo_profile, demo_job, demo_application, inputs, store, tmp_path, target
+):
+    """Real JSONB/row reloads must detect a change after bytes were produced."""
+    from sqlalchemy import func, update
+
+    from packages.core.models import Artifact, Resume
+    from packages.core.services.resume_export import export_binding
+    from packages.shared.errors import ConflictError
+
+    if target == "packet_snapshot":
+        resume, application, _ = await prepare(
+            session, demo_profile, demo_job, demo_application, inputs, store, tmp_path
+        )
+    else:
+        _, _, facts = inputs
+        resume, _, _ = await fixtures._approve_everything(
+            session,
+            demo_profile=demo_profile,
+            demo_job=demo_job,
+            demo_application=demo_application,
+            facts=facts,
+            store=store,
+            tmp_path=tmp_path,
+        )
+        application = await session.get(Application, demo_application["id"])
+    approval = await session.scalar(
+        select(Approval).where(
+            Approval.application_id == application.id, Approval.kind == ApprovalKind.RESUME
+        )
+    )
+    before = await session.scalar(select(func.count()).select_from(Artifact))
+
+    class MutatingStore:
+        bucket = store.bucket
+        changed = False
+
+        async def get(self, key):
+            return await store.get(key)
+
+        async def exists(self, key):
+            return await store.exists(key)
+
+        async def verify(self, key, *, sha256):
+            await store.verify(key, sha256=sha256)
+
+        async def put(self, key, data, *, content_type):
+            await store.put(key, data, content_type=content_type)
+            if self.changed:
+                return
+            self.changed = True
+            if target == "verification":
+                await session.execute(
+                    update(Resume)
+                    .where(Resume.id == resume.id)
+                    .values(verification_status="failed")
+                    .execution_options(synchronize_session=False)
+                )
+            else:
+                altered = deepcopy(approval.subject_snapshot)
+                altered["export_document"]["contact"]["email"] = "unapproved@example.invalid"
+                altered["export_digest"] = export_binding(resume, altered["export_document"])
+                await session.execute(
+                    update(Approval)
+                    .where(Approval.id == approval.id)
+                    .values(subject_snapshot=altered)
+                    .execution_options(synchronize_session=False)
+                )
+
+    mutating = MutatingStore()
+    with pytest.raises(ConflictError):
+        if target == "packet_snapshot":
+            await generate_manual_packet(session, application=application, store=mutating)
+        else:
+            # A new template forces generation rather than reusing prepare's artifacts.
+            from packages.services.rendering.pdf import PdfResumeRenderer
+
+            await render_resume(
+                session,
+                store=mutating,
+                resume_id=resume.id,
+                renderers=(PdfResumeRenderer("ats-single-column/2/race-regression"),),
+            )
+    assert mutating.changed
+    assert await session.scalar(select(func.count()).select_from(Artifact)) == before

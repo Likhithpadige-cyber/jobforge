@@ -108,6 +108,7 @@ class PdfResumeRenderer:
         except ImportError as exc:
             raise RendererUnavailableError("PDF rendering requires ReportLab") from exc
         validate_text("\n".join(document.all_text()))
+        validate_text("\n".join(section.heading for section in document.sections))
         buffer = io.BytesIO()
         pdf = canvas.Canvas(buffer, pagesize=(_PAGE_WIDTH, _PAGE_HEIGHT), invariant=1)
         pdf.setTitle("")

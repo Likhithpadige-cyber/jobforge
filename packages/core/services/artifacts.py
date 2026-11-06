@@ -36,7 +36,7 @@ from packages.core.events import EventEnvelope, record_event
 from packages.core.events.rendered import ResumeRenderedV2
 from packages.core.models import Application, Approval, Artifact, Resume
 from packages.core.models.enums import ApprovalKind, ApprovalStatus
-from packages.core.services.resume_export import approved_export
+from packages.core.services.resume_export import approved_export, frozen_material_digest
 from packages.core.services.resume_review import snapshot_matches
 from packages.services.rendering import (
     RenderedArtifact,
@@ -88,6 +88,7 @@ class RenderContext:
         self.resume = resume
         self.application = application
         self.approval = approval
+        self.material_digest = frozen_material_digest(resume, approval.subject_snapshot or {})
 
 
 async def _authorising_approval(
@@ -153,13 +154,20 @@ async def _revalidate(session: AsyncSession, context: RenderContext) -> None:
     abandoned - the uploaded object becomes an orphan, which is the cheap
     failure, and nothing durable claims the stale version was rendered.
     """
-    await session.refresh(context.application)
+    await session.refresh(context.application, with_for_update=True)
     if str(context.application.status) not in RENDERABLE_APPLICATION_STATUSES:
         raise StaleApprovalError("Application is no longer in an approved state")
-    await session.refresh(context.resume)
-    await session.refresh(context.approval)
+    await session.refresh(context.resume, with_for_update=True)
+    await session.refresh(context.approval, with_for_update=True)
     if context.approval.status != ApprovalStatus.APPROVED:
         raise StaleApprovalError("The authorising approval is no longer granted")
+    if context.resume.verification_status != "passed":
+        raise StaleApprovalError("Resume verification is no longer passed")
+    if (
+        frozen_material_digest(context.resume, context.approval.subject_snapshot or {})
+        != context.material_digest
+    ):
+        raise StaleApprovalError("The approved export inputs changed while rendering")
     if not snapshot_matches(context.approval.subject_snapshot or {}, context.resume):
         raise StaleApprovalError("The approval no longer describes this resume version")
 

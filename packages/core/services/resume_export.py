@@ -39,6 +39,22 @@ def export_binding(resume: Resume, document: dict[str, Any]) -> str:
     )
 
 
+def frozen_material_digest(resume: Resume, snapshot: dict[str, Any]) -> str:
+    """Identity of the exact inputs used to produce bytes, independent of later reloads."""
+    return digest(
+        {
+            "resume_id": str(resume.id),
+            "version": resume.version,
+            "application_id": str(resume.application_id),
+            "profile_id": str(resume.profile_id),
+            "kind": resume.kind,
+            "verification_status": resume.verification_status,
+            "content": resume.content,
+            "approval_snapshot": snapshot,
+        }
+    )
+
+
 async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> dict[str, Any]:
     # Lock the profile: all supported source mutations bump its version and take
     # this lock. Approval compares exactly the preview, including source version.

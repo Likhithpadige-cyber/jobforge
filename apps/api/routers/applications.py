@@ -25,6 +25,7 @@ documents.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -260,8 +261,8 @@ async def download_packet(
 
     store = artifact_store(settings)
     data = await store.get(artifact.storage_key)
-    if artifact.sha256:
-        await store.verify(artifact.storage_key, sha256=artifact.sha256)
+    if artifact.sha256 and hashlib.sha256(data).hexdigest() != artifact.sha256:
+        raise ArtifactIntegrityError("packet checksum mismatch")
 
     filename = sanitize_filename(f"jobforge-packet-{application_id}.zip")
     return Response(

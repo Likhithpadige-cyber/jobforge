@@ -51,7 +51,13 @@ def sample():
             }
         },
     }
-    resume = Resume(id=UUID(int=1), profile_id=UUID(int=2), version=3, content=content)
+    resume = Resume(
+        id=UUID(int=1),
+        profile_id=UUID(int=2),
+        version=3,
+        content=content,
+        verification_status="passed",
+    )
     document = {
         "schema_version": 1,
         "profile_id": str(UUID(int=2)),
@@ -459,13 +465,14 @@ def test_font_asset_is_pinned_and_license_is_present():
 
     root = Path(__file__).resolve().parents[2] / "packages/services/rendering/fonts"
     assert hashlib.sha256((root / "NotoSans-Regular.ttf").read_bytes()).hexdigest() == (
+        # pragma: allowlist nextline secret (public font SHA-256)
         "f5f552c8c5edb61fe6efb824baf4d4de47b1a8689ab4925ff43f7bd6a4ebece5"
     )
     assert "OFL" in (root / "OFL.txt").read_text()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalidate", [False, True])
+@pytest.mark.parametrize("invalidate", [False, True, "reapproved", "verification"])
 async def test_production_artifacts_bind_exact_approval_and_refuse_mid_render_changes(
     tmp_path, invalidate
 ):
@@ -474,6 +481,7 @@ async def test_production_artifacts_bind_exact_approval_and_refuse_mid_render_ch
 
     resume, data = sample()
     resume.application_id = UUID(int=8)
+    resume.verification_status = "passed"
     approval = SimpleNamespace(
         id=UUID(int=7), subject_snapshot=snapshot(resume, data), status="approved"
     )
@@ -484,9 +492,15 @@ async def test_production_artifacts_bind_exact_approval_and_refuse_mid_render_ch
     session.scalars.return_value = MagicMock(first=lambda: None)
     store = FilesystemArtifactStore(tmp_path / "artifacts")
 
-    async def refresh(row):
-        if invalidate and row is approval:
+    async def refresh(row, **kwargs):
+        if invalidate == "verification" and row is resume:
+            row.verification_status = "failed"
+        if invalidate in (True, "reapproved") and row is approval:
             row.subject_snapshot["export_document"]["contact"]["email"] = "changed@example.invalid"
+            if invalidate == "reapproved":
+                row.subject_snapshot["export_digest"] = export_binding(
+                    resume, row.subject_snapshot["export_document"]
+                )
 
     session.refresh.side_effect = refresh
     with (
@@ -526,13 +540,14 @@ async def test_production_artifacts_bind_exact_approval_and_refuse_mid_render_ch
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", [None, "checksum", "approval"])
+@pytest.mark.parametrize("failure", [None, "checksum", "approval", "metadata"])
 async def test_manual_packet_real_bytes_and_fail_closed_persistence(tmp_path, failure):
     from packages.core.models import Artifact, Job
     from packages.services.rendering.store import FilesystemArtifactStore
 
     resume, data = sample()
     resume.application_id = UUID(int=8)
+    resume.verification_status = "passed"
     approval = SimpleNamespace(
         id=UUID(int=7), subject_snapshot=snapshot(resume, data), status="approved"
     )
@@ -564,9 +579,16 @@ async def test_manual_packet_real_bytes_and_fail_closed_persistence(tmp_path, fa
     session.get.return_value = job
     session.execute.return_value = MagicMock(scalar_one_or_none=lambda: None)
 
-    async def refresh(row):
+    async def refresh(row, **kwargs):
         if failure == "approval" and row is approval:
             approval.status = "changes_requested"
+        if failure == "metadata" and row is approval:
+            approval.subject_snapshot["export_document"]["contact"]["email"] = (
+                "changed@example.invalid"
+            )
+            approval.subject_snapshot["export_digest"] = export_binding(
+                resume, approval.subject_snapshot["export_document"]
+            )
 
     session.refresh.side_effect = refresh
     with (
@@ -638,3 +660,106 @@ def test_docx_styles_have_no_inherited_title_rule_or_theme_color():
     )
     assert not list(reopened.styles.element.iter(qn("w:pBdr")))
     assert str(reopened.styles["Title"].font.color.rgb) == "000000"
+
+
+@pytest.mark.asyncio
+async def test_download_hashes_returned_bytes_instead_of_a_second_store_read():
+    from apps.api.routers import artifacts as route
+    from packages.core.models import Artifact
+    from packages.services.rendering.store import ArtifactIntegrityError
+
+    artifact = Artifact(
+        id=UUID(int=40),
+        resume_id=UUID(int=1),
+        kind="resume_pdf",
+        storage_key="synthetic/test.pdf",
+        content_type="application/pdf",
+        sha256=hashlib.sha256(b"approved bytes").hexdigest(),
+    )
+    session = AsyncMock()
+    session.get.return_value = artifact
+    store = AsyncMock()
+    store.get.return_value = b"corrupted response bytes"
+    # The old code verified a second read, which can differ from the response.
+    store.verify.return_value = None
+    with (
+        patch.object(route, "artifact_store", return_value=store),
+        pytest.raises(ArtifactIntegrityError, match="checksum"),
+    ):
+        await route.download_artifact(
+            artifact.id, session, MagicMock(), SimpleNamespace(role="owner")
+        )
+    store.verify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_contact_snapshot_is_owner_only_even_with_a_different_template_name():
+    from apps.api.routers import artifacts as route
+    from packages.core.models import Approval, Artifact
+
+    artifact = Artifact(
+        id=UUID(int=40),
+        resume_id=UUID(int=1),
+        approval_id=UUID(int=7),
+        kind="resume_pdf",
+        template_version="future-custom-template/3",
+    )
+    approval = SimpleNamespace(subject_snapshot={"export_document": {"contact": {}}})
+    resume = SimpleNamespace(profile_id=UUID(int=2))
+    profile = SimpleNamespace(user_id=UUID(int=9))
+    session = AsyncMock()
+    session.get.side_effect = lambda model, identifier: {
+        Artifact: artifact,
+        Approval: approval,
+        Resume: resume,
+        Profile: profile,
+    }[model]
+    with patch.object(route, "artifact_store") as storage, pytest.raises(NotFoundError):
+        await route.download_artifact(
+            artifact.id, session, MagicMock(), SimpleNamespace(role="reviewer", id=UUID(int=9))
+        )
+    storage.assert_not_called()
+
+
+def test_pdf_rejects_unsupported_characters_in_custom_section_headings():
+    document = build_document(
+        resume_id="synthetic",
+        resume_version=1,
+        content={"未知": {"0": {"text": "Supported Latin text.", "order": 0}}},
+    )
+    with pytest.raises(RendererUnavailableError, match="Unsupported export character"):
+        PdfResumeRenderer(TEMPLATE_VERSION).render(document)
+
+
+@pytest.mark.asyncio
+async def test_historical_text_only_artifact_remains_readable_by_reviewer():
+    from apps.api.routers import artifacts as route
+    from packages.core.models import Approval, Artifact
+
+    raw = b"historical synthetic artifact without contact details"
+    artifact = Artifact(
+        id=UUID(int=40),
+        resume_id=UUID(int=1),
+        approval_id=UUID(int=7),
+        resume_version=1,
+        kind="resume_pdf",
+        template_version="ats-single-column/1",
+        storage_key="synthetic/historical.pdf",
+        content_type="application/pdf",
+        sha256=hashlib.sha256(raw).hexdigest(),
+    )
+    approval = SimpleNamespace(
+        subject_snapshot={"resume_id": str(UUID(int=1)), "resume_version": 1}
+    )
+    session = AsyncMock()
+    session.get.side_effect = lambda model, identifier: {Artifact: artifact, Approval: approval}[
+        model
+    ]
+    store = AsyncMock()
+    store.get.return_value = raw
+    with patch.object(route, "artifact_store", return_value=store):
+        response = await route.download_artifact(
+            artifact.id, session, MagicMock(), SimpleNamespace(role="reviewer")
+        )
+    assert response.body == raw
+    assert response.headers["cache-control"] == "private, no-store"

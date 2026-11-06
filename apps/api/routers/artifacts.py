@@ -13,6 +13,7 @@ are indistinguishable from outside.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -28,7 +29,7 @@ from apps.api.deps import (
     rate_limited,
 )
 from apps.api.schemas.artifacts import ArtifactRead
-from packages.core.models import Artifact, Resume
+from packages.core.models import Approval, Artifact, Resume
 from packages.core.services.artifacts import artifact_payloads
 from packages.services.rendering.keys import download_filename
 from packages.services.rendering.protocol import ALLOWED_CONTENT_TYPES
@@ -85,9 +86,16 @@ async def download_artifact(
     artifact = await session.get(Artifact, artifact_id)
     if artifact is None or artifact.resume_id is None:
         raise NotFoundError(_MISSING)
-    if artifact.template_version and (
-        artifact.template_version.startswith("ats-single-column/2")
-        or artifact.template_version.startswith("manual-handoff/2")
+    approval = await session.get(Approval, artifact.approval_id) if artifact.approval_id else None
+    contact_snapshot = approval is not None and "export_document" in (
+        approval.subject_snapshot or {}
+    )
+    if contact_snapshot or (
+        artifact.template_version
+        and (
+            artifact.template_version.startswith("ats-single-column/2")
+            or artifact.template_version.startswith("manual-handoff/2")
+        )
     ):
         from packages.core.models import Profile
 
@@ -104,8 +112,8 @@ async def download_artifact(
     # absent/unreadable identifiers remain indistinguishable without storage.
     store = artifact_store(settings)
     data = await store.get(artifact.storage_key)
-    if artifact.sha256:
-        await store.verify(artifact.storage_key, sha256=artifact.sha256)
+    if artifact.sha256 and hashlib.sha256(data).hexdigest() != artifact.sha256:
+        raise ArtifactIntegrityError("artifact checksum mismatch")
 
     filename = download_filename(
         application_id=artifact.application_id or artifact.resume_id,
