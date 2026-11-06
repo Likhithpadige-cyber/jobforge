@@ -103,7 +103,7 @@ async def test_m5_unknown_templates_are_owner_only_without_a_snapshot_marker(tem
     resume = SimpleNamespace(profile_id=UUID(int=2))
     profile = SimpleNamespace(user_id=UUID(int=9))
     db = AsyncMock()
-    db.get.side_effect = lambda model, identifier: {
+    db.get.side_effect = lambda model, identifier, **kwargs: {
         Artifact: artifact,
         Resume: resume,
         Profile: profile,

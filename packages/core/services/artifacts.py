@@ -38,6 +38,7 @@ from packages.core.models import Application, Approval, Artifact, Resume
 from packages.core.models.enums import ApprovalKind, ApprovalStatus
 from packages.core.services.resume_export import (
     approved_export,
+    approved_fingerprints,
     frozen_material_digest,
     validate_current_evidence,
     validate_export_records,
@@ -118,6 +119,8 @@ async def _authorising_approval(
                 Approval.status == ApprovalStatus.APPROVED,
             )
             .order_by(Approval.decided_at.desc())
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
     ).all()
     for approval in rows:
@@ -175,7 +178,13 @@ async def _revalidate(session: AsyncSession, context: RenderContext) -> None:
         != context.material_digest
     ):
         raise StaleApprovalError("The approved export inputs changed while rendering")
-    await validate_current_evidence(session, context.resume, lock=True)
+    await validate_current_evidence(
+        session,
+        context.resume,
+        lock=True,
+        fingerprints=approved_fingerprints(context.approval.subject_snapshot or {}),
+        approved_at=context.approval.decided_at,
+    )
     await validate_export_records(session, context.approval.subject_snapshot or {})
     if not snapshot_matches(context.approval.subject_snapshot or {}, context.resume):
         raise StaleApprovalError("The approval no longer describes this resume version")
@@ -233,8 +242,14 @@ async def render_resume(
     """
     context = await load_context(session, resume_id)
     selected = _select_renderers(renderers, allow_non_production=allow_non_production_renderers)
-    await validate_current_evidence(session, context.resume)
     snapshot = context.approval.subject_snapshot or {}
+    await validate_current_evidence(
+        session,
+        context.resume,
+        lock=True,
+        fingerprints=approved_fingerprints(snapshot),
+        approved_at=context.approval.decided_at,
+    )
     await validate_export_records(session, snapshot)
     export_data = None
     if any(r.production for r in selected):

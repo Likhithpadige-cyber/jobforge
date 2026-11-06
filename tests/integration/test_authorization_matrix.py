@@ -304,6 +304,7 @@ OWNER_ONLY = frozenset(
         ("PATCH", "/api/v1/profile/facts/{fact_id}"),
         ("DELETE", "/api/v1/profile/facts/{fact_id}"),
         ("POST", "/api/v1/profile/facts/{fact_id}/verify"),
+        ("POST", "/api/v1/profile/facts/{fact_id}/repair-source"),
         ("POST", "/api/v1/profile/facts/{fact_id}/unverify"),
         ("POST", "/api/v1/profile/facts/{fact_id}/retire"),
         ("POST", "/api/v1/profile/facts/{fact_id}/evidence"),

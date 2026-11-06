@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import unicodedata
+from datetime import datetime
 from typing import Any, cast
 
 from sqlalchemy import select
@@ -69,13 +70,71 @@ def frozen_material_digest(resume: Resume, snapshot: dict[str, Any]) -> str:
     )
 
 
+def fact_fingerprint(fact: ProfileFact) -> dict[str, str]:
+    """A content-addressed fact version; audit counters/timestamps are not substance."""
+    material = {
+        "id": str(fact.id),
+        "profile_id": str(fact.profile_id),
+        "text": fact.text,
+        "structured": fact.structured or {},
+        "fact_type": str(fact.fact_type),
+        "source_table": fact.source_table,
+        "source_id": str(fact.source_id),
+        "confidence": fact.confidence,
+        "valid_from": fact.valid_from.isoformat() if fact.valid_from else None,
+        "valid_to": fact.valid_to.isoformat() if fact.valid_to else None,
+    }
+    return {
+        "version": digest(material),
+        "sha256": digest({"schema_version": 1, "material": material}),
+    }
+
+
+def approved_fingerprints(snapshot: dict[str, Any]) -> dict[str, Any] | None:
+    document = snapshot.get("export_document")
+    if isinstance(document, dict):
+        value = document.get("evidence_fingerprints")
+        if value is None:
+            raise ConflictError(
+                "Export consent lacks evidence fingerprints; obtain a new owner review"
+            )
+    else:
+        value = snapshot.get("evidence_fingerprints")
+    if value is not None and (
+        not isinstance(value, dict)
+        or type(value.get("schema_version")) is not int
+        or value.get("schema_version") != 1
+        or not isinstance(value.get("facts"), dict)
+    ):
+        raise ConflictError("Approved evidence fingerprints are invalid; obtain a new review")
+    return value
+
+
+def _required_fingerprint(value: dict[str, Any], fact_id: str) -> dict[str, str]:
+    record = value["facts"].get(fact_id)
+    if (
+        not isinstance(record, dict)
+        or set(record) != {"version", "sha256"}
+        or any(
+            not isinstance(v, str) or len(v) != 64 or any(c not in "0123456789abcdef" for c in v)
+            for v in record.values()
+        )
+    ):
+        raise ConflictError(
+            "Required evidence fingerprint is absent or invalid; obtain a new review"
+        )
+    return cast(dict[str, str], record)
+
+
 async def validate_current_evidence(
     session: AsyncSession,
     resume: Resume,
     *,
     lock: bool = False,
     extra_fact_ids: set[str] | None = None,
-) -> None:
+    fingerprints: dict[str, Any] | None = None,
+    approved_at: datetime | None = None,
+) -> dict[str, Any]:
     """Frozen consent cannot keep withdrawn, expired or unverified evidence active."""
     cited = {
         str(fid)
@@ -85,7 +144,7 @@ async def validate_current_evidence(
     }
     cited.update(extra_fact_ids or set())
     if not cited:
-        return
+        return {"schema_version": 1, "facts": {}}
     query = select(ProfileFact).where(ProfileFact.profile_id == resume.profile_id)
     if lock:
         query = query.with_for_update()
@@ -102,6 +161,25 @@ async def validate_current_evidence(
             or (fact.valid_to and fact.valid_to < today)
         ):
             raise ConflictError("Resume cites inactive evidence; regenerate before export")
+        if fingerprints is not None:
+            if _required_fingerprint(fingerprints, fid) != fact_fingerprint(fact):
+                raise ConflictError(
+                    "Approved evidence content changed; regenerate and review before export"
+                )
+        elif approved_at is not None and fact.updated_at > approved_at:
+            # Pre-fingerprint text approvals have no content history. Do not
+            # manufacture a historical fingerprint after an evidence edit.
+            raise ConflictError(
+                "Legacy evidence changed since review; regenerate and review before export"
+            )
+    return {
+        "schema_version": 1,
+        "facts": {
+            str(f.id): fact_fingerprint(f)
+            for f in facts
+            if str(f.status) == "verified" and f.deleted_at is None
+        },
+    }
 
 
 async def validate_export_records(session: AsyncSession, snapshot: dict[str, Any]) -> None:
@@ -144,7 +222,7 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
             )
         ).all()
     )
-    await validate_current_evidence(session, resume)
+    fingerprints = await validate_current_evidence(session, resume, lock=True)
     cited = {
         str(fid)
         for section in (resume.content or {}).values()
@@ -236,6 +314,7 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
         "schema_version": 1,
         "profile_id": str(profile.id),
         "profile_version": profile.version,
+        "evidence_fingerprints": fingerprints,
         "contact": contact,
         "links": links,
         "records": records,
@@ -247,6 +326,22 @@ async def preview_export(session: AsyncSession, resume: Resume, actor: User) -> 
             record["fields"] = {k: single_line(str(v)) for k, v in record["fields"].items()}
     except ValueError as exc:
         raise ConflictError(str(exc)) from exc
+    from packages.core.services.profile_service import ProfileService
+    from packages.shared.errors import ValidationError
+
+    for fact in facts:
+        if str(fact.id) in cited:
+            try:
+                await ProfileService(session).validate_fact_source(
+                    profile.id, fact.source_table, fact.source_id
+                )
+            except ValidationError as exc:
+                raise ConflictError(
+                    f"Fact {fact.id} has a missing, deleted or foreign source. Select an active "
+                    f"record and use POST /profile/facts/{fact.id}/repair-source; verify the "
+                    "replacement, then generate and approve a new resume version. "
+                    "Existing approved claims will not be relinked."
+                ) from exc
     # Validate association and renderability before asking a person to approve.
     from packages.services.rendering.document import MalformedResumeContentError, build_document
     from packages.services.rendering.pdf import validate_text
@@ -279,6 +374,12 @@ def approved_export(snapshot: dict[str, Any], resume: Resume) -> dict[str, Any]:
         raise ConflictError(
             "Complete export requires fresh owner approval of contact and structured details"
         )
+    fingerprints = approved_fingerprints(snapshot)
+    assert fingerprints is not None
+    for section in (resume.content or {}).values():
+        for entry in section.values():
+            for fid in entry.get("fact_ids", []):
+                _required_fingerprint(fingerprints, str(fid))
     # Revalidate older frozen snapshots too: manual/cached artifact paths do
     # not necessarily rebuild a document through a renderer before reuse.
     from packages.services.rendering.document import MalformedResumeContentError, build_document

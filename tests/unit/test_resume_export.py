@@ -72,6 +72,10 @@ def sample():
     )
     document = {
         "schema_version": 1,
+        "evidence_fingerprints": {
+            "schema_version": 1,
+            "facts": {str(UUID(int=4)): {"version": "0" * 64, "sha256": "1" * 64}},
+        },
         "profile_id": str(UUID(int=2)),
         "profile_version": 5,
         "contact": {
@@ -370,6 +374,12 @@ def preview_session(*, fact_status="verified", cert_status="active", expires=Non
         expires_date=expires,
     )
     session = AsyncMock()
+    session.get.side_effect = lambda model, identifier, **kwargs: {
+        Profile: profile,
+        Experience: exp,
+        Education: education,
+        Certification: cert,
+    }.get(model)
     session.scalar.return_value = None if foreign else profile
     session.scalars.side_effect = [
         MagicMock(all=lambda: [fact]),
@@ -448,7 +458,9 @@ async def test_changed_preview_is_refused_before_any_approval_write():
 @pytest.mark.asyncio
 async def test_manual_package_refuses_missing_format_before_storage():
     resume, data = sample()
-    approval = SimpleNamespace(id=UUID(int=7), subject_snapshot=snapshot(resume, data))
+    approval = SimpleNamespace(
+        id=UUID(int=7), subject_snapshot=snapshot(resume, data), decided_at=None
+    )
     session, store = AsyncMock(), AsyncMock()
     session.scalars.return_value = MagicMock(all=lambda: [])
     with (
@@ -497,7 +509,7 @@ async def test_production_artifacts_bind_exact_approval_and_refuse_mid_render_ch
     resume.application_id = UUID(int=8)
     resume.verification_status = "passed"
     approval = SimpleNamespace(
-        id=UUID(int=7), subject_snapshot=snapshot(resume, data), status="approved"
+        id=UUID(int=7), subject_snapshot=snapshot(resume, data), status="approved", decided_at=None
     )
     application = SimpleNamespace(id=UUID(int=8), status="approved")
     context = RenderContext(resume, application, approval)
@@ -563,7 +575,7 @@ async def test_manual_packet_real_bytes_and_fail_closed_persistence(tmp_path, fa
     resume.application_id = UUID(int=8)
     resume.verification_status = "passed"
     approval = SimpleNamespace(
-        id=UUID(int=7), subject_snapshot=snapshot(resume, data), status="approved"
+        id=UUID(int=7), subject_snapshot=snapshot(resume, data), status="approved", decided_at=None
     )
     application = SimpleNamespace(id=UUID(int=8), status="manual_handoff", job_id=UUID(int=10))
     job = Job(id=application.job_id, title="Synthetic Role", url="https://example.invalid/job")
@@ -593,7 +605,14 @@ async def test_manual_packet_real_bytes_and_fail_closed_persistence(tmp_path, fa
     session.get.return_value = job
     session.execute.return_value = MagicMock(scalar_one_or_none=lambda: None)
 
+    approval_refreshes = 0
+
     async def refresh(row, **kwargs):
+        nonlocal approval_refreshes
+        if row is approval:
+            approval_refreshes += 1
+            if approval_refreshes == 1:
+                return
         if failure == "approval" and row is approval:
             approval.status = "changes_requested"
         if failure == "metadata" and row is approval:
@@ -693,7 +712,7 @@ async def test_download_hashes_returned_bytes_instead_of_a_second_store_read():
     )
     session = AsyncMock()
     session.get.side_effect = (
-        lambda model, identifier: artifact
+        lambda model, identifier, **kwargs: artifact
         if model is Artifact
         else Resume(id=UUID(int=1), content={})
     )
@@ -727,7 +746,7 @@ async def test_contact_snapshot_is_owner_only_even_with_a_different_template_nam
     resume = SimpleNamespace(profile_id=UUID(int=2))
     profile = SimpleNamespace(user_id=UUID(int=9))
     session = AsyncMock()
-    session.get.side_effect = lambda model, identifier: {
+    session.get.side_effect = lambda model, identifier, **kwargs: {
         Artifact: artifact,
         Approval: approval,
         Resume: resume,
@@ -768,10 +787,10 @@ async def test_historical_text_only_artifact_remains_readable_by_reviewer():
         sha256=hashlib.sha256(raw).hexdigest(),
     )
     approval = SimpleNamespace(
-        subject_snapshot={"resume_id": str(UUID(int=1)), "resume_version": 1}
+        subject_snapshot={"resume_id": str(UUID(int=1)), "resume_version": 1}, decided_at=None
     )
     session = AsyncMock()
-    session.get.side_effect = lambda model, identifier: {
+    session.get.side_effect = lambda model, identifier, **kwargs: {
         Artifact: artifact,
         Approval: approval,
         Resume: SimpleNamespace(content={}),

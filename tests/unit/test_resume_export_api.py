@@ -127,7 +127,7 @@ async def test_contact_export_download_checks_profile_owner_before_storage(
 ):
     import hashlib
 
-    from packages.core.models import Artifact, Profile, Resume
+    from packages.core.models import Artifact, Profile
 
     app, actor, db = isolated_api
     actor.role = role
@@ -143,9 +143,18 @@ async def test_contact_export_download_checks_profile_owner_before_storage(
         resume_version=3,
         application_id=APP_ID,
     )
-    resume = Resume(id=UUID(int=1), profile_id=UUID(int=2))
+    from tests.unit.test_resume_export import sample, snapshot
+
+    resume, export_data = sample()
+    # This authorization fixture has no credential/source records.
+    export_data["records"] = []
+    resume.content = {}
+    artifact.approval_id = UUID(int=7)
+    approval = SimpleNamespace(
+        subject_snapshot=snapshot(resume, export_data), status="approved", decided_at=None
+    )
     profile = Profile(id=UUID(int=2), user_id=actor.id if owns else UUID(int=10))
-    db.get.side_effect = [artifact, resume, profile]
+    db.get.side_effect = [artifact, approval, resume, profile]
     store = AsyncMock()
     store.get.return_value = raw
     with patch("apps.api.routers.artifacts.artifact_store", return_value=store) as factory:

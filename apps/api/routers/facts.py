@@ -26,6 +26,7 @@ from apps.api.schemas.facts import (
     FactEvidenceCreate,
     FactEvidenceRead,
     FactRead,
+    FactSourceRepair,
     FactSuggestRequest,
     FactSummary,
     FactUpdate,
@@ -106,10 +107,14 @@ async def list_citable(session: DbSession) -> Any:
     summary="Create a draft fact",
     dependencies=[Depends(require_owner)],
 )
-async def create_fact(payload: FactCreate, session: DbSession) -> Any:
+async def create_fact(payload: FactCreate, session: DbSession, owner: RequireOwner) -> Any:
     repo = FactRepository(session)
+    profile_id = await _profile_id(session)
+    await ProfileService(session).validate_fact_source(
+        profile_id, payload.source_table, payload.source_id, actor=owner
+    )
     fact = await repo.create_draft(
-        profile_id=await _profile_id(session),
+        profile_id=profile_id,
         fact_type=payload.fact_type,
         text_value=payload.text,
         source_table=payload.source_table,
@@ -122,6 +127,30 @@ async def create_fact(payload: FactCreate, session: DbSession) -> Any:
         fact.valid_to = payload.valid_to
         await session.flush()
     return await _saved(session, fact)
+
+
+@router.post(
+    "/{fact_id}/repair-source",
+    response_model=FactRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Replace a fact with a dangling source (owner authorization)",
+    dependencies=[Depends(require_owner)],
+)
+async def repair_fact_source(
+    fact_id: UUID,
+    payload: FactSourceRepair,
+    session: DbSession,
+    owner: RequireOwner,
+) -> Any:
+    replacement = await ProfileService(session).repair_fact_source(
+        profile_id=await _profile_id(session),
+        fact_id=fact_id,
+        source_id=payload.source_id,
+        expected_updated_at=payload.expected_updated_at,
+        note=payload.note,
+        actor=owner,
+    )
+    return await _saved(session, replacement)
 
 
 @router.get("/{fact_id}", response_model=FactRead)

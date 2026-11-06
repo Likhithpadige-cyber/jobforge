@@ -52,7 +52,11 @@ from packages.core.models import (
 )
 from packages.core.services.applications import existing_questions
 from packages.core.services.cover_letters import latest_cover_letter
-from packages.core.services.resume_export import validate_current_evidence, validate_export_records
+from packages.core.services.resume_export import (
+    approved_fingerprints,
+    validate_current_evidence,
+    validate_export_records,
+)
 from packages.core.services.resume_review import latest_tailored_resume
 from packages.services.ingestion.policy import extract_domain
 from packages.shared.errors import ConflictError
@@ -164,14 +168,26 @@ async def validate_package_evidence(session: AsyncSession, source: PacketSource)
         if question.answer
         for fid in question.answer.fact_ids
     )
-    await validate_current_evidence(session, source.resume, lock=True, extra_fact_ids=cited)
+    from packages.core.models import Approval
+
+    approval = await session.get(
+        Approval, source.resume_artifact.approval_id, with_for_update=True, populate_existing=True
+    )
+    snapshot = approval.subject_snapshot or {} if approval else {}
+    await validate_current_evidence(
+        session,
+        source.resume,
+        lock=True,
+        extra_fact_ids=cited,
+        fingerprints=approved_fingerprints(snapshot),
+        approved_at=approval.decided_at if approval else None,
+    )
 
 
 async def _load_source(session: AsyncSession, application: Application) -> PacketSource:
     resume = await latest_tailored_resume(session, application.id)
     if resume is None:
         raise ResumeNotRenderedError(f"no resume exists for application {application.id}")
-    await validate_current_evidence(session, resume, lock=True)
     resume_artifact = (
         await session.execute(
             select(Artifact)
@@ -184,6 +200,13 @@ async def _load_source(session: AsyncSession, application: Application) -> Packe
         raise ResumeNotRenderedError(
             f"resume {resume.id} v{resume.version} has no rendered PDF artifact yet"
         )
+    from packages.services.rendering.protocol import LEGACY_REVIEWER_TEMPLATES
+
+    if (
+        resume_artifact.approval_id is None
+        and resume_artifact.template_version not in LEGACY_REVIEWER_TEMPLATES
+    ):
+        raise ConflictError("Contact export lacks a bound owner approval and evidence fingerprints")
     if resume_artifact.approval_id is not None:
         from packages.core.models import Approval
         from packages.core.services.resume_export import approved_export
@@ -191,10 +214,25 @@ async def _load_source(session: AsyncSession, application: Application) -> Packe
         approval = await session.get(
             Approval, resume_artifact.approval_id, populate_existing=True, with_for_update=True
         )
+        if approval is not None:
+            await validate_current_evidence(
+                session,
+                resume,
+                lock=True,
+                fingerprints=approved_fingerprints(approval.subject_snapshot or {}),
+                approved_at=approval.decided_at,
+            )
         if approval is not None and "export_document" in (approval.subject_snapshot or {}):
             if str(approval.status) != "approved":
                 raise ConflictError("Export approval is no longer granted")
             approved_export(approval.subject_snapshot, resume)
+            await validate_current_evidence(
+                session,
+                resume,
+                lock=True,
+                fingerprints=approved_fingerprints(approval.subject_snapshot),
+                approved_at=approval.decided_at,
+            )
             await validate_export_records(session, approval.subject_snapshot)
     cover_letter = await latest_cover_letter(session, application.id)
     if cover_letter is None:
@@ -464,6 +502,7 @@ async def generate_manual_packet(
     from packages.core.services.review_completion import current_resume_approval, review_is_complete
     from packages.services.rendering.protocol import TEMPLATE_VERSION
 
+    await session.refresh(application, with_for_update=True)
     if application.status not in PACKET_ELIGIBLE_STATUSES or not await review_is_complete(
         session, application
     ):
@@ -472,10 +511,17 @@ async def generate_manual_packet(
     approval = await current_resume_approval(session, application)
     if resume is None or approval is None:
         raise ConflictError("No current approved resume")
+    await session.refresh(approval, with_for_update=True)
     approved_export(approval.subject_snapshot, resume)
     if resume.verification_status != "passed":
         raise ConflictError("Resume verification is no longer passed")
-    await validate_current_evidence(session, resume, lock=True)
+    await validate_current_evidence(
+        session,
+        resume,
+        lock=True,
+        fingerprints=approved_fingerprints(approval.subject_snapshot),
+        approved_at=approval.decided_at,
+    )
     await validate_export_records(session, approval.subject_snapshot)
     initial_material = frozen_material_digest(resume, approval.subject_snapshot)
     artifacts = list(
@@ -554,7 +600,13 @@ async def generate_manual_packet(
     await store.put(key, data, content_type=PACKET_CONTENT_TYPE)
     sha256 = hashlib.sha256(data).hexdigest()
     await store.verify(key, sha256=sha256)
-    await validate_current_evidence(session, resume, lock=True)
+    await validate_current_evidence(
+        session,
+        resume,
+        lock=True,
+        fingerprints=approved_fingerprints(approval.subject_snapshot),
+        approved_at=approval.decided_at,
+    )
     await validate_export_records(session, approval.subject_snapshot)
     # Re-read approval/content after external storage activity.
     await session.refresh(resume, with_for_update=True)

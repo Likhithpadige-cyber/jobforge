@@ -56,6 +56,14 @@ class FactUpdate(StrictModel):
     valid_to: date | None = None
 
 
+class FactSourceRepair(StrictModel):
+    """Explicit replacement of a dangling source; the original fact is retained."""
+
+    source_id: UUID
+    expected_updated_at: datetime
+    note: str = Field(min_length=1, max_length=1000)
+
+
 class FactRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

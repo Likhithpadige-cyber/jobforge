@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.core.models import (
@@ -18,9 +20,11 @@ from packages.core.models import (
     ProfileFact,
     Project,
     Skill,
+    User,
 )
 from packages.core.repositories import (
     CHILD_REPOSITORIES,
+    FactEvidenceRepository,
     FactRepository,
     ProfileRepository,
 )
@@ -69,6 +73,108 @@ class ProfileService:
                 setattr(profile, key, value)
         await self.profiles.bump_version(profile)
         return profile
+
+    async def _valid_fact_source(self, profile_id: UUID, kind: str, source_id: UUID) -> bool:
+        if kind == "profiles":
+            if source_id != profile_id:
+                return False
+            record = await self.session.get(Profile, source_id, populate_existing=True)
+            return record is not None and record.id == profile_id
+        if kind not in CHILD_REPOSITORIES:
+            return False
+        model = CHILD_REPOSITORIES[kind].model
+        child = await self.session.get(model, source_id, populate_existing=True)
+        return bool(
+            child is not None and child.profile_id == profile_id and child.deleted_at is None
+        )
+
+    async def validate_fact_source(
+        self, profile_id: UUID, kind: str, source_id: UUID, *, actor: User | None = None
+    ) -> None:
+        # Serialize with supported profile writes via the parent lock. Child
+        # CRUD takes its row before bumping the profile, so do not invert that
+        # order by taking a child write lock while holding the profile.
+        profile = await self.session.get(Profile, profile_id, with_for_update=True)
+        if actor is not None and (
+            profile is None or actor.role != "owner" or profile.user_id != actor.id
+        ):
+            raise NotFoundError("fact source not found")
+        if not await self._valid_fact_source(profile_id, kind, source_id):
+            raise ValidationError(
+                "Fact source must be an existing, active record on this profile; "
+                "create or select the correct profile entry first"
+            )
+
+    async def repair_fact_source(
+        self,
+        *,
+        profile_id: UUID,
+        fact_id: UUID,
+        source_id: UUID,
+        expected_updated_at: datetime,
+        note: str,
+        actor: User,
+    ) -> ProfileFact:
+        """Owner explicitly replaces dangling evidence; original content and link survive."""
+        profile = await self.session.get(Profile, profile_id, with_for_update=True)
+        if profile is None or actor.role != "owner" or profile.user_id != actor.id:
+            raise NotFoundError("fact source repair not found")
+        original = await self.session.scalar(
+            select(ProfileFact)
+            .where(
+                ProfileFact.id == fact_id,
+                ProfileFact.profile_id == profile_id,
+                ProfileFact.deleted_at.is_(None),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if original is None:
+            raise NotFoundError("fact source repair not found")
+        if not note.strip():
+            raise ValidationError("Source repair requires an owner explanation")
+        if original.updated_at != expected_updated_at or original.status == FactStatus.RETIRED:
+            raise ConflictError("Fact changed or was already retired; reload before source repair")
+        if await self._valid_fact_source(profile_id, original.source_table, original.source_id):
+            raise ConflictError(
+                "The source is still valid; source repair is only for dangling references"
+            )
+        await self.validate_fact_source(profile_id, original.source_table, source_id)
+        duplicate = await self.session.scalar(
+            select(ProfileFact.id).where(
+                ProfileFact.profile_id == profile_id,
+                ProfileFact.source_table == original.source_table,
+                ProfileFact.source_id == source_id,
+                ProfileFact.text == original.text,
+                ProfileFact.deleted_at.is_(None),
+            )
+        )
+        if duplicate is not None:
+            raise ConflictError("Replacement evidence already exists; review that fact instead")
+        replacement = await self.facts.create_draft(
+            profile_id=profile_id,
+            fact_type=original.fact_type,
+            text_value=original.text,
+            source_table=original.source_table,
+            source_id=source_id,
+            structured=original.structured,
+            confidence=original.confidence,
+        )
+        replacement.valid_from, replacement.valid_to = original.valid_from, original.valid_to
+        # Never update the approved fact's text, source or ID, or relink resume claims.
+        original.status = FactStatus.RETIRED
+        history = (
+            f"Owner-authorized source repair: original {original.id} "
+            f"({original.source_table}/{original.source_id}); replacement {replacement.id} "
+            f"({replacement.source_table}/{replacement.source_id}). Reason: {note.strip()}"
+        )
+        evidence = FactEvidenceRepository(self.session)
+        for fact in (original, replacement):
+            await evidence.create(
+                fact_id=fact.id, kind="attestation", note=history, added_by=actor.id
+            )
+        await self.session.flush()
+        return replacement
 
     # ------------------------------------------------- fact suggestions
     def _suggest_texts(self, entity: Any, kind: str) -> list[tuple[str, dict[str, Any]]]:

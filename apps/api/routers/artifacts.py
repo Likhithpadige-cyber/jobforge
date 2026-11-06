@@ -86,7 +86,13 @@ async def download_artifact(
     artifact = await session.get(Artifact, artifact_id)
     if artifact is None or artifact.resume_id is None:
         raise NotFoundError(_MISSING)
-    approval = await session.get(Approval, artifact.approval_id) if artifact.approval_id else None
+    approval = (
+        await session.get(
+            Approval, artifact.approval_id, with_for_update=True, populate_existing=True
+        )
+        if artifact.approval_id
+        else None
+    )
     contact_snapshot = approval is not None and "export_document" in (
         approval.subject_snapshot or {}
     )
@@ -101,13 +107,32 @@ async def download_artifact(
         profile = await session.get(Profile, resume.profile_id) if resume else None
         if user.role != "owner" or profile is None or profile.user_id != user.id:
             raise NotFoundError(_MISSING)
+    if (
+        artifact.template_version not in LEGACY_REVIEWER_TEMPLATES
+        and not contact_snapshot
+        and artifact.content_type
+        in {
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+    ):
+        from packages.shared.errors import ConflictError
+
+        raise ConflictError("Contact export lacks a bound owner approval and evidence fingerprints")
     from packages.core.services.resume_export import (
         approved_export,
+        approved_fingerprints,
         validate_current_evidence,
         validate_export_records,
     )
 
-    await validate_current_evidence(session, resume, lock=True)
+    await validate_current_evidence(
+        session,
+        resume,
+        lock=True,
+        fingerprints=approved_fingerprints(approval.subject_snapshot or {}) if approval else None,
+        approved_at=approval.decided_at if approval else None,
+    )
     if approval is not None:
         if contact_snapshot:
             from packages.shared.errors import ConflictError
