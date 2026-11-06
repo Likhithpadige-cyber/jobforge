@@ -14,8 +14,9 @@
  */
 
 import { usePathname, useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { ApiError, api, type ApiUser } from "@/lib/api";
+import { ShellPlaceholder } from "./ShellPlaceholder";
 
 interface AuthState {
   user: ApiUser | null;
@@ -40,7 +41,20 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const path = useRef(pathname);
+  path.current = pathname;
+  const known = useRef(false);
 
+  // Held in refs so the session effects depend only on what should re-run
+  // them (mount, Retry, a route change), never on a router object's identity.
+  const routerRef = useRef(router);
+  routerRef.current = router;
+  const toSignIn = useCallback(() => {
+    routerRef.current.replace(`/login?next=${encodeURIComponent(path.current || "/")}`);
+  }, []);
+
+  // The blocking check: once on mount, and again on Retry. Only this one
+  // shows the loading frame, because there is no confirmed user yet.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -48,17 +62,15 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     api
       .me()
       .then((result) => {
-        if (!cancelled) setUser(result);
+        if (cancelled) return;
+        known.current = true;
+        setUser(result);
       })
       .catch((cause) => {
         if (cancelled) return;
         setUser(null);
-        if (cause instanceof ApiError && cause.status === 401) {
-          const next = encodeURIComponent(pathname || "/");
-          router.replace(`/login?next=${next}`);
-        } else {
-          setError("Could not check your session. Please try again.");
-        }
+        if (cause instanceof ApiError && cause.status === 401) toSignIn();
+        else setError("Could not check your session. Please try again.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -66,7 +78,30 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [pathname, router, attempt]);
+  }, [toSignIn, attempt]);
+
+  // Navigation re-validates quietly. The page stays on screen; a session
+  // that has ended still sends the person to sign in, exactly as before.
+  // A transient failure keeps the confirmed user: the API refuses every
+  // protected request on its own, so nothing is unlocked by staying put.
+  useEffect(() => {
+    if (!known.current) return;
+    let cancelled = false;
+    api.me().then(
+      (result) => {
+        if (!cancelled) setUser(result);
+      },
+      (cause) => {
+        if (cancelled || !(cause instanceof ApiError) || cause.status !== 401) return;
+        known.current = false;
+        setUser(null);
+        toSignIn();
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, toSignIn]);
 
   const signOut = useCallback(async () => {
     try {
@@ -79,13 +114,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [router]);
 
-  if (loading) {
-    return (
-      <div className="p-8 text-sm text-ink-soft" data-testid="auth-loading">
-        Checking your session…
-      </div>
-    );
-  }
+  if (loading && !user) return <ShellPlaceholder />;
 
   if (!user) {
     if (error) {

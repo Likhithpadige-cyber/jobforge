@@ -11,7 +11,7 @@ export function MobileNav({ onOpenMore }: { onOpenMore: () => void }) {
     {MOBILE_NAV.map(item => {
       const active = isNavActive(pathname, item.href);
       return <Link key={item.href} href={item.href} aria-current={active ? "page" : undefined} className={`relative flex min-h-[64px] flex-col items-center justify-center gap-1 text-[11px] font-medium ${active ? "text-accent" : "text-ink-soft"}`}>
-        <span aria-hidden="true" className={`absolute inset-x-5 top-0 h-0.5 rounded-full bg-action transition-transform duration-300 ${active ? "scale-x-100" : "scale-x-0"}`} /><Icon name={item.icon} className="h-5 w-5" /><span>{item.label === "AI Agents" ? "Agents" : item.label}</span>
+        <span aria-hidden="true" className={`absolute inset-x-5 top-0 h-0.5 rounded-full bg-action transition-transform duration-[180ms] ease-out ${active ? "scale-x-100" : "scale-x-0"}`} /><Icon name={item.icon} className="h-5 w-5" /><span>{item.label === "AI Agents" ? "Agents" : item.label}</span>
       </Link>;
     })}
     <button type="button" onClick={onOpenMore} className="flex min-h-[64px] flex-col items-center justify-center gap-1 text-[11px] font-medium text-ink-soft" aria-label="More navigation" aria-haspopup="dialog"><Icon name="more" className="h-5 w-5" /><span>More</span></button>

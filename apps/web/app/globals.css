@@ -53,12 +53,25 @@
   ::selection { background: var(--jf-cream); color: var(--jf-midnight); }
 
   @keyframes panel-in { from { transform: translateX(-12px); } to { transform: translateX(0); } }
-  @keyframes reveal-in { from { transform: translateY(8px); } to { transform: translateY(0); } }
-  .animate-page-in, .reveal { animation: reveal-in 220ms ease-out both; }
+  @keyframes reveal-in { from { transform: translateY(4px); } to { transform: translateY(0); } }
+  /* One small settle per page, transform only (never opacity, so nothing
+     blinks). Sections inside a page do not animate again: a page arriving
+     should move once, not in stacked waves, and long lists stay still. */
+  .animate-page-in, .reveal { animation: reveal-in 160ms ease-out both; }
+  .animate-page-in .reveal { animation: none; }
   .animate-panel-in { animation: panel-in 200ms ease-out both; }
   .stagger > :nth-child(2) { animation-delay: 40ms; }
   .stagger > :nth-child(3) { animation-delay: 80ms; }
   .stagger > :nth-child(4) { animation-delay: 120ms; }
+  /* Interaction feedback: colour changes ease instead of snapping.
+     Buttons 120ms, tabs and toggles 150ms, navigation 180ms (Sidebar). */
+  :where(a, button, [role="button"], input, select, textarea) {
+    transition-property: background-color, border-color, color, box-shadow, transform;
+    transition-duration: 120ms;
+    transition-timing-function: ease-out;
+  }
+  :where([role="tab"], [aria-pressed]) { transition-duration: 150ms; }
+  :where(button:not(:disabled), [role="button"]):active { transform: translateY(1px); }
   .lift { transition: transform 180ms ease; }
   .lift:hover { transform: translateY(-2px); }
   @media (prefers-reduced-motion: reduce) {

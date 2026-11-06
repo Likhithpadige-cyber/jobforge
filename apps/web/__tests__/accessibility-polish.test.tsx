@@ -25,6 +25,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { AppShell } from "@/components/AppShell";
+import { WorkspaceShell } from "@/components/WorkspaceShell";
 import { Header } from "@/components/Header";
 import { DecisionForm } from "@/components/review/DecisionForm";
 import { ReviewLoading, SectionCard } from "@/components/review/ReviewStates";
@@ -107,7 +108,7 @@ describe("account avatar", () => {
 // -------------------------------------------------------------- navigation
 describe("mobile navigation drawer", () => {
   it("is a modal dialog that takes focus, traps Tab, closes on Escape and restores focus", () => {
-    render(<AppShell title="Settings"><p>Body</p></AppShell>);
+    render(<WorkspaceShell><AppShell title="Settings"><p>Body</p></AppShell></WorkspaceShell>);
     const opener = screen.getByRole("button", { name: "Open navigation" });
     expect(opener).toHaveAttribute("aria-haspopup", "dialog");
     opener.focus();

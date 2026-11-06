@@ -25,6 +25,7 @@ import argparse
 import asyncio
 import base64
 import os
+import re
 import secrets
 import sys
 from datetime import datetime, timedelta, timezone
@@ -585,7 +586,6 @@ async def e2e_fixture() -> int:
     if generation is paused, this fails closed rather than bypassing it.
     """
     import json
-    import secrets
 
     from sqlalchemy import select
 
@@ -649,16 +649,26 @@ async def e2e_fixture() -> int:
                 source_table="experiences",
                 source_id=experience or uuid7(),
             )
-            # A throwaway reviewer for the sign-in tests, so repeated runs
-            # never exhaust the shared accounts' login rate-limit budget.
-            password = secrets.token_urlsafe(18)
-            reviewer = User(
-                id=uuid7(),
-                email=f"e2e-reviewer-{run}@example.com",
-                role="reviewer",
-                password_hash=hash_password(password),
-            )
-            session.add(reviewer)
+            # Run-unique test accounts. The caller generates their passwords
+            # in memory and passes them in the environment; they are hashed
+            # here and never printed. `e2e-retire` disables them afterwards.
+            # The seeded demo owner and reviewer are never touched.
+            accounts = {}
+            for role, variable in (
+                ("owner", "JOBFORGE_E2E_OWNER_PASSWORD"),
+                ("reviewer", "JOBFORGE_E2E_REVIEWER_PASSWORD"),
+            ):
+                password = os.environ.get(variable, "")
+                if len(password) < 16:
+                    raise DemoGuardError(f"{variable} must be set (16+ characters) by the caller")
+                user = User(
+                    id=uuid7(),
+                    email=f"e2e-{role}-{run}@example.com",
+                    role=role,
+                    password_hash=hash_password(password),
+                )
+                session.add(user)
+                accounts[f"{role}_email"] = user.email
             await session.flush()
             print(
                 json.dumps(
@@ -666,13 +676,42 @@ async def e2e_fixture() -> int:
                         "run": run,
                         "application_id": str(application.id),
                         "fact_id": str(fact.id),
-                        "reviewer_email": reviewer.email,
-                        "reviewer_password": password,
+                        **accounts,
                     }
                 )
             )
     finally:
         await dispose_audit_engine()
+        await dispose_engine()
+    return 0
+
+
+#: Only accounts `e2e-fixture` creates can be retired by `e2e-retire`.
+E2E_ACCOUNT = re.compile(r"e2e-(owner|reviewer)-[0-9a-f]{12}@example\.com")
+
+
+async def e2e_retire(emails: list[str]) -> int:
+    """Disable run-unique E2E accounts: clear their password hash so they can
+    never sign in again. Rows are kept, because approvals and verified facts
+    still name them. Refuses anything that is not an `e2e-fixture` account."""
+    from sqlalchemy import update
+
+    from packages.core.db import dispose_engine, init_engine, session_scope
+    from packages.core.models import User
+
+    refused = [email for email in emails if not E2E_ACCOUNT.fullmatch(email)]
+    if refused or not emails:
+        raise DemoGuardError(f"refusing to retire non-E2E accounts: {refused or 'none given'}")
+    settings = check_settings()
+    await init_engine(settings)
+    try:
+        async with session_scope() as session:
+            await check_database(await session.connection(), require_marker=True)
+            result = await session.execute(
+                update(User).where(User.email.in_(emails)).values(password_hash=None)
+            )
+            print(f"retired {result.rowcount} E2E account(s)")
+    finally:
         await dispose_engine()
     return 0
 
@@ -707,7 +746,10 @@ def _alert(
 # ------------------------------------------------------------------ main
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=["write-env", "check", "init", "seed", "e2e-fixture"])
+    parser.add_argument(
+        "command", choices=["write-env", "check", "init", "seed", "e2e-fixture", "e2e-retire"]
+    )
+    parser.add_argument("emails", nargs="*", help="e2e-retire: the E2E account emails")
     args = parser.parse_args()
     if args.command == "write-env":
         return write_env(ROOT / ".env.demo")
@@ -725,6 +767,8 @@ def main() -> int:
             return asyncio.run(init())
         if args.command == "e2e-fixture":
             return asyncio.run(e2e_fixture())
+        if args.command == "e2e-retire":
+            return asyncio.run(e2e_retire(args.emails))
         return asyncio.run(seed())
     except DemoGuardError as exc:
         print(exc, file=sys.stderr)

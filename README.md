@@ -200,7 +200,13 @@ pytest -m e2e tests/e2e/browser
 ```
 
 The browser suite checks `.env.demo` identity and the running API's dry-run gate
-before mutations. It creates uniquely named synthetic E2E rows. For Linux,
+before mutations. It creates uniquely named synthetic E2E rows and signs in as
+run-unique test accounts (`e2e-owner-<run>`, `e2e-reviewer-<run>`) whose
+passwords are generated in memory and passed only through the fixture
+script's environment; both are retired (password hash cleared) when the run
+ends. The seeded demo owner, its password and its TOTP are never used or
+changed. The test owner does not own the candidate profile, so submission is
+refused with 404; the owner's dry-run 409 is covered by the API journeys. For Linux,
 `playwright install --with-deps chromium` also installs browser system packages.
 `--headed`, `--slowmo 250` and `-k review` are useful locally. Do not mix the
 sync browser suite with async API journeys in one pytest session.

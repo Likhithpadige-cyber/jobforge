@@ -52,6 +52,9 @@ def check_page(page: Page, label: str, *, settled: bool = True) -> None:
     if settled:
         page.wait_for_load_state("networkidle")
     expect(page.get_by_role("heading", level=1)).to_be_visible()
+    # Colours ease over 120-180 ms (globals.css); sample only settled values,
+    # never a colour interpolated mid-transition.
+    page.wait_for_function("() => document.getAnimations().every(a => a.playState !== 'running')")
     no_horizontal_overflow(page)
     assert page.locator("body").evaluate("e => getComputedStyle(e).backgroundColor") == (
         "rgb(234, 220, 200)"
@@ -122,11 +125,12 @@ def test_login_theme_and_focus(anonymous: Page, viewport: dict[str, int]) -> Non
     anonymous.get_by_label("Email").fill("palette-check@example.com")
     anonymous.get_by_label("Password", exact=True).fill("synthetic-ui-only")
     expect(submit).to_be_enabled()
-    assert submit.evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(198, 96, 31)"
-    assert submit.evaluate("e => getComputedStyle(e).color") == "rgb(10, 15, 20)"
+    # Colours ease over ~120 ms (globals.css), so wait for the settled value.
+    expect(submit).to_have_css("background-color", "rgb(198, 96, 31)")
+    expect(submit).to_have_css("color", "rgb(10, 15, 20)")
     submit.hover()
-    assert submit.evaluate("e => getComputedStyle(e).backgroundColor") == "rgb(10, 15, 20)"
-    assert submit.evaluate("e => getComputedStyle(e).color") == "rgb(234, 220, 200)"
+    expect(submit).to_have_css("background-color", "rgb(10, 15, 20)")
+    expect(submit).to_have_css("color", "rgb(234, 220, 200)")
     # Exercise the error presentation without making a login attempt at the API.
     anonymous.route(
         "**/api/v1/auth/login",
@@ -218,12 +222,24 @@ def test_navigation_and_feedback_states(owner: Page, viewport: dict[str, int]) -
     owner.set_viewport_size(viewport)
     pending: list[Route] = []
     pattern = re.compile(r"/api/v1/jobs\?")
-    owner.route(pattern, lambda route: pending.append(route))
+    # Hold job requests to observe the loading state, then release them all:
+    # development Strict Mode may issue the same request twice on load.
+    released = {"done": False}
+
+    def hold(route: Route) -> None:
+        if released["done"]:
+            route.fulfill(status=200, json=[])
+        else:
+            pending.append(route)
+
+    owner.route(pattern, hold)
     owner.goto("/job-feed")
     expect(owner.get_by_role("heading", name="Loading jobs", exact=True)).to_be_visible()
     check_page(owner, "loading jobs", settled=False)
     assert pending
-    pending.pop().fulfill(status=200, json=[])
+    released["done"] = True
+    while pending:
+        pending.pop().fulfill(status=200, json=[])
     expect(owner.get_by_text("No jobs yet", exact=True)).to_be_visible()
     check_page(owner, "empty jobs")
     owner.unroute(pattern)

@@ -336,7 +336,7 @@ describe("profile client", () => {
 describe("no placeholders or demo data", () => {
   it("profile and settings pages are real", () => {
     const root = path.resolve(__dirname, "..");
-    for (const file of ["app/profile/page.tsx", "app/settings/page.tsx", "components/profile/ProfileView.tsx", "components/profile/FactsPanel.tsx", "components/settings/SubmissionSwitchCard.tsx", "lib/profile.ts"]) {
+    for (const file of ["app/(workspace)/profile/page.tsx", "app/(workspace)/settings/page.tsx", "components/profile/ProfileView.tsx", "components/profile/FactsPanel.tsx", "components/settings/SubmissionSwitchCard.tsx", "lib/profile.ts"]) {
       expect(readFileSync(path.join(root, file), "utf8"), file).not.toMatch(/demo-data|DemoDataNotice|PlaceholderPage/);
     }
   });

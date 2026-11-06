@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import Page from "@/app/resume-studio/[applicationId]/page";
+import Page from "@/app/(workspace)/resume-studio/[applicationId]/page";
 import { api, type ApiResume, type ApiResumeReview } from "@/lib/api";
 
 vi.mock("@/components/AppShell", () => ({

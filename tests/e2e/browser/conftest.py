@@ -13,6 +13,13 @@ Safety, enforced before any test runs:
 The demo itself uses replayed generation and a fake email transport, so
 nothing here can reach a provider, an inbox or an employer.
 
+Accounts: tests never use the seeded demo owner or reviewer (the owner may
+have TOTP and a locally changed password; neither is touched). Each run
+signs in as its own `e2e-owner-<run>` and `e2e-reviewer-<run>`, created by
+`scripts.demo_env e2e-fixture` with passwords generated in memory and passed
+only through the script's environment, and retired by `e2e-retire` (password
+hash cleared) when the session ends.
+
 Determinism: records a test changes (approving, answering, verifying,
 retiring) come from `scripts.demo_env e2e-fixture`, which creates fresh,
 uniquely named synthetic rows for each run. Read-only checks use the seeded
@@ -23,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -62,11 +70,23 @@ def _demo_env() -> dict[str, str]:
 @dataclass(frozen=True)
 class Demo:
     base_url: str
-    owner_email: str
-    owner_password: str = field(repr=False)
-    reviewer_email: str
-    reviewer_password: str = field(repr=False)
     env: dict[str, str] = field(repr=False)
+
+
+@dataclass(frozen=True)
+class Accounts:
+    """Run-unique test accounts and records (see `fresh`)."""
+
+    run: str
+    application_id: str
+    fact_id: str
+    owner_email: str
+    reviewer_email: str
+    owner_password: str = field(repr=False)
+    reviewer_password: str = field(repr=False)
+
+    def __getitem__(self, key: str) -> str:  # tests read fields like a mapping
+        return str(getattr(self, key))
 
 
 @pytest.fixture(scope="session")
@@ -75,14 +95,7 @@ def demo() -> Demo:
     base = os.getenv(
         "JOBFORGE_E2E_BASE_URL", f"http://127.0.0.1:{env.get('DEMO_WEB_HOST_PORT', '3100')}"
     )
-    return Demo(
-        base_url=base,
-        owner_email="demo.candidate@example.com",
-        owner_password=env["DEMO_OWNER_PASSWORD"],
-        reviewer_email="demo.reviewer@example.com",
-        reviewer_password=env["DEMO_REVIEWER_PASSWORD"],
-        env=env,
-    )
+    return Demo(base_url=base, env=env)
 
 
 @pytest.fixture(scope="session")
@@ -106,21 +119,17 @@ def _sign_in(page: Page, email: str, password: str) -> None:
 
 @pytest.fixture(scope="session")
 def _storage(
-    browser: Browser, demo: Demo, tmp_path_factory: pytest.TempPathFactory
-) -> dict[str, Path]:
-    """Sign in once per role (the login endpoint is rate limited) and verify
-    the deployment is dry-run before any test touches it."""
+    browser: Browser, demo: Demo, fresh: Accounts, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[dict[str, Path]]:
+    """Sign in each isolated test account once (the login endpoint is rate
+    limited), verify the deployment is dry-run before any test touches it,
+    and sign both out when the session ends."""
     states: dict[str, Path] = {}
     for role, email, password in (
-        ("owner", demo.owner_email, demo.owner_password),
-        ("reviewer", demo.reviewer_email, demo.reviewer_password),
+        ("owner", fresh.owner_email, fresh.owner_password),
+        ("reviewer", fresh.reviewer_email, fresh.reviewer_password),
     ):
-        # Optional existing owner session supports a locally changed password.
-        # It is still authenticated and identity-checked against this demo API.
-        owner_state = os.getenv("JOBFORGE_E2E_OWNER_STATE") if role == "owner" else None
-        context = browser.new_context(
-            base_url=demo.base_url, viewport=DESKTOP, storage_state=owner_state
-        )
+        context = browser.new_context(base_url=demo.base_url, viewport=DESKTOP)
         context.set_default_timeout(TIMEOUT_MS)
         page = context.new_page()
         try:
@@ -128,20 +137,13 @@ def _storage(
         except Exception as exc:  # any failure here means "not running"
             context.close()
             pytest.skip(f"demo web is not reachable at {demo.base_url}: {exc}")
-        if owner_state:
-            identity = page.request.get("/api/v1/auth/me")
-            if (
-                identity.status != 200
-                or identity.json().get("email") != email
-                or (identity.json().get("role") != role)
-            ):
-                context.close()
-                pytest.exit(
-                    "refusing: supplied owner session is expired or has the wrong identity",
-                    returncode=2,
-                )
-        else:
-            _sign_in(page, email, password)
+        _sign_in(page, email, password)
+        me = page.request.get("/api/v1/auth/me").json()
+        if (me.get("email"), me.get("role")) != (email, role):
+            context.close()
+            pytest.exit(
+                f"refusing: signed in as {me.get('email')!r}, not the test {role}", returncode=2
+            )
         gate = page.request.get("/api/v1/settings/submission-gate").json()
         if gate.get("submission_mode") != "dry_run" or gate.get("live") is not False:
             context.close()
@@ -150,7 +152,12 @@ def _storage(
         context.storage_state(path=str(path))
         states[role] = path
         context.close()
-    return states
+    yield states
+    for path in states.values():
+        context = _context(browser, demo, path, DESKTOP)
+        page = context.new_page()
+        page.request.post("/api/v1/auth/logout", headers=csrf_headers(page))
+        context.close()
 
 
 def _context(
@@ -201,15 +208,10 @@ def anonymous(browser: Browser, demo: Demo) -> Iterator[Page]:
     context.close()
 
 
-@pytest.fixture(scope="session")
-def fresh(demo: Demo, _storage: dict[str, Path]) -> dict[str, str]:
-    """Run-unique synthetic records: an application awaiting review with an
-    unanswered required question, and a draft fact.
-
-    Created on the host against the demo's published ports so the Docker VM
-    is not asked for another Python process; the script's own guards still
-    verify it is talking to the marked demo database.
-    """
+def _demo_script(demo: Demo, *args: str, extra: dict[str, str] | None = None) -> str:
+    """Run `scripts.demo_env` on the host against the demo's published ports
+    (the Docker VM is not asked for another Python process). The script's own
+    guards verify it is talking to the marked demo database."""
     env = {
         key: value for key, value in os.environ.items() if key in ("PATH", "HOME", "LANG", "TMPDIR")
     }
@@ -219,9 +221,10 @@ def fresh(demo: Demo, _storage: dict[str, Path]) -> dict[str, str]:
         POSTGRES_PORT=demo.env.get("DEMO_POSTGRES_HOST_PORT", "55433"),
         REDIS_HOST="127.0.0.1",
         REDIS_PORT=demo.env.get("DEMO_REDIS_HOST_PORT", "56380"),
+        **(extra or {}),
     )
     result = subprocess.run(  # noqa: S603 - fixed argv, our own script
-        [sys.executable, "-m", "scripts.demo_env", "e2e-fixture"],
+        [sys.executable, "-m", "scripts.demo_env", *args],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -229,10 +232,47 @@ def fresh(demo: Demo, _storage: dict[str, Path]) -> dict[str, str]:
         timeout=300,
         check=False,
     )
-    lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
-    if result.returncode != 0 or not lines:
-        pytest.fail(f"e2e-fixture failed ({result.returncode}): {result.stderr[-800:]}")
-    return json.loads(lines[-1])
+    if result.returncode != 0:
+        pytest.fail(f"demo_env {args[0]} failed ({result.returncode}): {result.stderr[-800:]}")
+    return result.stdout
+
+
+@pytest.fixture(scope="session")
+def fresh(demo: Demo) -> Iterator[Accounts]:
+    """Run-unique synthetic records and test accounts.
+
+    Records: an application awaiting review with an unanswered required
+    question, and a draft fact. Accounts: `e2e-owner-<run>` and
+    `e2e-reviewer-<run>`. Their passwords are generated here, in memory,
+    and reach the fixture script only through its environment; they are
+    never written to disk, printed or logged. The seeded demo owner (and its
+    TOTP) is never used or modified. When the session ends both accounts are
+    retired: their password hashes are cleared, so they can never sign in.
+    """
+    owner_password, reviewer_password = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+    stdout = _demo_script(
+        demo,
+        "e2e-fixture",
+        extra={
+            "JOBFORGE_E2E_OWNER_PASSWORD": owner_password,
+            "JOBFORGE_E2E_REVIEWER_PASSWORD": reviewer_password,
+        },
+    )
+    lines = [line for line in stdout.splitlines() if line.startswith("{")]
+    if not lines:
+        pytest.fail("e2e-fixture printed no result")
+    data = json.loads(lines[-1])
+    accounts = Accounts(
+        run=data["run"],
+        application_id=data["application_id"],
+        fact_id=data["fact_id"],
+        owner_email=data["owner_email"],
+        reviewer_email=data["reviewer_email"],
+        owner_password=owner_password,
+        reviewer_password=reviewer_password,
+    )
+    yield accounts
+    _demo_script(demo, "e2e-retire", accounts.owner_email, accounts.reviewer_email)
 
 
 def csrf_headers(page: Page) -> dict[str, str]:

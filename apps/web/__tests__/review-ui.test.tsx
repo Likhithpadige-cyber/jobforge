@@ -488,11 +488,11 @@ describe("no demo data in review views", () => {
     const files = [
       ...readdirSync(path.join(root, "components/review")).map((f) => `components/review/${f}`),
       "lib/review.ts",
-      "app/approvals/page.tsx",
-      "app/applications/[id]/page.tsx",
-      "app/applications/[id]/cover-letter/page.tsx",
-      "app/applications/[id]/answers/page.tsx",
-      "app/applications/[id]/submission/page.tsx",
+      "app/(workspace)/approvals/page.tsx",
+      "app/(workspace)/applications/[id]/page.tsx",
+      "app/(workspace)/applications/[id]/cover-letter/page.tsx",
+      "app/(workspace)/applications/[id]/answers/page.tsx",
+      "app/(workspace)/applications/[id]/submission/page.tsx",
     ];
     for (const file of files) {
       expect(readFileSync(path.join(root, file), "utf8"), file).not.toMatch(/demo-data|DemoDataNotice|PlaceholderPage/);

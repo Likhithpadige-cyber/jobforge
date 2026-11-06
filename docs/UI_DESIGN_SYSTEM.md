@@ -112,12 +112,14 @@ LLM_MODE=replay SUBMISSION_MODE=dry_run EMAIL_TRANSPORT_MODE=fake \
   --junitxml=/tmp/jobforge-brand-browser.xml
 ```
 
-For this run the owner had chosen a new password, so the optional
-`JOBFORGE_E2E_OWNER_STATE` pointed to an existing private temporary owner session.
-The fixture validates its owner email/role with the demo API, then enforces the
-same dry-run/live=false gate before any test action. Expired/wrong-identity state
-fails closed. No credential reset occurs; normal password-based setup remains
-the default when the variable is absent. Reviewer setup and the existing fresh
+For that run the owner had chosen a new password, so an optional
+`JOBFORGE_E2E_OWNER_STATE` pointed to an existing private owner session. That
+option has since been replaced: the suite no longer signs in as the seeded owner
+at all. Each run creates its own `e2e-owner-<run>` and `e2e-reviewer-<run>`
+(passwords generated in memory, passed only via the fixture's environment),
+verifies their identity and the dry-run/live=false gate before any test action,
+and retires both accounts when it ends. The seeded owner's password and TOTP
+are never touched. Reviewer setup and the existing fresh
 reviewer sign-in/out journey still exercise real authentication. Password and
 environment fields are excluded from fixture representations in failure output.
 State files/cookies are private temporary data and must not be committed.

@@ -93,17 +93,21 @@ def test_sign_in_and_sign_out(anonymous: Page, fresh: dict[str, str]) -> None:
     assert anonymous.request.get("/api/v1/auth/me").status == 401
 
 
-def test_header_shows_each_users_own_initials(owner: Page, reviewer: Page) -> None:
+def test_header_shows_each_users_own_initials(owner: Page, reviewer: Page, fresh) -> None:
     owner.goto("/")
     avatar = owner.get_by_test_id("account-avatar")
-    expect(avatar).to_have_text("DC")
+    expect(avatar).to_have_text(re.compile(r"^[A-Z]{1,2}$"))
     expect(avatar).to_have_attribute("href", "/profile")
-    expect(avatar).to_have_accessible_name(re.compile(r"Signed in as demo\.candidate@example\.com"))
+    expect(avatar).to_have_accessible_name(
+        re.compile(rf"Your profile\. Signed in as {re.escape(fresh.owner_email)}$")
+    )
 
     reviewer.goto("/")
     avatar = reviewer.get_by_test_id("account-avatar")
-    expect(avatar).to_have_text("DR")
-    expect(avatar).to_have_accessible_name("Signed in as demo.reviewer@example.com (reviewer)")
+    expect(avatar).to_have_text(re.compile(r"^[A-Z]{1,2}$"))
+    expect(avatar).to_have_accessible_name(
+        re.compile(rf"Signed in as {re.escape(fresh.reviewer_email)} \(reviewer\)$")
+    )
     expect(reviewer.get_by_role("link", name="Monitoring")).to_have_count(0)
 
 
@@ -221,7 +225,11 @@ def test_submission_is_blocked_in_dry_run_for_everyone(owner: Page, reviewer: Pa
     refused = owner.request.post(
         f"/api/v1/applications/{app_id}/submit", data="{}", headers=csrf_headers(owner)
     )
-    assert refused.status == 409
+    # The isolated test owner does not own the candidate's profile, so the API
+    # refuses before any precondition, with the same non-enumerating 404 a
+    # missing application gets. (The profile owner's dry-run 409 is covered by
+    # tests/e2e/test_m13_api_journeys.py.) Either way, nothing is sent.
+    assert refused.status == 404
 
     reviewer.goto(f"/applications/{app_id}/submission")
     expect(reviewer.get_by_test_id("reviewer-no-submit")).to_be_visible()

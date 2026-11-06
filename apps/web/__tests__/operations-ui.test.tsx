@@ -416,9 +416,9 @@ describe("no demo data in operator views", () => {
     const files = [
       ...readdirSync(path.join(root, "components/operations")).map((f) => `components/operations/${f}`),
       "lib/operations.ts",
-      "app/alerts/page.tsx",
-      "app/alerts/[id]/page.tsx",
-      "app/monitoring/page.tsx",
+      "app/(workspace)/alerts/page.tsx",
+      "app/(workspace)/alerts/[id]/page.tsx",
+      "app/(workspace)/monitoring/page.tsx",
     ];
     for (const file of files) {
       const source = readFileSync(path.join(root, file), "utf8");
