@@ -1798,3 +1798,141 @@ production credential modification, database/volume/user-data deletion,
 unrelated container restart, license addition or infrastructure remediation.
 The existing 31 upward-import findings and all M15 deployment blockers remain
 outside this UI task. Changelog is committed separately from implementation.
+
+
+## Post-M15 — final branding and typography refinement (2026-11-05)
+
+Implementation/provenance commit: `f5412e9`. Started from clean `dev` at
+`b1120c1`; inspected existing tokens and brand assets before presenting the plan.
+The user supplied and approved the ribbon reference and explicitly approved
+Deep Teal behind normal Cream text to preserve AA. This is a focused visual
+refinement of the prior redesign. M15 reports and production **NO-GO** are unchanged.
+
+### Implementation
+
+- Cream `#EADCC8` is the shared main page canvas, with Midnight `#0A0F14` text.
+  Deep Teal `#0F3D3E` sidebar/cards/pipeline/approvals/activity panels retain Cream
+  text and Aqua `#7FB3B8` support. Muted Teal `#2E6F73` supplies borders/accents;
+  Orange `#C6601F` marks selected navigation, actions and alert indicators.
+  Contextual semantic roles preserve existing grids, spacing and component
+  structure. Hover uses Midnight with Cream text; control/focus colors adapt
+  between Cream and dark surfaces. Status labels and all safety copy remain.
+- Shared SVG ribbon geometry follows the supplied reference: orange upper
+  ribbon/return, translucent Aqua connector/overlap, folded ends and vertical
+  stem. The complete wordmark uses actual Sora ExtraBold 800 outlines, preserving
+  native glyph proportions. Cream/teal standalone SVG exports, sidebar/login
+  lockups, header symbol and vector favicon share the same paths. Aspect ratios
+  are explicit; the original PNG is preserved byte-for-byte under `docs/brand`.
+  Narrow logo-only opacity preserves the approved transparency without adding
+  UI paint colors/gradients. Raster lighting/texture is not converted into extra
+  palette colors. Teal variants use Midnight folds and Cream wordmark for visibility.
+- `next/font/local` preloads two compressed variable WOFF2 families: Sora
+  600–800 (37,400 bytes), Inter 400–600 (171,412 bytes), total 208,812 bytes.
+  Fonts and wordmark outlines derive from official Google Fonts sources;
+  provenance/checksums and font-specific OFL notices are included. No project
+  license or application dependency was added. Font notice trailing spaces were
+  normalized; the supplied logo PNG was not altered.
+- Sora 700 page headings/dashboard/pipeline metrics, Sora 600 section headings,
+  Inter 400 body/forms/tables, Inter 500 navigation/supporting labels and Inter
+  600 buttons. Legacy monospace diagnostics now use Inter/tabular numerals.
+  The outlined wordmark remains sharp independently of webfont loading.
+- Contrast: Midnight/Cream **14.27:1**, Deep Teal/Cream and Cream/Deep Teal
+  **8.86:1**, Aqua/Deep Teal **5.15:1**, Midnight/Orange **4.67:1**.
+  Cream/Muted Teal (**4.28:1**) is not used for normal text; Aqua/Cream
+  (**2.49:1**) is not used for supporting text or focus on the light canvas.
+  Relevant Orange/Cream boundaries are **3.06:1**. No threshold was lowered.
+- Tests guard reference preservation, shared/export/favicon path synchronization,
+  SVG aspect ratio and transparency, font files, updated contrast pairs and
+  browser-computed canvas/font weights. SVG paint inspection checks painted
+  geometry; non-painted container default fill is excluded.
+- The owner had changed their password. An optional test-only
+  `JOBFORGE_E2E_OWNER_STATE` reuses an existing private owner session after API
+  email/role validation and the unchanged dry-run gate; expired/wrong-identity
+  state fails closed. Default password setup remains available. Reviewer and
+  fresh-reviewer sign-in/out still use real authentication. Fixture password/env
+  fields are excluded from failure representations. No password, account role,
+  auth policy, session handling or backend API was changed.
+- Implementation commit: **34 files**, including design/provenance docs and the
+  original reference. No route/navigation/business calculation or agent workflow
+  was changed; the icon route is a presentation asset. Changelog is separate.
+
+### Final verification
+
+All commands ran at the repository root with Node **22.23.4** on PATH:
+
+```sh
+npm --prefix apps/web test
+npm --prefix apps/web run typecheck
+npm --prefix apps/web run lint
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:3115 NEXT_TELEMETRY_DISABLED=1 \
+  npm --prefix apps/web run build
+npm --prefix apps/web run audit:colors -- --built
+.venv/bin/ruff check tests/e2e/browser/conftest.py tests/e2e/browser/test_ui_theme.py
+.venv/bin/ruff format --check tests/e2e/browser/conftest.py tests/e2e/browser/test_ui_theme.py
+```
+
+- Frontend unit regression: **349 passed / 27 files**, **5.73 seconds**.
+- TypeScript: **passed**. ESLint: **passed**, zero lint warnings/errors; existing
+  `next lint` deprecation notice remains.
+- Production frontend build: **passed**, **21** listed routes including vector
+  icon. Explicit preview origin avoids the known compiled localhost fallback;
+  no general production-configuration fix is claimed.
+- Source/generated palette audit: **passed, 96 files** (95 UI source/config/SVG
+  assets plus one built CSS file). Six approved base paint colors; only the
+  explicitly approved logo ribbons use opacity. No served raster logo is used.
+- Python lint: **passed**; format: **two files already formatted**.
+
+Final browser command (Python **3.12.14**, Chromium **156.0.8078.4**):
+
+```sh
+JOBFORGE_E2E_OWNER_STATE="$(cat /tmp/jobforge-brand-owner-state.path)" \
+JOBFORGE_E2E_BASE_URL=http://127.0.0.1:3115 \
+JOBFORGE_UI_EVIDENCE_DIR=/tmp/jobforge-brand-evidence \
+LLM_MODE=replay SUBMISSION_MODE=dry_run EMAIL_TRANSPORT_MODE=fake \
+.venv/bin/pytest -m e2e tests/e2e/browser \
+  --junitxml=/tmp/jobforge-brand-browser.xml
+```
+
+- **26 passed, 0 failed, 0 skipped**, **81.62 seconds**. Includes all **17**
+  existing M13 journeys and **9** expanded visual/accessibility cases.
+- **78** WCAG 2/2.1/2.2 A/AA page/state checks with computed paint, Cream canvas,
+  fonts/weights and horizontal-overflow assertions: **zero reported violations
+  or overflow failures**. Includes 62 route/role/viewport combinations, six
+  login/error/404 checks, two form/dialog checks and eight feedback/navigation
+  states. Viewports: **1280×800** and **375×812**.
+- Exactly **two local WOFF2 resources** on login, with no external font request.
+  Heading Sora/700, wordmark Sora/800 metadata, metric/700 and navigation/500
+  verified in computed styles; the logo paths themselves derive from Sora 800.
+- Keyboard focus visibility, drawer/dialog focus trapping, Escape/focus return,
+  form controls and acknowledgement checkbox were checked. Submission/gate
+  confirmation was never accepted. Dry-run/live=false guards remained active.
+- Screenshots captured/reviewed login, dashboard, applications, approvals,
+  profile/facts, settings, mobile dashboard and navigation. Additional core
+  workspace screenshots and large/small cream/teal SVG logo proofs were captured.
+  Screenshots show persisted synthetic demo records, not fabricated UI counts.
+- Initial development checks identified heading-weight specificity, a preview
+  API-origin setup error and a new paint-test false positive for non-painted
+  default fills. Each was corrected before the final green runs. No assertion,
+  accessibility threshold or safety check was waived. A preliminary unit command
+  used the wrong working directory and was rerun from the web package correctly.
+- Tracked-file secret gate and `git diff --check`: **passed**. A public reference
+  SHA-256 false positive has a narrow explained inline annotation; baseline and
+  scanner configuration are unchanged. M15 report diff is empty.
+
+### Local preview and limits
+
+The refreshed preview remains at **http://127.0.0.1:3115/login**, with the final
+standalone frontend on loopback 3116 and the existing router on 3115. It reuses
+healthy demo API 8100, PostgreSQL and Redis. Only the preview's own host frontend
+process was refreshed; no Docker container was changed/restarted. Frontend
+static/public assets were copied into the standalone runtime. It is left running.
+
+No unresolved UI test, computed-palette, contrast or overflow failure remains in
+the tested Chromium scope. Automated/focused checks are not full WCAG
+certification. Safari/Firefox, screen-reader sessions, forced-colors/native popup
+chrome and quantitative CLS/load/soak were not exhaustively tested. The owner's
+new password was not reverified; a valid existing session supplied its test setup.
+Backend regression, production Docker images and hosted CI were not rerun.
+The 31 existing upward imports and M15 deployment blockers remain outside scope.
+No push, deployment, cloud resources, real email/application, credential reset,
+data deletion, unrelated container restart or project license addition occurred.
