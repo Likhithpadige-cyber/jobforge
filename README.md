@@ -1,19 +1,73 @@
 # JobForge
 
-JobForge prepares job applications from a human-verified candidate profile:
-job ingestion and fit evaluation, grounded resume and cover-letter drafts,
-application answers, review, document rendering, permitted email submission,
-and operational monitoring. The Next.js dashboard supports owner and reviewer
-workflows, including profile/facts, approvals, agent activity and settings.
+**An evidence-grounded job-application assistant that keeps a human in charge.**
 
-**Current baseline: M13 Phases 1–4, hardened by M14.** Exact implementation
-history and verification results are in the
-[milestone changelog](docs/MILESTONE_CHANGELOG.md). Architecture documents also
-contain future design; they are not a claim that every planned feature exists.
+JobForge reads job postings, scores how well a verified candidate profile fits
+them with transparent rules, and prepares tailored application materials in
+which every claim cites a fact the candidate has verified. Nothing leaves the
+system without explicit human approval: submission needs an owner's confirmed
+action, a complete approval trail and a deployment deliberately switched out
+of dry-run mode.
 
-Human approval remains mandatory. Defaults are `LLM_MODE=replay`,
-`SUBMISSION_MODE=dry_run` and `EMAIL_TRANSPORT_MODE=fake`. A settings toggle
-alone cannot send an application. Keep those values for development and tests.
+> **Status:** a locally verified portfolio project. It is **not production-ready**
+> — see [Project status](#project-status) and the
+> [deployment readiness report](docs/deployment/M15_READINESS_REPORT.md).
+
+![JobForge dashboard](docs/screenshots/dashboard.png)
+
+## What it does
+
+- **Job requirement extraction** — ingests postings (normalisation,
+  de-duplication, a prompt-injection scanner) and extracts required and
+  preferred requirements.
+- **Resume evidence mapping** — maps each requirement to the candidate's
+  verified facts; unverified facts are never citable.
+- **Deterministic scoring and rationale** — a rule-based prefilter and fit score
+  with an inspectable breakdown and a rationale built from the evidence map.
+- **Grounded drafting** — tailored resume content, cover letters and application
+  answers. Each paragraph or bullet is checked against its cited facts
+  (supported / overreach / unsupported); numerals must come from the facts.
+  Sensitive or unanswerable questions are left for a human.
+- **Owner and reviewer approval workflows** — an approvals inbox, per-application
+  workspace, cover-letter and answers review, and server-enforced roles.
+- **Submission readiness** — an eight-point checklist shared with the Submit
+  action itself, so what the page shows is what submission enforces.
+- **Human-authorized submission safeguards** — dry-run by default, a persisted
+  owner switch, an explicit confirmed Submit, a recipient taken only from the
+  job's own record, and no automatic retry of ambiguous outcomes.
+- **Auditability** — append-only events, approval history, persisted
+  evaluations, agent-run metadata and redacted inference audit records;
+  DOCX/PDF rendering with checksummed artifacts.
+- **Operations** — worker heartbeats, operator alerts, an automatic generation
+  pause on safety incidents, and a monitoring view.
+
+## Screenshots
+
+From the fictional demo dataset, in dry-run mode
+([capture notes](docs/screenshots/README.md)).
+
+| Sign in | Applications |
+|---|---|
+| ![Sign-in page](docs/screenshots/login.png) | ![Applications list](docs/screenshots/applications.png) |
+| **Approvals inbox** | **Cover-letter review with cited evidence** |
+| ![Approvals inbox](docs/screenshots/approvals.png) | ![Cover-letter review](docs/screenshots/cover-letter-review.png) |
+| **Submission readiness (blocked by dry-run)** | |
+| ![Submission readiness](docs/screenshots/submission-readiness.png) | |
+
+## Safety model
+
+JobForge is built so that it cannot act on a candidate's behalf by accident:
+
+- **Deterministic by default.** `LLM_MODE=replay`, `SUBMISSION_MODE=dry_run`
+  and `EMAIL_TRANSPORT_MODE=fake` are the defaults; tests and the demo never
+  call a model provider or send email.
+- **Grounded content.** Generated text may only cite human-verified facts, and
+  verification failures block review.
+- **Explicit approvals.** Resumes, cover letters and answers each need a human
+  decision; reviewers can review, only the owner can submit.
+- **Human-controlled submission.** JobForge never submits autonomously. A real
+  email requires live mode *and* the owner's switch *and* a confirmed Submit
+  for that application, with every readiness check passing at send time.
 
 ## Architecture
 
@@ -28,6 +82,15 @@ flowchart LR
   Workers --> Artifacts
 ```
 
+| Layer | Technology (versions as pinned in this repository) |
+|---|---|
+| Frontend | Next.js 15.5, React 19.0, TypeScript 5.7, Tailwind CSS 3.4; Vitest, Testing Library |
+| Backend | Python 3.12, FastAPI 0.133, Pydantic 2.10, SQLAlchemy 2.0 (async, asyncpg), Alembic 1.14 |
+| Data | PostgreSQL 16 with pgvector; Redis 7 (sessions, rate limits, event streams) |
+| Artifacts | S3-compatible storage (MinIO locally) or an explicit filesystem backend |
+| Local runtime | Docker Compose: a development stack and an isolated, loopback-only demo stack |
+| Testing | pytest (unit, integration, safety, offline evaluations), opt-in API and Playwright E2E |
+
 PostgreSQL holds domain state, verified facts, citations, approval decisions,
 events and audit records. Database constraints and separate service roles
 reinforce application authorization. Redis stores revocable sessions and
@@ -39,7 +102,7 @@ Only deliberate live configuration can enable external provider/SMTP traffic.
 | Path | Responsibility |
 |---|---|
 | `apps/api/` | FastAPI routes, schemas, authentication and role dependencies |
-| `apps/web/` | Next.js 15, React 19, TypeScript and Tailwind dashboard |
+| `apps/web/` | Next.js dashboard |
 | `packages/shared/` | Configuration, IDs, clock, errors and logging |
 | `packages/core/` | Models, grants-facing services, events and state machines |
 | `packages/agents/` | Evaluation, drafting and verification orchestration |
@@ -49,12 +112,25 @@ Only deliberate live configuration can enable external provider/SMTP traffic.
 | `tests/` | Unit, integration, contract, offline evaluation and opt-in E2E |
 | `infra/docker/` | Development and production Dockerfiles |
 | `infra/terraform/` | Reserved directory; no deployed infrastructure supplied |
+| `docs/` | Architecture, security, deployment readiness, brand and screenshots |
 
 Dependencies flow from apps/agents/services toward core and shared code.
 `make verify` checks the intended import direction; it currently reports 31
 pre-existing upward imports (see the hygiene review). Workers are entrypoints,
 not a library.
 The schema check currently verifies 38 tables, 20 enums and ten revisions.
+
+## Project status
+
+| Scope | State |
+|---|---|
+| Implemented | Milestones M1–M13 (ingestion through review and submission UI), M14 hardening and CI repair, M15 deployment assessment, the approved cream-and-teal design, M16 publication preparation. Full history: [milestone changelog](docs/MILESTONE_CHANGELOG.md). |
+| Locally verified | Backend, frontend, API E2E and browser E2E suites run locally; latest exact counts are in the [changelog](docs/MILESTONE_CHANGELOG.md). |
+| GitHub Actions | Workflows are defined ([CI guide](docs/CI.md)) but have **not yet run on GitHub**. |
+| Production | **NO-GO.** Release blockers (production build/routing, configuration preflight, TLS/edge, backups, release evidence) are listed in the [readiness report](docs/deployment/M15_READINESS_REPORT.md) and [blueprint](docs/deployment/M15_DEPLOYMENT_BLUEPRINT.md). |
+
+Architecture documents also contain future design; they are not a claim that
+every planned feature exists.
 
 ## Setup
 
@@ -211,14 +287,10 @@ refused with 404; the owner's dry-run 409 is covered by the API journeys. For Li
 `--headed`, `--slowmo 250` and `-k review` are useful locally. Do not mix the
 sync browser suite with async API journeys in one pytest session.
 
-M14 verification: Phase 2 passed **3270 backend tests**, **1392 safety tests**,
-**321 frontend tests**, **6 API journeys** and **17 browser journeys**. Phase 3
-passed **1786 unit tests**, including four new hygiene checks. Python/npm audits
-reported zero known vulnerabilities. These counts overlap and are a
-point-in-time result, not totals to add. See the changelog for timings/limits.
 [CI.md](docs/CI.md) describes every gate and the separate manual Playwright
-workflow. Hosted Actions/image builds still require a hosted run; nothing in
-M14 was pushed.
+workflow. Exact local results for each milestone are recorded in the
+[milestone changelog](docs/MILESTONE_CHANGELOG.md); hosted Actions and image
+builds have not run yet.
 
 ## Operations and troubleshooting
 
@@ -272,7 +344,14 @@ private keys, browser traces/HARs or stored authentication state. Ignore rules,
 pre-commit and CI secret scanning provide checks, not permission to commit
 sensitive data. Keep the reviewed baseline narrow. Generated browser reports
 and auth-state directories are ignored. Public login artwork and synthetic
-fixtures are intentional tracked assets. No repository license has been added.
+fixtures are intentional tracked assets.
+
+## License
+
+JobForge's own code is released under the [MIT License](LICENSE). Bundled
+fonts (Inter, Sora — SIL OFL 1.1), the brand reference image and dependency
+license notes are described in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md);
+the MIT License does not cover that third-party material.
 
 Further references: [security design](docs/SECURITY.md),
 [architecture](docs/ARCHITECTURE.md), [database design](docs/DATABASE_DESIGN.md),

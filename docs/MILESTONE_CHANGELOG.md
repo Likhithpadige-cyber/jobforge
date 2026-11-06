@@ -1599,10 +1599,10 @@ runtime, dependency or infrastructure implementation changes.
 
 Deliverables:
 
-- [Readiness report](../outputs/M15_READINESS_REPORT.md): architecture, images,
+- [Readiness report](deployment/M15_READINESS_REPORT.md): architecture, images,
   security/operations, official hosting price inputs, resource estimates,
   exact local commands/results, limits and prioritized blockers B01–B12/A01.
-- [Deployment blueprint](../outputs/M15_DEPLOYMENT_BLUEPRINT.md): proposed
+- [Deployment blueprint](deployment/M15_DEPLOYMENT_BLUEPRINT.md): proposed
   topology, environment/secret inventory without real values, migration/release
   sequencing, backup/DR targets, monitoring/security/demo controls and future
   deployment/rollback procedures. All deployment/recovery examples are future-only.
