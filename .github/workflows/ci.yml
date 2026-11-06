@@ -94,11 +94,25 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements-dev.txt
+      # MinIO no longer publishes images, so build the pinned release from its
+      # verified upstream commit (infra/docker/Dockerfile.minio). The GitHub
+      # Actions layer cache means the Go compile runs only when the pin changes.
+      - uses: docker/setup-buildx-action@v3
+      - name: Build isolated CI object storage
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.minio
+          tags: jobforge-ci-minio:local
+          load: true
+          push: false
+          cache-from: type=gha,scope=minio
+          cache-to: type=gha,mode=max,scope=minio
       - name: Start isolated CI object storage
         run: |
           docker run -d --name jobforge-ci-minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            jobforge-ci-minio:local server /data
           for attempt in {1..30}; do
             echo "Waiting for object storage ($attempt/30)"
             if curl -fsS http://localhost:9000/minio/health/ready; then exit 0; fi

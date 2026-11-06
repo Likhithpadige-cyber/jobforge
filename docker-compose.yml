@@ -170,31 +170,32 @@ services:
     profiles: ["core", "full"]
 
   minio:
-    # quay.io, not docker.io: Docker Hub's minio/minio repository now sits
-    # behind a login wall (MinIO's 2024 licensing change), and an anonymous
-    # `docker compose --profile full up` must keep working. quay.io/minio/minio
-    # is MinIO's own published mirror of the same image.
-    #
-    # Pinned to a concrete release rather than `latest`, matching how
-    # postgres and redis above are pinned: `latest` can move under CI with no
-    # diff in this repository to explain a sudden failure, and this service
-    # now has a real integration suite (tests/integration/test_s3_artifact_store.py)
-    # whose behavior depends on the server it runs against agreeing with the
-    # S3 API this adapter expects.
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Built from the pinned upstream release source (infra/docker/Dockerfile.minio):
+    # MinIO no longer publishes images or binaries, so quay.io/minio/minio and
+    # docker.io/minio/minio can no longer be pulled. Final public release
+    # (RELEASE.2025-10-15T17-29-55Z): one release after the previously pinned
+    # one, adding the CVE-2025-62506 fix; existing minio_data volumes read
+    # unchanged. The first `docker compose --profile full up` compiles it once.
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.minio
+    image: jobforge-minio:RELEASE.2025-10-15T17-29-55Z
     container_name: jobforge-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-minioadmin}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-minioadmin}
+    # Loopback only: this MinIO has known unpatched advisories and default
+    # credentials. The host reaches it as localhost:9000 and other services as
+    # minio:9000 on the compose network, which this binding does not affect.
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/minio/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5

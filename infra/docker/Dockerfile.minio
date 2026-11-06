@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1.7
+#
+# MinIO for local development and CI, built from upstream source.
+#
+# Why build it: MinIO stopped publishing its container images and binaries.
+# quay.io and Docker Hub no longer serve minio/minio (quay.io: 401, Docker Hub:
+# not found), dl.min.io answers 410 Gone for release binaries, and the
+# github.com/minio/minio repository was archived in April 2026. The source of
+# its final public release is still published, so we compile exactly that
+# commit.
+#
+# Release: RELEASE.2025-10-15T17-29-55Z, the last public source release. It
+# fixes CVE-2025-62506 (GO-2025-4034). Its tag is lightweight and the commit
+# is unsigned, so integrity rests on the pinned commit SHA, which matches the
+# maintainers' GitHub release for that tag. Later MinIO fixes (2026
+# advisories) exist only in non-public releases, so known MinIO
+# vulnerabilities remain. That is accepted only because this is a
+# loopback/CI test service with throwaway credentials and no real data;
+# never expose it to a network or reuse it for production.
+#
+# Integrity: the fetched tag must resolve to MINIO_COMMIT or the build fails;
+# Go modules are verified against the public checksum database (GOSUMDB);
+# both base images are pinned by digest. A current Go toolchain is used, not
+# the go1.24 the release names, so the binary carries no known Go standard
+# library vulnerabilities. MinIO is AGPL-3.0 and is used here only as a
+# local/CI test service; it is not part of the application image.
+#
+# Production does not use this image: deployment targets managed S3-compatible
+# storage (docs/deployment/M15_DEPLOYMENT_BLUEPRINT.md).
+
+ARG MINIO_RELEASE=RELEASE.2025-10-15T17-29-55Z
+ARG MINIO_COMMIT=9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a
+
+FROM golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
+ARG MINIO_RELEASE
+ARG MINIO_COMMIT
+RUN apk add --no-cache git
+WORKDIR /src
+RUN git init -q \
+ && git remote add origin https://github.com/minio/minio.git \
+ && git fetch -q --depth 1 origin "refs/tags/${MINIO_RELEASE}:refs/tags/${MINIO_RELEASE}" \
+ && git checkout -q "${MINIO_RELEASE}" \
+ && test "$(git rev-parse HEAD)" = "${MINIO_COMMIT}"
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-trimpath GOSUMDB=sum.golang.org
+RUN go build \
+      -ldflags "-s -w -X github.com/minio/minio/cmd.ReleaseTag=${MINIO_RELEASE} -X github.com/minio/minio/cmd.CommitID=${MINIO_COMMIT}" \
+      -o /out/minio .
+
+FROM alpine:3.23@sha256:f3d55900449227ae9e237ede521e7b665d53a253b42065ba90b9db9275e198ad
+RUN apk add --no-cache ca-certificates curl && mkdir -p /data
+COPY --from=build /out/minio /usr/bin/minio
+# Runs as root, like the upstream image it replaces, so an existing local
+# `minio_data` volume (root-owned) keeps working unchanged. This is a
+# loopback/CI test service with throwaway credentials; moving to a non-root
+# user needs a one-time volume ownership migration and is tracked separately.
+EXPOSE 9000 9001
+HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
+    CMD curl -fsS http://localhost:9000/minio/health/ready || exit 1
+ENTRYPOINT ["minio"]
+CMD ["server", "/data", "--console-address", ":9001"]
