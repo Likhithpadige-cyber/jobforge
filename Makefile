@@ -12,7 +12,7 @@ FULL := --profile full
         test test-unit \
         test-integration test-e2e test-e2e-browser e2e-install test-cov \
         lint fmt typecheck check web-install web-test web-lint web-build \
-        verify secrets-scan secrets-baseline audit db-roles db-grants db-reset \
+        verify secrets-scan history-scan secrets-baseline audit db-roles db-grants db-reset \
         verify-schema check-shadowing test-security diagnose-roles db-verify-roles \
         demo-env demo-up demo-migrate demo-init demo-seed demo-workers demo-status \
         demo-logs demo-down demo-web-host
@@ -204,6 +204,9 @@ secrets-scan:  ## Read-only gate: fail if any tracked file has an unbaselined se
 	# to .secrets.baseline. To update the baseline itself, use
 	# `make secrets-baseline` and review the diff before committing it.
 	detect-secrets-hook --baseline .secrets.baseline $$(git ls-files)
+
+history-scan:  ## Read-only gate: Gitleaks over every reachable commit (needs gitleaks installed)
+	gitleaks git --log-opts="--all" --redact --no-banner --exit-code 1 .
 
 secrets-baseline:  ## Developer action: regenerate .secrets.baseline (review the diff before committing)
 	detect-secrets scan --baseline .secrets.baseline

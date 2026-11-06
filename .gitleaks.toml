@@ -1,0 +1,15 @@
+# Gitleaks configuration: every default rule, one documented exclusion.
+#
+# `.secrets.baseline` is detect-secrets' reviewed allowlist. Each entry stores
+# a one-way SHA-1 `hashed_secret` digest of a string already reviewed as a
+# false positive, never the string itself; Gitleaks' generic-api-key rule
+# flags every digest. Excluding that single file keeps real findings visible.
+# Do not widen this allowlist to silence a finding: rotate and remove the
+# secret instead (docs/REPOSITORY_HYGIENE.md).
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "detect-secrets baseline (SHA-1 digests of reviewed false positives)"
+paths = ['''(^|/)\.secrets\.baseline$''']

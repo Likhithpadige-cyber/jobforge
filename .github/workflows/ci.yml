@@ -187,6 +187,21 @@ jobs:
         # read-only counterpart .pre-commit-config.yaml already uses, and it
         # fails the build on anything not already in .secrets.baseline.
         run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+      - name: Git history secret scan (Gitleaks)
+        # Every reachable commit (checkout uses fetch-depth: 0), with the
+        # default rule set plus the single documented exclusion in
+        # .gitleaks.toml. The pinned release binary is checksum-verified
+        # against the release's own checksum file before it runs.
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLO "${base}/${archive}"
+          curl -fsSLO "${base}/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " ${archive}\$" "gitleaks_${GITLEAKS_VERSION}_checksums.txt" | sha256sum --check -
+          tar -xzf "${archive}" gitleaks
+          ./gitleaks git --log-opts="--all" --redact --no-banner --exit-code 1 .
       - name: Assert no CAPTCHA/stealth dependencies
         # SECURITY.md §7.1: the capability must not exist in the codebase.
         run: |

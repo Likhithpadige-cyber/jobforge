@@ -21,7 +21,10 @@ application, or provisions cloud infrastructure.
   Vitest and production build under Node 22. Docker also uses `npm ci`;
   an invalid/missing lockfile is an error rather than an install fallback.
 - Python audit includes development requirements (including pypdf). Secret
-  scanning uses the read-only hook and the reviewed baseline on tracked files.
+  scanning uses the read-only hook and the reviewed baseline on tracked files,
+  then Gitleaks 8.30.1 (release binary, checksum-verified) scans every
+  reachable commit with the default rules and the one documented exclusion in
+  `.gitleaks.toml`. Locally: `make history-scan`.
   The CAPTCHA/stealth check scans dependency manifests and the npm lockfile,
   avoiding the old false positive on its own scanner source.
 - API and web production images are built with `push: false`.
@@ -42,9 +45,14 @@ GitHub Actions and choose the desired branch. There is no automatic schedule.
 
 The runner generates a fresh `.env.demo`, builds only the isolated demo
 PostgreSQL, Redis, API and web, waits for health, migrates, marks the database,
-seeds fictional data, installs Chromium and runs all 17 browser journeys.
-It starts no submission/generation workers. Existing fixtures refuse a demo
-that lacks its identity marker or reports a live submission gate. JUnit is
+seeds fictional data, installs Chromium and runs the browser suite (the M13
+journeys and the theme checks). It starts no submission/generation workers.
+Fixtures refuse a demo that lacks its identity marker or reports a live
+submission gate. They never sign in as the seeded owner: each run creates
+`e2e-owner-<run>` and `e2e-reviewer-<run>` through the guarded
+`scripts.demo_env e2e-fixture` (passwords generated in memory, passed only
+through that script's environment, never uploaded) and retires both accounts
+at the end, so the job needs no stored credentials or repository secrets. JUnit is
 uploaded; no authentication storage state or generated `.env.demo` is uploaded.
 The final cleanup removes only this ephemeral runner's demo project/volumes.
 Do not run that cleanup command against a valued local demo database.
@@ -72,6 +80,7 @@ python scripts/check_test_report.py test-results/safety.xml
 pytest -m e2e tests/e2e/test_m13_api_journeys.py --junitxml=test-results/api-e2e.xml
 python scripts/check_test_report.py test-results/api-e2e.xml
 pip-audit -r requirements-dev.txt
+make history-scan
 (cd apps/web && npm ci && npm audit && npm run lint && npm run typecheck && npm test && npm run build)
 actionlint
 ```
