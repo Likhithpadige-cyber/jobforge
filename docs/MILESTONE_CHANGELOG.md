@@ -2046,3 +2046,105 @@ created, and nothing was published or deployed.
 - **Browser E2E:** only the demo-read-only tests ran (signed-out redirect and the two login theme checks): 3 passed, 23 not run. The rest create synthetic rows and test accounts in the demo database, which this milestone did not modify. The last full run on the same application code passed 26 of 26.
 - **Audits and secrets:** pip-audit and npm audit report no known vulnerabilities; detect-secrets and Gitleaks are clean.
 - **Unchanged known failure:** `verify_scaffold.py` reports 22 passed and 1 failed, the existing import-direction diagnostic (31 upward imports).
+
+## M16.4 — Private GitHub publication and hosted CI (2026-11-06)
+
+Commits `1cc9d7c`, `6ca02a0`, `15f6651` and `b58f9aa`. The repository is
+private. Nothing was made public, deployed or published, and no account
+setting or credential was changed.
+
+### Publication
+
+- **Repository:** `Likhithpadige-cyber/jobforge`, created **private**. Only the reviewed `dev` history was pushed, as `main` (`1f20b79`, 60 commits); no other branch and no tags.
+- **Identity:** every pushed commit uses the GitHub noreply address as author and committer.
+- **Later pushes:** each fix was pushed as a fast-forward from `dev` to `main`, with no force-push.
+
+### First hosted run: two failures
+
+- **CI** ([run 42152148585](https://github.com/Likhithpadige-cyber/jobforge/actions/runs/42152148585)): five jobs passed. Backend tests failed before any test ran, because pulling `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z` returned 401.
+- **Playwright** ([run 42152453268](https://github.com/Likhithpadige-cyber/jobforge/actions/runs/42152453268)): 3 passed, 23 errored at setup with `GenerationPausedError`.
+
+### MinIO replacement (`1cc9d7c`)
+
+- **Cause:** MinIO stopped publishing images and binaries. quay.io answers 401, Docker Hub has no `minio/minio`, and `dl.min.io` returns 410 Gone. The upstream repository has been archived since April 2026.
+- **Options considered:**
+  - *Third-party images:* rejected. Chainguard publishes only `latest`, so it can't be pinned; another option is a fork, and a third is frozen.
+  - *Official binaries:* no longer available.
+  - *A maintained S3-compatible server* (SeaweedFS, RustFS, Garage, Versity): viable, but a larger change; left for later.
+- **Chosen:** build the final public release from source in `infra/docker/Dockerfile.minio`:
+  - release `RELEASE.2025-10-15T17-29-55Z`, commit `9e49d5e7`, which includes the CVE-2025-62506 fix;
+  - Go 1.27.3 and Alpine 3.23, both pinned by digest;
+  - the build fails unless the tag resolves to the pinned commit, and Go modules are checked against the public checksum database;
+  - two clean builds produced byte-identical binaries.
+- **Compose and CI:**
+  - the `minio` service builds that Dockerfile, and its health check uses `curl` because the image no longer ships `mc`;
+  - CI builds the same Dockerfile with a GitHub Actions cache.
+- **Compatibility:** on a throwaway volume, objects written by the old official image read back byte-identically under the new image, with content types preserved. The local development data volume (160 objects) also matched hash for hash after the switch.
+- **Runs as root,** like the image it replaces, so existing root-owned data volumes keep working.
+
+### Browser E2E on a fresh demo (`6ca02a0`)
+
+- **Cause:** a freshly seeded demo is paused by its two synthetic fabrication incidents, so every generating test was refused. Locally the suite passed only because those incidents had been resolved by hand on 2026-11-03.
+- **Fix:** `demo_env e2e-fixture` resolves only those two seeded alerts, matched by their deterministic IDs and attributed to the run's throwaway owner.
+- **Fails closed:** if generation is still paused afterwards, the fixture stops with a clear error and changes nothing. This was verified with an unexpected incident present: that incident stayed open.
+- **Theme check:** the owner theme check lists alerts with `status=all`, since a resolved demo has no open alert.
+
+### Secret-scan baseline (`15f6651`)
+
+- **Cause:** detect-secrets fingerprints a whole `run: |` block. Changing the image name inside the CI MinIO step changed the fingerprint of the existing CI-only MinIO test credential, which itself is unchanged.
+- **Fix:** one entry's fingerprint and line number were refreshed, and the next entry's line number was updated (its fingerprint is unchanged). The baseline still has 666 entries, and no plugin or filter changed.
+
+### Loopback-only development ports (`1cc9d7c`, `b58f9aa`)
+
+- **Before:** MinIO, Postgres, Redis, the API, the web app and Mailhog were published on all interfaces, so all were reachable from the local network. MinIO used default credentials and has unpatched unauthenticated-write advisories.
+- **Now:** all of them bind to `127.0.0.1`. The host still reaches them through `localhost`, and services reach each other by name on the Compose network.
+- **Local stack:** MinIO, Postgres, Redis, the API and the web app were recreated with the new bindings, on their existing volumes. From the LAN address, ports 9000, 9001, 5432, 6379, 8000 and 3000 now refuse connections.
+
+### Local development environment (not in the repository)
+
+- **Database backup before recreation:**
+  - a full `pg_dump` of the development database (41.7 MB) and a roles-only dump without password hashes, with SHA-256 checksums;
+  - stored privately outside the repository.
+- **Backup verified:** a restore into a throwaway Postgres without network access reproduced all 39 tables with identical row counts (620,425 rows), migration `0010` and all six extensions.
+- **Database unchanged:** after recreation, row counts and per-table content checksums of all 39 tables matched the baseline exactly. Postgres restarted cleanly, with no crash recovery, and no migration was needed.
+- **Development API:** its container ran an image from 2026-09-15 that lacked four pinned packages (`aiosmtplib`, `boto3`, `python-docx`, `reportlab`), so the app failed to import.
+  - The rebuilt image matches every pinned package: 24 runtime and 17 development, including the 2026-11-05 security bumps. `pip check` is clean.
+  - `/readyz` reports Postgres and Redis OK.
+- **Old API images lost:** both earlier API images were dropped by Docker's containerd image store once untagged and unused. No rollback image remains; neither image could run the current code.
+- **Older "fresh" stack:** a leftover Postgres and Redis pair from 2026-09-15, outside the repository's configuration, published on all interfaces.
+  - Its database (migration `0005`, schema only) was backed up the same way. A throwaway restore reproduced all 39 tables, the migration, the extensions and the roles.
+  - Nothing depended on it: no client connections, no other containers on its network or referring to it, no host sessions, and no reference in the repository or its env files.
+  - Both containers were stopped, not removed. Their volumes and data are kept, and they stay stopped across Docker restarts. Their ports no longer accept connections.
+- **Untouched:** the demo environment (containers, ports and data).
+
+### Hosted verification
+
+| Run | Commit | Result |
+|---|---|---|
+| [CI 42173704851](https://github.com/Likhithpadige-cyber/jobforge/actions/runs/42173704851) | `6ca02a0` | 5 of 6 jobs passed; the secret scan failed (fixed in `15f6651`) |
+| [Playwright 42173737851](https://github.com/Likhithpadige-cyber/jobforge/actions/runs/42173737851) | `6ca02a0` | 26 passed, 0 failed, 0 skipped |
+| [CI 42177845026](https://github.com/Likhithpadige-cyber/jobforge/actions/runs/42177845026) | `15f6651` | 6 of 6 jobs passed |
+| [CI 42181691220](https://github.com/Likhithpadige-cyber/jobforge/actions/runs/42181691220) | `b58f9aa` | 6 of 6 jobs passed, all 74 steps |
+
+On `b58f9aa`:
+
+- **Backend:** 3274 passed, none skipped. That includes the 8 S3 tests against MinIO built from source on the runner.
+- **Security invariants:** 1396 passed.
+- **API E2E:** 6 passed.
+- **Frontend:** 360 tests in 28 files passed; `npm audit` found 0 vulnerabilities.
+- **Security checks:** pip-audit and detect-secrets clean; Gitleaks scanned 64 commits with no leaks.
+- **Docker build, lint, types and workflow checks:** all passed.
+
+Playwright was not re-run after `6ca02a0`. The later commits changed only the secrets baseline and Compose port bindings, neither of which the browser workflow uses.
+
+### Remaining risks
+
+- **MinIO is unmaintained.** The final image has 79 reachable vulnerability findings in its own code and dependencies, and none in the Go standard library:
+  - 8 MinIO advisories. Six need features JobForge does not use (SFTP, OIDC, LDAP, replication, S3 Select, multi-node).
+  - The other two, CVE-2026-40344 and CVE-2026-41145, allow unauthenticated object writes and are now reachable only from the local machine.
+  - 71 findings in dependencies, mostly in components JobForge does not enable.
+
+  Moving local and CI storage to a maintained S3-compatible server is still recommended.
+- **The stopped fresh stack** still has an all-interfaces port mapping, so starting it again would re-expose it. Remove it, or recreate it on loopback, before any further use.
+- **Default local credentials:** development services keep their local default credentials. They are now reachable only from this machine.
+- **Not done:** production remains NO-GO (M15); the repository is still private; the profile README is unpublished.
