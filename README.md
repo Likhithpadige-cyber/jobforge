@@ -126,7 +126,7 @@ The schema check currently verifies 38 tables, 20 enums and ten revisions.
 |---|---|
 | Implemented | Milestones M1–M13 (ingestion through review and submission UI), M14 hardening and CI repair, M15 deployment assessment, the approved cream-and-teal design, M16 publication preparation. Full history: [milestone changelog](docs/MILESTONE_CHANGELOG.md). |
 | Locally verified | Backend, frontend, API E2E and browser E2E suites run locally; latest exact counts are in the [changelog](docs/MILESTONE_CHANGELOG.md). |
-| GitHub Actions | Workflows are defined ([CI guide](docs/CI.md)) but have **not yet run on GitHub**. |
+| GitHub Actions | All six CI jobs pass on GitHub Actions, and the manual Playwright workflow passes all 26 browser tests ([CI guide](docs/CI.md); run links and counts in the [changelog](docs/MILESTONE_CHANGELOG.md)). |
 | Production | **NO-GO.** Release blockers (production build/routing, configuration preflight, TLS/edge, backups, release evidence) are listed in the [readiness report](docs/deployment/M15_READINESS_REPORT.md) and [blueprint](docs/deployment/M15_DEPLOYMENT_BLUEPRINT.md). |
 
 Architecture documents also contain future design; they are not a claim that
@@ -135,9 +135,9 @@ every planned feature exists.
 ## Setup
 
 Use a trusted local development machine with Docker Desktop/Compose and Make.
-For host tools use Python 3.12 and Node 22. Development Compose publishes its
-ports on the host interfaces; do not expose it as a public deployment. The
-separate demo publishes only on loopback.
+For host tools use Python 3.12 and Node 22. Both the development Compose stack
+and the separate demo publish their ports on loopback (`127.0.0.1`) only, so
+other devices cannot reach them; neither is a public deployment.
 
 ### Host tools
 
@@ -199,6 +199,9 @@ TOTP. Its one-time provisioning URI is sensitive; keep it out of logs/screenshot
 | Redis | 6379 | 56380 |
 
 Rendering/storage tests need MinIO (`make dev-full` also starts MailHog).
+MinIO no longer publishes images, so it is built from its final public source
+release ([`infra/docker/Dockerfile.minio`](infra/docker/Dockerfile.minio)); the
+first `make dev-full` compiles it once, which takes several minutes.
 The default artifact backend is S3-compatible; configure its endpoint, bucket
 and credentials. Host tools use `http://localhost:9000`; Compose overrides the
 API endpoint to `http://minio:9000`. The demo explicitly uses filesystem storage.
@@ -288,9 +291,9 @@ refused with 404; the owner's dry-run 409 is covered by the API journeys. For Li
 sync browser suite with async API journeys in one pytest session.
 
 [CI.md](docs/CI.md) describes every gate and the separate manual Playwright
-workflow. Exact local results for each milestone are recorded in the
-[milestone changelog](docs/MILESTONE_CHANGELOG.md); hosted Actions and image
-builds have not run yet.
+workflow. Exact local and hosted results for each milestone, including the
+GitHub Actions run links, are recorded in the
+[milestone changelog](docs/MILESTONE_CHANGELOG.md).
 
 ## Operations and troubleshooting
 
@@ -345,6 +348,11 @@ pre-commit and CI secret scanning provide checks, not permission to commit
 sensitive data. Keep the reviewed baseline narrow. Generated browser reports
 and auth-state directories are ignored. Public login artwork and synthetic
 fixtures are intentional tracked assets.
+
+## Reporting a vulnerability
+
+Please do not open a public issue for a security problem. Follow the private
+process in the [security policy](.github/SECURITY.md).
 
 ## License
 

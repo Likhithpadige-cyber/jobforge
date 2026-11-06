@@ -10,7 +10,9 @@ application, or provisions cloud infrastructure.
 - Backend lint/format, strict mypy, schema conformance, model shadowing and
   generated down-migration consistency.
 - Full backend pytest with coverage, PostgreSQL/pgvector, Redis and a
-  runner-only MinIO. Migrations run before tests. The app_agent, app_api,
+  runner-only MinIO, built from pinned upstream source by
+  `infra/docker/Dockerfile.minio` and cached between runs. Migrations run
+  before tests. The app_agent, app_api,
   app_monitor and app_audit roles receive runner-only dummy passwords.
 - Safety tests and the six API E2E journeys run in separate pytest processes.
   `REQUIRE_SECURITY_TESTS=1` makes unavailable security fixtures fail closed.
@@ -33,8 +35,9 @@ application, or provisions cloud infrastructure.
 
 All workflow tests force `LLM_MODE=replay`, `SUBMISSION_MODE=dry_run` and
 `EMAIL_TRANSPORT_MODE=fake`. CI needs no provider, SMTP or production secrets.
-A freshly hosted run is still required to establish the GitHub runner result;
-local checks do not substitute for a hosted Actions execution.
+Hosted runs on GitHub pass all six jobs; the run links and test counts are in
+the [milestone changelog](MILESTONE_CHANGELOG.md). Local checks do not
+substitute for a hosted run after workflow or dependency changes.
 
 ## Browser workflow
 
