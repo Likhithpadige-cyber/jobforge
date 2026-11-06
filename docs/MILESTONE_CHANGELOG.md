@@ -2192,9 +2192,12 @@ single-line fields, URL validation, NFC normalization and default artifact priva
 are corrected. Template 2.1 preserves prior artifact identities and accepts
 complete earlier approved v2 pairs for manual packages.
 
-Full verification: 3,420 backend tests, 6 API E2E journeys, 26 Playwright tests,
+Full verification: 3,430 backend tests, 6 API E2E journeys, 26 Playwright tests,
 366 frontend tests, 12 schema checks; final runs have no failures or skips.
 M3 is explicitly PARTIALLY FIXED: dates, contact density, bullet alignment and
 DOCX font selection improved; PDF bold weight and native Word/iPhone validation
 remain outstanding. No integration, push, deployment or SMTP enablement occurred.
-See the verification report and findings matrix for exact evidence and scope.
+Final download corrections also reject inactive legacy evidence and stale packet
+versions, hash the exact PDF bytes inserted into legacy ZIPs, revalidate older contact
+snapshots before reuse, and reject superseded contact approval on downloads. See the
+verification report and findings matrix for exact evidence and scope.

@@ -1,223 +1,93 @@
-# M16.6 engineering verification
+# M16.6 final engineering verification
 
-Recommendation: **READY FOR INDEPENDENT REVIEW**. This recommendation authorizes
-neither integration nor deployment. A complete browser-only workflow and live
-email sending are not ready for release.
+Engineering recommendation: **READY FOR INDEPENDENT REVIEW**, with M3 explicitly **PARTIALLY FIXED**. H1, H2 and H3 have regression evidence and no confirmed blocker remains open in the resume-export scope. This is a review handoff; Cowork owns the independent verdict and integration recommendation. Live SMTP, deployment and a complete browser-only application workflow are not approved.
 
-Branch: `feature/p0-resume-export`. Original baseline: `7323d42`.
-Implementation reviewed: `2acbaa0`. Scoped corrective commit: `4b23cda`.
-This evidence document is committed on that feature branch after the corrective
-commit. Resolve the final evidence commit with `git rev-parse HEAD`; the external
-handoff records its full SHA.
+Branch: `feature/p0-resume-export`. Original baseline: `7323d4210fa033d39a04e9222fd743037db49118`. Cowork reviewed `2acbaa0b2f711461f3c424fdeb3a1dc3eaf32605`; the previous claimed-ready tip was `09ee0847009a00b959725324cf5b66d329ab9344`. This pass contains correction commit `8f3093c63c0445e9bf46ec09ccea2e421b45c4fa` and download-integrity commit `d89d8e20394f746ff8e24d64178c4eff5bf6d2b9` and final code commit `94511167457c2139b172022a695a8e7a94ece2c4`. The final documentation/evidence commit SHA is recorded in the external review manifest. No merge, rebase, push, deployment, live email, repository visibility change or edit to main/Cowork's worktree occurred.
 
-## Scope and self-review
+## Findings and implementation evidence
 
-Reviewed the complete implementation diff against the original baseline, including
-API ownership and CSRF gates, consent snapshots, claim/source grouping, artifact
-identity and reuse, storage ordering, renderer dependencies and Unicode handling,
-manual package selection, frontend consent, demo changes and synthetic tests.
-No models or migrations changed. Existing JSONB approval snapshots and artifact
-binding columns carry the new data. Schema verification passed all 12 checks;
-the migration head remains `0010_submission_retry_schedule` (10 revisions).
+The complete finding-to-code-to-test matrix, including verified source line numbers, is in `docs/verification/M16_6_FINDINGS.md` and the handoff's `m166-findings-matrix.md`. Statuses:
 
-The owner previews the exact allowlisted contact and structured records. The
-approval binds resume identity, version, content digest, export digest and owner.
-Rendering reads this snapshot rather than the current profile. Fact/source IDs
-remain in the snapshot and canonical claim entries; ambiguous employer mappings
-fail. Employment without selected bullets still retains its structured heading.
-Active, unexpired certifications are included; expired/in-progress records are
-excluded. Work authorization and salary preferences do not enter the resume.
+| H1 | H2 | H3 | M1 | M2 | M3 | M4 | M5 | M6 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| FIXED | FIXED | FIXED | FIXED | FIXED | PARTIALLY FIXED | FIXED | FIXED | FIXED |
 
-## Defects reproduced and fixed after 2acbaa0
+H1: pre-upgrade text approvals render through a separately versioned legacy text-only path without importing current profile contact details. A later explicit owner consent adds an export snapshot to the same approved version, preserving the original reviewer, decision time and application state. A complete approved v2 artifact pair remains packageable. New 2.1 artifacts do not overwrite v1/v2 objects. No schema migration or consent backfill is needed.
 
-1. A render could accept verification changing to failed during upload. It now
-   rechecks verification immediately before persistence.
-2. A render could accept a different, internally valid approval snapshot after
-   producing bytes. It now compares a digest of the exact initial resume and
-   approval inputs against locked, refreshed rows.
-3. Manual packaging had the same snapshot replacement race. It now freezes and
-   rechecks those inputs after storage, and refuses failed verification.
-4. Downloads verified a second store read rather than the returned bytes. Both
-   artifact and legacy packet download routes now hash the actual response bytes.
-5. Contact privacy depended on the template-name prefix. A linked approval's
-   export snapshot now also requires the actual profile owner, even for a
-   differently named template. Legacy v1 text-only reviewer downloads remain
-   supported and have explicit regression coverage.
-6. Custom section headings bypassed the PDF glyph check. Headings now pass the
-   same unsupported-character guard as body text.
+H2: the role-aware review UI lets a reviewer approve prose without requesting private export preview. The owner can then review/consent to export details even after readiness moved the application to submission_ready, manual_handoff or policy_blocked. Consent emits a render request and does not replay application approval transitions. A stale preview is refused.
 
-The first three defects failed targeted adversarial tests before correction.
-The final tests cover mocked storage races and real JSONB updates/reloads in
-PostgreSQL. The latter are controlled mutations at the storage boundary, not a
-claim of exhaustive multi-process concurrency testing. Row locks remain held
-through the caller's transaction; independent review should examine lock order.
+H3: render/reuse, legacy/manual packaging and downloads validate current fact status, soft deletion, validity dates and correct profile. Certification records must still be active and unexpired. Cover-letter and answer citations are included. Cached legacy ZIP downloads must match the exact resume, cover-letter and answer versions being validated. Snapshot consent cannot preserve permission to use withdrawn evidence.
 
-## Final automated results
+New medium corrections normalize NFC/tabs, reject single-line field injection and malformed URLs, enforce owner-only access by default for unknown templates, and improve dates/contact density/bullets/DOCX font selection. Existing `4b23cda` snapshot-race and response-byte integrity fixes remain in place. M3 is not called fully fixed: PDF headings use the regular embedded font; headline omission, long credential URL density and untested native Word/iPhone layout remain.
 
-| Check | Passed | Failed | Skipped |
-| --- | ---: | ---: | ---: |
-| Backend unit and offline grounding corpus | 2,084 | 0 | 0 |
-| Selected isolated PostgreSQL/Redis integration tests | 603 | 0 | 0 |
-| Frontend Vitest | 364 | 0 | 0 |
-| Schema verification script | 12 | 0 | 0 |
-| Partial browser/service journey assertions, distinct labels | 52 | 0 | n/a |
+## Complete test results
 
-The three pytest/Vitest suites account for 3,051 test executions. The schema
-script and browser assertions are reported separately. No live evaluation or
-SMTP delivery was used. The selected integration modules are:
+| Gate | Passed | Failed | Skipped / deselected |
+| --- | ---: | ---: | --- |
+| Full relevant backend: all unit, eval and integration folders | 3,430 | 0 | 0 skipped; 32 opt-in E2E deselected and run separately |
+| Backend folder detail | 2,059 unit + 61 eval + 1,310 integration | 0 | 0 |
+| API E2E journeys, separate process | 6 | 0 | 0 |
+| Full Chromium Playwright suite, separate process | 26 | 0 | 0 |
+| Frontend Vitest, 28 files | 366 | 0 | 0 |
+| Schema conformance | 12 | 0 | 0 |
+| Focused reviewer-to-owner actual-browser assertions | 9 | 0 | Supplemental, not Playwright replacements |
 
-- `test_resume_export`, `test_artifacts`, `test_submission_readiness`,
-  `test_resume_review`, `test_authorization_matrix`;
-- `test_resume_persistence`, `test_resume_revision`, `test_first_draft`;
-- `test_submission_worker`, `test_submission_api`, `test_submission_settings`,
-  `test_submission_retry`, `test_security_invariants`, `test_profile_crud`,
-  `test_cover_letter_review`.
+Backend duration: 275.57s. API E2E: 9.56s. Playwright: 147.15s. Exact JUnit evidence is provided in the archive. Ruff, repository format check, canonical `mypy apps packages workers` (169 files), TypeScript, source ESLint, production Next build and tracked-file detect-secrets all passed. Existing ESLintRC deprecation remains. Offline grounding verification passed 51 corpus cases with zero provider calls; these overlap the 61 eval-folder tests and are not an additional test count.
 
-Ruff lint and format checks passed. Canonical `mypy apps packages workers` passed
-for 168 source files. TypeScript, source ESLint and the production Next.js build
-passed. Source ESLint excludes generated `next-env.d.ts`; a broad initial lint
-invocation flagged Next's generated triple-slash declaration. The existing
-ESLintRC deprecation notice remains. The generated file was not edited.
+The 22 original readiness tests are copied from completed commit `6945454` without changing their calls/assertions, with their source documented. All 22 pass, including zero-question approvals, stale resume/cover/answers, approval order, allowed/manual/blocked policy, retries, replay, packet determinism and submission uniqueness. Thirteen of these cases failed before H1 correction.
 
-`detect-secrets-hook --baseline .secrets.baseline` passed over tracked files.
-The public font SHA-256 assertion required a documented next-line allowlist;
-no secret detector was disabled and no credential was added to the baseline.
-Candidate fixtures use fictional names, reserved example domains and 555 numbers.
+### Reconciliation with Cowork's 3,330
 
-## Isolation, failed runs and retained data
+Cowork's reviewed suite: 2,016 unit + 61 eval + 1,253 integration = 3,330. Prior corrections added 7 unit and 3 integration tests, giving a full collection of 3,340 at `09ee084`. The earlier report ran only 2,084 (=2,023 unit+61 eval) plus 603 selected integrations =2,687; **653 integrations were not executed then**. This pass adds 36 unit and 54 integration tests (including the frozen original 22 readiness cases), so 3,340+90=3,430. E2E's 6+26 tests are separate from both counts. The earlier 52 browser/service assertions are historical partial-journey evidence and do not replace the Playwright suite.
 
-Only new cached-image containers named `jobforge-m166-3842170f-postgres` and
-`jobforge-m166-3842170f-redis` were used, on a new network and new volumes. Their
-loopback ports were 62254 and 62257. No existing development/demo endpoint was
-connected. A sanitized runner validated the resource manifest and DSN; a socket
-guard rejected all destinations except the new loopback ports. No blocked
-connection attempts were recorded. No Docker image was rebuilt or existing
-service reconfigured.
+### Diagnostic runs and environmental limitations
 
-The final clean integration run used the newly created database
-`m166_regression_3842170f`; browser work used `m166_verification`. Both were
-migrated from empty only inside the new verification cluster. No M16.6 migration
-or data backfill is required.
+The before-fix blocker run had 29 failures, 11 passes and 3 deselections: 13 legacy cases, reviewer-to-owner consent and 15 fact scenarios. Some render scenarios initially failed for the wrong policy-state reason, while manual/cached checks were missing. The first unit sweep had 28 failures, including newly reproducing M1/M4/font regressions and old assertions that required updating for the intended date/bullet layout.
 
-Earlier runs are not concealed: the initial selection passed 514 tests. Three
-new race tests exposed the implementation defects before fixes. Two subsequent
-new-test failures were fixture setup errors: readiness had already moved the
-application to `policy_blocked`, so the render never reached upload. After
-correcting setup, those five export integration cases passed. A later 517-case
-run had two failures because baseline tests asserted an entirely empty submission
-table while browser fixtures existed. The final separate-database selection
-passed all 603 cases.
+The first complete backend attempt had 3,408 passes and 4 failures: three configuration tests inherited explicit synthetic DSN/session settings, and one new test incorrectly asserted that a shared artifact table was empty. The runner now uses CI-style assembled settings; the new assertion is scoped to its resume. A later focused failure required adding Resume to a direct-router mock after the new evidence lookup. An accidental mypy invocation from the projectless directory omitted repository config; the canonical command from the repository passed all 169 files. The first new historical-consent run also had three fixture failures because PostgreSQL correctly refused an illegal approved-to-changes_requested transition; those cases now use the supported superseded state, with no trigger bypass. These are recorded separately from the final green suite. A browser invocation without `-m e2e` intentionally deselected all 26 tests and was corrected; it is not counted as a passing run. An initial frontend invocation from repository root produced 8 cwd-based asset failures; the correct apps/web invocation passed all 366. No final failures or skips are concealed.
 
-A harness mistake also allowed existing submission-test `_clean_all` fixtures to
-clear synthetic pending-submission rows in the temporary browser database before
-separation. Those fixtures issue committed database-wide deletes. No original
-service or personal data was involved; retained approved resumes, snapshots,
-artifacts and downloaded packages were checked afterward. Do not use these tests
-against retained fixtures or any non-disposable database. Both new databases have
-non-destructive local dump backups. Containers, volumes, artifacts and evidence
-remain preserved; destructive cleanup requires user approval. Only the two new
-API/web process groups were stopped after browser verification.
+The complete 3,420-test run before the final download regressions also passed. The 3,423- and 3,424-test intermediate full runs also passed. The final full rerun above covers all four new download/integrity regressions and six historical-consent/approval-safety cases. Native Word, physical iPhone and ATS vendor ingestion are environmental verification gaps, not skipped pytest cases.
 
-## Browser workflow and explicit gaps
+## PDF/DOCX quality
 
-Chromium ran against a separate loopback API (50083) and Next development server
-(50084), with external browser requests blocked. API settings were test/replay,
-`SUBMISSION_MODE=dry_run`, `EMAIL_TRANSPORT_MODE=fake`. No worker was launched;
-SMTP constructors in the verification API were replaced by a refusal tripwire.
-The UI showed dry-run mode and the submission switch off.
+Three fictional role pairs were regenerated using persisted explicit owner export consent, production 2.1 renderers and the production manual-package service, in the separate new sample database. Generation uses real B2/B3 validation, numeral checks, bound scripted B5 verdicts and B6 persistence; it does not assess live-model accuracy. These files were saved from the service artifact store, not downloaded by the browser in this pass. All three persisted approvals, current evidence and unchanged cached manual-package/PDF/DOCX bytes were revalidated again against the final consent-safety code.
 
-| Requested step | Observed verification |
-| --- | --- |
-| Create/import fictional profile | Scripted ORM fixtures; frontend does not expose first-profile creation/master import |
-| Generate tailored resume | Real B2/B3 validators, numeral guard, bound scripted B5 verdicts and B6 persistence; no live LLM |
-| Review contact and career details | Actual owner browser preview for all three roles, including dates and source records |
-| Approve version | Actual checkbox and HTTP approval; button disabled before consent |
-| Export PDF and DOCX | Production render service replay, then authenticated API downloads; direct Studio export button remains disabled and DOCX action is absent |
-| Verify exported information | Automated extraction, dates, metadata, content agreement and checksums, plus page-by-page visual inspection |
-| Manual handoff | Actual browser button downloaded each ZIP; six members and exact approved PDF/DOCX bytes verified |
-| Block unapproved changes | Synthetic phone changed after preview: HTTP 409, visible error and zero artifacts; a fresh preview and consent were required |
-| Desktop/mobile | 1280x900 and 375x812; screenshots and no-horizontal-overflow assertions for consent/submission |
-| Ownership | Another owner received 404; anonymous download 401; reviewer/CSRF restrictions additionally covered by ASGI and DB-backed suites |
+Linux Administrator, Cloud Infrastructure Engineer and Data Center Technician each produce one PDF page and one LibreOffice-rendered DOCX page. All six pages were visually inspected. Approved name, email, phone, location and links match exports; employment title/employer, education/institution/degree and all date ranges are intact and readable. Snapshots retain original ISO dates/provenance; visible dates use English month/year ranges. Private authorization/salary sentinels are absent. PDFs have real headings/bullets in reading order, selectable text, bounded glyphs, no blank/clipped pages and no dropped text. Headings are regular-weight, not bold.
 
-This is a **partial UI journey**, not a completed ten-step browser-only E2E run.
-Profile import, first-draft and question-preparation entry points are missing.
-Resume Studio still says export is coming next even though manual packages work.
-Its pre-existing review read model reports `not_started` once an approved
-application reaches `policy_blocked`. These are personal-use release gaps.
+Pypdf and pdfminer independently extract the same PDF text. PDF and DOCX content matches after whitespace/bullet normalization. DOCX uses editable paragraphs, native headings/list styling, Arial requests, no tables/text boxes or contact in headers/footers; a regression edits/saves/reopens it successfully. LibreOffice visual output and independent rendered-DOCX glyph-margin checks are clean; installed-font substitution and pagination on native Word/iPhone remain unverified.
 
-## Resume quality
+NFD accented names/prose normalize to NFC before digests/rendering. Prose tabs become spaces consistently; single-line fields reject them. Unsupported characters (including unsupported CJK/Arabic/emoji, shaping or controls) fail with an explicit renderer error rather than silent glyph loss. No transliteration is invented. A separate 300-character URL/token stress pair was inspected in both formats; extraction retains every character and PDF glyphs stay within bounds. Existing multi-page tests additionally check all page bounds and heading placement. Plain-text URLs wrap; clickable links are not implemented.
 
-Generated Linux Administrator, Cloud Infrastructure Engineer and Data Center
-Technician samples through persisted owner approvals. Each PDF and each
-LibreOffice-rendered DOCX was one page. All six pages were visually inspected:
-single column, no tables/text boxes, readable body contact, sensible section
-order, no clipping, missing glyphs, blank pages or unnecessary overflow. DOCX's
-long Data Center education line wraps its final ISO date; the full date remains
-selectable and intact. Native Word layout was not tested.
+Each manual ZIP has six members and contains exactly the approved PDF and DOCX bytes, alongside cover letter, answers, job details and checklist. Template/version/approval IDs and hashes bind the pair. This is practical ATS extraction evidence, not a guarantee for every proprietary ATS parser. Full PDF bold styling, headline inclusion and denser long credential links remain M3 work.
 
-Automated checks used pypdf and pdfminer independently, plus pdfplumber glyph
-bounds, python-docx structure/text and ZIP byte comparisons. PDF and DOCX contain
-the same canonical information after whitespace/bullet normalization. Dates and
-`Present` are preserved exactly. Unit stress tests additionally cover a 300-letter
-URL token, 100 long technical lines across pages, page bounds, deterministic
-bytes and keeping section headings with following records. The earlier two-page
-synthetic stress sample remains available with its visual QA evidence.
+## Data integrity, authorization and races
 
-Achievement-oriented metrics are supported when grounded: 24 Linux hosts and a
-40-to-25-minute recovery change; three cloud environments and a 30-to-12-minute
-deployment change; 48 assets and a 16-to-4 inventory-exception change. Every
-number belongs to the cited fictional fact's structured payload. In all three
-fixture builds, a deliberately invented `999` metric was refused by the real
-validator. These synthetic fixtures validate mechanics, not live model judgment.
-Their summary sentences deliberately repeat source wording rather than provide
-an evaluation of generated prose quality.
+Approval/version/content/export digests bind frozen owner consent to immutable resume content, structured source IDs and original review attribution. New owner consent requires a fresh owner-only preview with source versions. Resume revisions append versions rather than rewriting the approved predecessor. Only exact known legacy text templates retain reviewer byte access; future/unknown/null templates require the actual profile owner. Contact snapshot markers still require owner even under a legacy-looking name. Cookie authentication/CSRF and owner/foreign-owner tests remain active.
 
-URLs are preserved as selectable text, not clickable hyperlink annotations.
-No URL was visited and no ATS upload was performed. ATS compatibility here means
-simple text structure and extraction evidence, not certification by an ATS vendor.
-Latin, Greek and Cyrillic extraction is tested. Missing glyphs, combining marks,
-CJK, unimplemented shaping scripts and bidi/control characters fail explicitly;
-this is bounded Unicode support, not universal script coverage.
+Render and package services lock/refetch application/approval/evidence rows, compare the initial approved material digest after storage and refuse changed verification, approval or snapshots before artifact persistence. Controlled storage-boundary mutations run against real PostgreSQL JSONB, plus mocked adversarial unit cases. This is concrete race regression coverage, not exhaustive multi-process scheduling proof. Row locks live through the caller's transaction; independent review should inspect lock order and contention. A validity check is current at the transaction boundary; it cannot recall bytes already downloaded.
 
-## Compatibility and security decisions
+Actual response bytes are checked against recorded SHA-256 digests before download; current production renderers always record them. The final correction also hashes the exact PDF bytes inserted into a legacy packet, eliminating a second-read verification gap. Manual packages require both format hashes and same-template pairs; failed verification does not create a database artifact row. Storage may retain an unreachable uploaded object after rollback; existing recovery/idempotency tests cover this design. Unapproved metadata changes, checksum corruption and owner mismatch fail closed. Older frozen contact snapshots are validated against the current shared field/URL rules before reuse, and contact artifact/legacy packet downloads refuse superseded approvals. Six real-database regressions cover those paths.
 
-Legacy approval snapshots retain their existing identity/version match semantics.
-Historical artifacts remain readable under the established policy. Legacy text-only
-approvals cannot authorize contact-bearing v2 exports or manual-v2 packages;
-a fresh owner-reviewed version is required. There is no migration that invents
-consent, and no UI recovery action to upgrade an already-approved legacy version.
+### Exact cleanup/resource accounting
 
-Manual-v2 ZIP identity includes resume version, approval, export digest, current
-PDF/DOCX identities and checksums, cover letter, answers and job metadata. It is
-separate from the legacy email packet. `current_packet` excludes manual templates
-so email packet consumers cannot accidentally pick a manual ZIP. The resume pair
-must share current approval and template identity; actual bytes are checked.
+The prior cleanup incident was confined to the earlier own temporary container `jobforge-m166-3842170f-postgres`, database `m166_verification`, loopback port 62254. Existing submission test fixtures committed these deletes: all rows in `submissions`; `site_policies` rows with domain `example.invalid`; and the `settings` row whose key was `submission_enabled`. The fixtures are in `test_submission_worker.py`, `test_submission_api.py` and `test_submission_retry.py`. Browser preparation had created three synthetic pending submissions there. No pre-delete row ledger/dump exists, so exact deleted row IDs and any additional fixture-row total cannot be reconstructed; the report does not invent them. Subsequent prior evidence verified all three synthetic profiles/resumes, approval snapshots, each candidate's four artifacts, downloaded packages and post-cleanup backups remained. No existing development/demo database or Cowork resource was involved.
 
-Transport, dispatch, retry scheduler, submission state machine and database
-models/migrations are unchanged. Tests used fake transport. No email or external
-application was sent. The SMTP send/commit failure window remains unresolved;
-see `docs/design/SMTP_DISPATCH_RECOVERY.md` for human-reconciliation states.
+This pass never queried the old database. New resources are exactly `jobforge-m166-f43f3588-postgres`, `-redis`, `-minio`, their new `-data` volumes and network `jobforge-m166-f43f3588-network`, created from cached pinned images. The new PostgreSQL databases are `m166_verification` (regression), `jobforge_demo` (browser only) and `m166_samples` (sample approvals only). The regression tests' ordinary cleanup affects only their disposable database/own test objects. Browser retirement clears only its freshly generated accounts' password hashes, preserving rows. No retained development/demo/Cowork resource is touched. Resource names and ports are recorded in the archive's sanitized manifest.
 
-## Independent review priorities and unverified behavior
+Protected local DB dumps and credentials remain outside the review archive. All containers, volumes and data are retained pending user-approved cleanup. Only the new loopback API/web process groups are stopped after verification. A socket guard permits only the new manifest's loopback ports. It rejected dead-dependency and SDK metadata probes before connection; those attempts are reported, not described as zero. External browser requests are blocked. No worker or live SMTP was launched; API SMTP constructors are refusal tripwires and settings use replay/dry_run/fake transport.
 
-1. Recheck owner/digest binding, post-upload material comparison and transaction
-   lock order, including snapshot replacement and revoked verification.
-2. Check contact disclosure through both artifact and legacy packet downloads,
-   including custom template names and reviewer permissions.
-3. Check version/approval/template selection and separation of manual and email
-   packet identities. Legacy email packet source selection still assumes one PDF
-   per resume; mixed historic templates need an explicit integration decision.
-4. Audit provenance grouping and the existing upstream assumption that persisted
-   claim text/fact references agree with resume content. The new digest freezes
-   what is approved; it is not a replacement semantic verifier. Cover-letter
-   approval also retains the pre-existing immutable-version assumption.
-5. Decide the UI completion and legacy-consent upgrade path before personal-use
-   release. Do not interpret this review recommendation as that release gate.
-6. Inspect Unicode exclusions, font packaging/license, long-token limits and
-   unsupported-script errors. Native Word, iPhone Safari/Files, real ATS parsers,
-   S3/MinIO, full outbox/worker delivery and high-concurrency interleavings remain
-   unverified. No secure remote-access deployment was changed or tested.
+## SMTP failure window: design only
 
-Review the original baseline diff, then the corrective commit, and then this
-verification evidence. Coordinate using completed commits only. Do not merge,
-rebase onto Cowork's moving main, push or enable live sending without approval.
+`docs/design/SMTP_DISPATCH_RECOVERY.md` remains a separate proposal. It specifies committed prepare/claim boundaries, immutable MIME hashes, per-application active/uncertain uniqueness, fencing, late receipt evidence, lease budgets, conservative uncertain outcomes, separately authorized resend with a new Message-ID, precise DATA boundaries, key/retention management and kill-point tests. No dispatch, transport, scheduler or live submission implementation changed. The SMTP send/commit window remains unresolved in current runtime and blocks enabling live sending; it is outside this resume-export milestone.
+
+## Compatibility with private main
+
+Private main `6945454057564b0f079b9384989a76b8c9541ae4` and feature share base `7323d4210fa033d39a04e9222fd743037db49118`. Read-only three-tree comparison shows no overlapping changed paths and no conflict markers. Main-only files are documentation/workflows/screenshots, not runtime/schema/dependencies. No combined merge checkout or merged-tree runtime suite was executed, and a clean textual comparison is not a combined CI guarantee.
+
+The histories diverged, so integration would require a merge commit. Proposed steps, for Cowork's recommendation and explicit approval only: create a separate integration worktree/branch at `6945454`; merge the final handoff SHA with `--no-ff`; preserve all eleven main-only paths; review the combined diff and workflow expectations; run complete backend, schema, frontend and both E2E suites on that combined tree; then seek final integration approval. None of these integration steps was executed. Main and Cowork's review worktree remain unchanged.
+
+## Remaining risks and handoff boundary
+
+M3 visual polish remains partial. Native Word/iPhone, vendor ATS ingestion, combined-main CI and true concurrent-process stress remain unverified. Reviewer metadata listing, large-input wrapping cost, generic manual-package error messaging and multiple-approval selection remain low-severity review notes. Owner-approved structured metadata is not independently fact-verified. The browser-only product flow still lacks profile import/first-draft/question preparation and complete direct export UI; the functional manual package is not evidence that all those entry points exist. Secure remote MacBook/iPhone access, portal automation, follow-ups and live SMTP are not implemented or enabled by this milestone.
+
+The archive supplies exact matrix, final JUnit, quality checks, synthetic PDF/DOCX/ZIP/approval pairs, page renders, isolated-run harness and sanitized resource/count/compatibility manifests. A Git bundle supplies completed commits. Previous `09ee084` outputs are preserved separately. Cowork should independently reproduce H1/H2/H3 and review M3/locking/legacy compatibility before recommending integration. Stop at this handoff.
