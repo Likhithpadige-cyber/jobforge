@@ -379,6 +379,9 @@ data before any intentional reset. Avoid pasting logs containing PII or secrets.
   browser submission is not implemented. No CAPTCHA or anti-detection bypass.
 - New real jobs cannot get AI drafts while live AI is off; the deterministic
   paths (import, evaluation, evidence, review, export, tracking) all work.
+- There is no profile-creation screen or endpoint yet: the candidate profile
+  is created by the fictional demo seed. A fresh private deployment needs that
+  step added before real use (tracked as remaining work).
 - Replay generation needs matching cassettes; the fictional demo mainly exposes
   seeded review flows. No external model-quality claim follows from offline tests.
 - The production web build calls the API on its own origin
