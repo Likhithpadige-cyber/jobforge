@@ -119,7 +119,8 @@ def test_hardening_on_every_service() -> None:
     for name in ("edge", "web", *PYTHON_APPS):
         assert SERVICES[name]["cap_drop"] == ["ALL"], name
         # Only the edge gets one capability back (its binary's file capability).
-        assert SERVICES[name].get("cap_add", []) == (["NET_BIND_SERVICE"] if name == "edge" else []), name
+        expected = ["NET_BIND_SERVICE"] if name == "edge" else []
+        assert SERVICES[name].get("cap_add", []) == expected, name
         assert SERVICES[name]["read_only"] is True, name
     for name in ("edge", "web", "api", "postgres", "redis"):
         assert "healthcheck" in SERVICES[name], name
