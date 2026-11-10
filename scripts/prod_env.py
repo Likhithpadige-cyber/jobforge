@@ -418,15 +418,20 @@ async def bootstrap_owner(
     mistyped enrolment can never lock the owner out. Refuses when any owner
     already exists. Returns the new user's id.
     """
+    # The same validator the login endpoint uses (pydantic EmailStr), so the
+    # bootstrap can never create an owner who cannot sign in (found in the
+    # M21 drill: reserved domains such as .invalid are refused at login).
+    from pydantic import EmailStr, TypeAdapter, ValidationError
     from sqlalchemy import text
 
     from packages.core.auth import generate_secret, hash_password, provisioning_uri, verify_code
     from packages.core.crypto import encrypt_totp_secret
     from packages.shared.ids import uuid7
 
-    email = email.strip().lower()
-    if "@" not in email or len(email) > 254 or any(c.isspace() for c in email):
-        raise ProdGuardError("a valid email address is required")
+    try:
+        email = str(TypeAdapter(EmailStr).validate_python(email.strip())).lower()
+    except ValidationError as exc:
+        raise ProdGuardError("a valid email address is required (as accepted at sign-in)") from exc
     async with engine.connect() as conn:
         name = await conn.scalar(text("SELECT current_database()"))
         if name != expected_db:

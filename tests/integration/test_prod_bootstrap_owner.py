@@ -172,3 +172,18 @@ async def test_insert_matches_the_real_users_table(engine) -> None:
         "created_at",
         "updated_at",
     }
+
+
+@pytest.mark.parametrize("bad", ["owner@example.invalid", "not-an-email", "a b@example.com", ""])
+async def test_bootstrap_refuses_emails_the_login_endpoint_would_reject(engine, bad: str) -> None:
+    async with _scratch(engine) as (scratch, name):
+        with pytest.raises(prod_env.ProdGuardError, match="valid email"):
+            await prod_env.bootstrap_owner(
+                scratch,
+                email=bad,
+                encryption_key=KEY,
+                read_password=lambda: PASSWORD,
+                read_code=lambda: "",
+                show=lambda u: None,
+                expected_db=name,
+            )
