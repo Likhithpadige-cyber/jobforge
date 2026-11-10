@@ -293,6 +293,14 @@ export const api = {
   listResumeArtifacts: (resumeId: string) =>
     request<ApiArtifact[]>(`${env.apiPrefix}/resumes/${resumeId}/artifacts`),
 
+  /** POST /api/v1/applications/{id}/prepare — owner-supplied questions; worker grounds answers offline. */
+  prepareApplication: (applicationId: string, payload: { questions: { question_text: string; input_type: string }[] }) =>
+    request<{ application_id: string; event_id: string }>(`${env.apiPrefix}/applications/${applicationId}/prepare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
   importJobs: (payload: ImportJobsRequest) =>
     request<ImportJobsResponse>(`${env.apiPrefix}/jobs/import`, {
       method: "POST",

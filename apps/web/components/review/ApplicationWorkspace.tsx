@@ -23,6 +23,7 @@ import {
   type SubmissionReadiness,
 } from "@/lib/review";
 import { ReviewErrorState, ReviewLoading, SectionCard } from "./ReviewStates";
+import { PrepareQuestionsPanel } from "@/components/review/PrepareQuestionsPanel";
 
 interface Snapshot {
   readiness: SubmissionReadiness;
@@ -238,6 +239,9 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
             <p className="text-sm text-ink">{questions.length} question{questions.length === 1 ? "" : "s"}{needsHuman > 0 ? ` · ${needsHuman} need your answer` : ""}{snapshot.answersApproved ? " · approved" : readiness.application_status === "awaiting_approval" && questions.length > 0 ? " · waiting for review" : ""}</p>
           ) : (
             <p className="text-sm text-ink-soft">Questions have not been prepared yet.</p>
+          )}
+          {isOwner && readiness.application_status === "resume_ready" && (
+            <PrepareQuestionsPanel applicationId={applicationId} onPrepared={() => void load()} />
           )}
         </SectionCard>
 
