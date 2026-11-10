@@ -684,3 +684,40 @@ async def test_first_draft_status_and_shared_reviewer_review(source, tmp_path, a
     assert result["status"] == "completed" and result["resume_id"]
     review = await reviewer.get(f"/api/v1/applications/{request.application_id}/resume-review")
     assert review.status_code == 200
+
+
+async def test_latest_master_resume_is_owner_only_and_tracks_imports(source, api_sessions):
+    owner = await api_sessions("owner")
+    url = f'/api/v1/profiles/{source["profile_id"]}/master-resumes/latest'
+    before = await owner.get(url)
+    assert before.status_code == 200
+    imported = await owner.post(
+        f'/api/v1/profiles/{source["profile_id"]}/master-resumes',
+        json={
+            "schema_version": 1,
+            "source_label": "latest-check",
+            "sections": [{"name": "summary", "entries": [{"text": "Synthetic newer line."}]}],
+        },
+    )
+    assert imported.status_code == 201
+    after = (await owner.get(url)).json()
+    assert after["resume_id"] == imported.json()["resume_id"]
+    assert after["version"] == before.json()["version"] + 1
+    assert after["source_label"] == "latest-check"
+
+    assert (await owner.get(f"/api/v1/profiles/{uuid4()}/master-resumes/latest")).status_code == 404
+    reviewer = await api_sessions("reviewer")
+    assert (await reviewer.get(url)).status_code == 403
+
+
+async def test_runtime_modes_report_the_safe_test_configuration(app_client, api_sessions):
+    assert (await app_client.get("/api/v1/settings/runtime-modes")).status_code == 401
+    for role in ("owner", "reviewer"):
+        client = await api_sessions(role)
+        modes = (await client.get("/api/v1/settings/runtime-modes")).json()
+        assert modes == {
+            "llm_mode": "replay",
+            "live_ai_enabled": False,
+            "submission_mode": "dry_run",
+            "email_transport_mode": "fake",
+        }

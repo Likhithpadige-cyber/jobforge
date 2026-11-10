@@ -313,6 +313,20 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  /** GET /api/v1/settings/runtime-modes — mode names only, for honest labels. */
+  runtimeModes: () => request<RuntimeModes>(`${env.apiPrefix}/settings/runtime-modes`),
+
+  /** GET /api/v1/jobs/{id}/evaluation — the latest deterministic evaluation. */
+  jobEvaluation: (jobId: string) => request<{ id: string }>(`${env.apiPrefix}/jobs/${jobId}/evaluation`),
+
+  /** POST /api/v1/jobs/{id}/first-draft — owner-only; queues the drafting worker. */
+  requestFirstDraft: (jobId: string, body: { profile_id: string; master_resume_id: string; evaluation_id: string }) =>
+    request<{ application_id: string; event_id: string; profile_id: string }>(`${env.apiPrefix}/jobs/${jobId}/first-draft`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
   importJobs: (payload: ImportJobsRequest) =>
     request<ImportJobsResponse>(`${env.apiPrefix}/jobs/import`, {
       method: "POST",
@@ -611,4 +625,12 @@ export interface PastedJobRequest {
   url: string;
   location?: string;
   description: string;
+}
+
+/** GET /api/v1/settings/runtime-modes (RuntimeModes). */
+export interface RuntimeModes {
+  llm_mode: "replay" | "record" | "live";
+  live_ai_enabled: boolean;
+  submission_mode: "dry_run" | "enabled";
+  email_transport_mode: string;
 }

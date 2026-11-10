@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MasterResumeImport, parseMasterText, toMasterData } from "@/components/profile/MasterResumeImport";
 import { ApiError } from "@/lib/api";
-import { profile } from "@/lib/profile";
+import { profile, type MasterResumeData } from "@/lib/profile";
 
 const RESUME = `Jordan Example
 Linux administrator focused on automation.
@@ -67,10 +67,10 @@ describe("MasterResumeImport", () => {
     fireEvent.change(screen.getByLabelText("Text of line 3"), { target: { value: "Administered 180 RHEL 8 servers." } });
     fireEvent.click(screen.getByRole("button", { name: "Save master resume" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    const [, body] = spy.mock.calls[0];
+    const body: MasterResumeData = spy.mock.calls[0]![1];
     expect(body.sections.find((s) => s.name === "summary")).toBeUndefined();
     expect(body.sections.find((s) => s.name === "experience")?.entries[1]).toEqual({ text: "Administered 180 RHEL 8 servers." });
-    expect(onSaved.mock.calls[0][0]).toMatch(/not evidence/);
+    expect(String(onSaved.mock.calls[0]?.[0])).toMatch(/not evidence/);
   });
 
   it("shows the server's refusal", async () => {

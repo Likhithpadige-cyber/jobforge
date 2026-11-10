@@ -41,6 +41,34 @@ class FirstDraftInput(BaseModel):
     evaluation_id: UUID
 
 
+@router.get("/profiles/{profile_id}/master-resumes/latest")
+async def latest_master_resume(
+    profile_id: UUID, session: DbSession, _owner: RequireOwner
+) -> dict[str, object]:
+    """The newest imported master resume for a profile.
+
+    Owner-only, matching `POST /profiles/{id}/master-resumes` and the
+    approved shared-workspace boundary (M7). An unknown profile and "none
+    imported yet" give the same 404. Contact-bearing exports keep their
+    stricter per-profile-owner check (M16.6).
+    """
+    resume = await session.scalar(
+        select(Resume)
+        .where(Resume.profile_id == profile_id, Resume.kind == "base")
+        .order_by(Resume.version.desc())
+        .limit(1)
+    )
+    if resume is None:
+        raise NotFoundError("no master resume has been imported for this profile")
+    content = resume.content or {}
+    return {
+        "resume_id": str(resume.id),
+        "version": resume.version,
+        "created_at": resume.created_at.isoformat(),
+        "source_label": content.get("source_label"),
+    }
+
+
 @router.post("/profiles/{profile_id}/master-resumes", status_code=201)
 async def import_master_resume(
     profile_id: UUID,

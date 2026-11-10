@@ -152,6 +152,12 @@ export const profile = {
   get: () => apiRequest<ProfileDetail>(base()),
   update: (input: ProfileInput, version: number) => apiRequest<Profile>(base(), send("PUT", { ...input, version })),
 
+  /** GET /api/v1/profiles/{id}/master-resumes/latest — owner-only; 404 when none imported. */
+  latestMasterResume: (profileId: string) =>
+    apiRequest<{ resume_id: string; version: number; created_at: string; source_label: string | null }>(
+      `${env.apiPrefix}/profiles/${profileId}/master-resumes/latest`,
+    ),
+
   /** POST /api/v1/profiles/{id}/master-resumes — owner-reviewed lines; never verifies facts. */
   importMasterResume: (profileId: string, data: MasterResumeData) =>
     apiRequest<{ resume_id: string; profile_id: string; version: number; kind: string }>(

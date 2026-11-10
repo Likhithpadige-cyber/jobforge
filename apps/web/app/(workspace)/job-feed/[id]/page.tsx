@@ -4,6 +4,7 @@ import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
+import { FirstDraftPanel } from "@/components/FirstDraftPanel";
 import { NotWiredNotice } from "@/components/NotWiredNotice";
 import { ProvenanceTag } from "@/components/ProvenanceTag";
 import { RequirementList } from "@/components/RequirementList";
@@ -249,10 +250,9 @@ export default function JobDetailPage({
                 <li>Read the requirements above and decide if it is worth applying.</li>
                 <li>Open the original posting to check anything missing here.</li>
               </ul>
-              <p className="mt-4 rounded-chip bg-inset px-3 py-2 text-xs text-ink-soft">
-                Preparing a resume for this job is not available yet.
-              </p>
             </div>
+
+            <FirstDraftPanel jobId={job.id} />
           </aside>
         </div>
       </div>

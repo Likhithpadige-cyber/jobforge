@@ -276,6 +276,7 @@ OWNER_ONLY = frozenset(
         ("GET", "/api/v1/monitoring/summary"),
         ("GET", "/api/v1/monitoring/snapshots"),
         ("POST", "/api/v1/profiles/{profile_id}/master-resumes"),
+        ("GET", "/api/v1/profiles/{profile_id}/master-resumes/latest"),
         ("POST", "/api/v1/jobs/{job_id}/first-draft"),
         # M9. Preparation is the one cost-shaped, pipeline-triggering action,
         # same as first-draft above - owner only.
@@ -381,6 +382,7 @@ OWNER_AND_REVIEWER = frozenset(
         # it is owner-only (OWNER_ONLY above).
         ("GET", "/api/v1/settings/submission-enabled"),
         ("GET", "/api/v1/settings/submission-gate"),
+        ("GET", "/api/v1/settings/runtime-modes"),
         ("GET", "/api/v1/agent-runs"),
         ("GET", "/api/v1/agent-runs/summary"),
         ("GET", "/api/v1/agent-runs/{run_id}"),

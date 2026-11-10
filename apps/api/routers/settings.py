@@ -55,6 +55,30 @@ async def get_submission_gate(session: DbSession, settings: AppSettings) -> Subm
     )
 
 
+class RuntimeModes(BaseModel):
+    """The deployment's safety modes, so the UI can label what is real.
+
+    Mode names only - no keys, hosts or credentials. `live_ai_enabled` is
+    true for `live` and `record`, the two modes that call a model provider.
+    """
+
+    llm_mode: Literal["replay", "record", "live"]
+    live_ai_enabled: bool
+    submission_mode: Literal["dry_run", "enabled"]
+    email_transport_mode: str
+
+
+@router.get("/settings/runtime-modes", response_model=RuntimeModes)
+async def get_runtime_modes(settings: AppSettings) -> RuntimeModes:
+    llm = cast(Literal["replay", "record", "live"], str(settings.llm_mode))
+    return RuntimeModes(
+        llm_mode=llm,
+        live_ai_enabled=llm != "replay",
+        submission_mode=cast(Literal["dry_run", "enabled"], str(settings.submission_mode)),
+        email_transport_mode=str(settings.email_transport_mode),
+    )
+
+
 @router.put("/settings/submission-enabled", dependencies=[Depends(require_owner)])
 async def put_submission_enabled(
     payload: SubmissionEnabledInput,
