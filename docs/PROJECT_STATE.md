@@ -31,9 +31,16 @@ Evidence, runners and logs: `../jobforge-overnight-evidence/` (outside the repo)
   H3/source-repair tests pass (on b9031f6 they fail at import); offline
   evaluation 0 provider calls; frontend 386; Playwright 28/28.
 
-## M17 core workflow UI — complete (locally)
+## Verification (branch tip, 2026-11-10, isolated throwaway services)
 
-Latest verification: see "Verification" below.
+Backend 3,584 passed / 0 skipped; safety 1,659; API E2E 6; main's original
+22 readiness tests 22/22; H3 regressions 100/100 (and still fail at import
+on b9031f6, as intended); offline eval 0 provider calls; schema
+verification 12/12; frontend 404 (34 files); Playwright 31/31 against the
+throwaway `jobforge-ovn` demo (migrated to 0011). Typecheck, ESLint and ruff
+clean.
+
+## M17 core workflow UI — complete (locally)
 
 - Owner-pasted job import (approved 2026-11-10): owner-only
   `POST /jobs/manual` under the internal `owner-pasted` source, no
