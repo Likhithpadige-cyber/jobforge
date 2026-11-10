@@ -29,7 +29,8 @@ bootstrap-owner, preflight), `packages/core/db/schema_guard.py`,
 
 ## Unfinished, in order
 
-1. **Next:** M22 documentation — `docs/deployment/M22_TAILSCALE_RUNBOOK.md`:
+0. Done since the checkpoint: M22 runbook (`docs/deployment/M22_TAILSCALE_RUNBOOK.md`), `reset-totp`, backup-age preflight, M21 runbook, fit score on the job page. Full backend run_full_8: 3,753 passed; safety 1,771; vitest 419; Playwright 32/32 (+ M17 4/4 after fit card).
+1. (done) M22 documentation — `docs/deployment/M22_TAILSCALE_RUNBOOK.md`:
    install (owner), `tailscale serve --bg --https=443 http://127.0.0.1:8480`
    (never Funnel), MagicDNS/HTTPS certs, ACL to owner devices on 443, set
    `CORS_ORIGINS=["https://<mac>.<tailnet>.ts.net"]` and verify Secure
@@ -93,6 +94,10 @@ Python: `/Users/padige/Projects/jobforge-c3-design-review/jobforge-phase5/.venv/
 (no `uv`). zsh does not word-split `$VAR`; use literal paths. Type-check
 scripts as modules: `mypy -m scripts.backup -m scripts.restore -m scripts.prod_env`.
 Docker's VM has ~4 GB: run one JobForge stack at a time.
+
+## Next task
+
+Re-run the full backend regression on the latest commit (last full run predates reset-totp/backup-age), then master résumé PDF/DOCX extraction and mobile Playwright for tracking.
 
 ## Uncommitted changes
 
