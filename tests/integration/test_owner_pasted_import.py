@@ -24,12 +24,16 @@ DESCRIPTION = (
 
 
 def _posting(**over: str) -> dict[str, str]:
+    # Company and description are unique per call as well as title and URL:
+    # the test database persists between runs, and dedupe treats a similar
+    # title at the same company within 120 days as the same job, so a shared
+    # company name made this flaky as earlier runs' rows accumulated.
     run = uuid4().hex[:10]
     body = {
         "title": f"Synthetic Linux Administrator {run}",
-        "company_name": "Synthetic Employer",
+        "company_name": f"Synthetic Employer {run}",
         "url": f"https://careers.unreviewed-employer.invalid/jobs/{run}",
-        "description": DESCRIPTION,
+        "description": f"{DESCRIPTION} Reference {run}.",
     }
     body.update(over)
     return body
