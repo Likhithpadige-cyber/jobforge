@@ -16,7 +16,9 @@ with no prior conversation. Update at every milestone.
 
 ## Current milestone
 
-**M20 private runtime.** Step 1 (config fixes) done and verified. Next: step 2.
+**M20 private runtime.** Steps 1–3 done and tested statically/integration-level
+(config fixes; compose + edge + wrapper; schema guard + env/init/preflight).
+Next: step 5 rehearsal on `jobforge-prodtest` (images never built or started yet).
 
 ## Completed (locally verified, not integrated)
 
@@ -27,16 +29,18 @@ not echo config values).
 
 ## Unfinished, in order
 
-1. **M20 step 2 (next):** `docker-compose.prod.yml` + `infra/caddy/Caddyfile`
-   + `scripts/prod.sh` wrapper, plus a static pytest that parses the compose
-   file and asserts: only `edge` publishes a port, on `127.0.0.1`; `app`/`data`
-   networks `internal: true`; `web` not on `data`; no source bind mounts;
-   production build targets; no model/submission workers; restart policies,
-   resource limits, log rotation, `no-new-privileges`, healthchecks. Must not
-   change `docker-compose.yml` or `docker-compose.demo.yml`.
-2. M20 step 3: `scripts/prod_preflight.py` (marker, secrets/placeholders,
-   modes, revision == head, roles not superuser, bucket private, dispatch
-   off, loopback-only ports) + API refuses to serve on revision mismatch.
+1. ✅ M20 step 2: `docker-compose.prod.yml`, `infra/caddy/Caddyfile`, `scripts/prod.sh`
+   (31 static/wrapper tests). Artifacts use the filesystem store on a named
+   volume (no MinIO: unpatched advisories).
+2. ✅ M20 step 3: `packages/core/db/schema_guard.py` (API + workers refuse a
+   schema mismatch in staging/production); `scripts/prod_env.py`
+   generate-env / init / preflight; wrapper `init`, `preflight`, `check-ports`.
+   **Next (step 5):** rehearsal: `python -m scripts.prod_env generate-env
+   /tmp/…/prodtest.env` (outside repo), then with
+   `JOBFORGE_PROD_PROJECT=jobforge-prodtest JOBFORGE_PROD_PORT=8481`:
+   `prod.sh build`, `up -d postgres redis`, `migrate`, `init`, `up`,
+   `preflight --bootstrap`; verify cold start, restart, persistence, egress
+   probe, missing-secret refusal. Synthetic data only.
 3. M22 prerequisite: "sign out everywhere" (per-user session revocation) +
    Settings UI + tests.
 4. M20 step 5: rehearsal on a throwaway `jobforge-prodtest` project with
