@@ -1,91 +1,99 @@
 # JobForge — autonomous resume checkpoint
 
 Read this together with `docs/PROJECT_STATE.md`. Written for a fresh session
-with no prior conversation. Update at every milestone.
+with no prior conversation. Updated 2026-11-10 after M20 and M21.
 
 ## Where
 
 - Worktree: `/Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight`
 - Branch: `overnight/m16.6-m17` (local only; never pushed)
-- Latest commit: run `git log --oneline -1` (checkpoint written at `ca8af44`
-  + this file's commit)
+- Latest commit: `git log --oneline -1` (this checkpoint follows `b448c56`)
 - Base: local `dev` = GitHub `main` = `6945454` (fast-forward ancestor).
   Local `main` (`cbe0d96`) is a stale pointer; ignore it.
-- Evidence and runners (outside the repo):
+- Evidence, runners and logs (outside the repo):
   `/Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight-evidence/`
 
-## Current milestone
+## Status by milestone (CODE COMPLETE → LOCALLY VERIFIED → INTEGRATED → DEPLOYED → ACCEPTED)
 
-**M20 private runtime: rehearsed.** Steps 1–3 and step 5 (rehearsal) done;
-see `docs/verification/M20_REHEARSAL.md`. Sign-out-everywhere (M22
-prerequisite) done. Next: production owner bootstrap (step 4), then M21.
+| Milestone | State |
+|---|---|
+| M16.6 export security, M17 core UI, M19 tracking | locally verified; not integrated |
+| M20 private runtime | locally verified in the `jobforge-prodtest` rehearsal (`docs/verification/M20_REHEARSAL.md`); not deployed |
+| M21 backups/restore | locally verified by an isolated restore drill incl. real sign-in (`docs/verification/M21_RESTORE_DRILL.md`); no schedule installed |
+| M22 private iPhone access | app side: sign-out-everywhere done; Tailscale runbook not written yet; owner actions pending |
 
-## Completed (locally verified, not integrated)
-
-M16.6 export security · M17 core UI · M19 tracking essentials · integration
-review (GO after approval + hosted CI) · M20 config fixes · production
-compose/edge/wrapper · schema guard · prod_env generate-env/init/preflight ·
-`jobforge-prodtest` rehearsal (3 defects found and fixed) · sign out everywhere.
+Key files: `docker-compose.prod.yml`, `infra/caddy/Caddyfile`,
+`scripts/prod.sh` (wrapper), `scripts/prod_env.py` (generate-env, init,
+bootstrap-owner, preflight), `packages/core/db/schema_guard.py`,
+`scripts/backup_crypto.py`, `scripts/backup.py`, `scripts/restore.py`.
 
 ## Unfinished, in order
 
-1. **Next:** M20 step 4 — owner bootstrap inside the production image
-   (interactive: email, password typed by the owner, TOTP enrolment shown
-   once; never printed to logs), wrapper command `bootstrap-owner`, tests.
-   Check `scripts/setup_demo_auth.py` for reusable TOTP enrolment code.
-2. M21: `scripts/backup.py` (pg_dump custom format from a one-shot container
-   on the data network + artifact volume tar, encrypted with a public key;
-   integrity manifest; retention; disk check) and restore into a NEW project
-   only; then a real isolated restore drill on `jobforge-prodtest` data.
-   Encryption tool decision pending: `age` is not installed; prefer Python
-   `cryptography` (already a dependency) with an RSA/X25519 hybrid, or ask.
-3. M22: Tailscale runbook (owner actions), mobile Playwright for tracking.
-4. Product: fit score on the job page; master résumé PDF/DOCX extraction.
+1. **Next:** M22 documentation — `docs/deployment/M22_TAILSCALE_RUNBOOK.md`:
+   install (owner), `tailscale serve --bg --https=443 http://127.0.0.1:8480`
+   (never Funnel), MagicDNS/HTTPS certs, ACL to owner devices on 443, set
+   `CORS_ORIGINS=["https://<mac>.<tailnet>.ts.net"]` and verify Secure
+   cookies over HTTPS, iPhone procedure (Add to Home Screen), lost-device
+   steps (remove device → Settings › Sign out everywhere → rotate password),
+   troubleshooting, acceptance checklist.
+2. M21 operator runbook: `docs/deployment/M21_BACKUP_RUNBOOK.md` (keygen,
+   manual backup before releases, offline key + prod.env copy, restore
+   steps, launchd plist as a *proposal only* — installing it needs approval).
+   Preflight `backup_ready` reads `JOBFORGE_LAST_VERIFIED_BACKUP`; decide how
+   the backup runner records it (e.g. a marker the wrapper passes in).
+3. Product: show the stored fit score on the job page; master résumé
+   PDF/DOCX text extraction if feasible; mobile Playwright for tracking.
+4. Full regression + Playwright at the end; update PROJECT_STATE.
 
-## Last verified tests (2026-11-10, isolated throwaway services)
+## Last verified tests
 
-Full backend 3,649 passed + 1 flaky failure (fixed in `a9f4458`, then 11/11 ×3);
-safety 1,671; API E2E 6; readiness 22/22; H3 100/100; 0 provider calls;
-ruff + mypy (172 files) clean. Frontend 410 and Playwright 32/32 were last
-run at `70a0eea` (no web changes since).
+- Full backend run `run_full_7` (before M21 code): 3,726 passed + 1 error
+  (ResourceWarning from an orphaned event loop, fixed in `123801a`);
+  safety 1,764 + 1 error (same cause); API E2E 6; readiness 22/22; H3
+  100/100; 0 provider calls. `run_full_8` was started after `b448c56`; check
+  `../jobforge-overnight-evidence/run_full_8.log`.
+- Unit suite after the fix: 2,213 passed. Targeted M20/M21 suites pass.
+- Frontend: 416 passed (37 files), typecheck and lint clean (at `805e761`).
+- Playwright: 32/32 at `70a0eea`; not re-run since (Settings card and the
+  same-origin build mode changed; re-run on the ovn demo is pending).
 
-## Services
+## Services and data
 
-- Throwaway test services `m166f-ci-{postgres,redis,minio}` (55721/56721/9721):
-  may be running; stop with `docker stop` (never `rm`, never `-v`).
-- Rehearsal `jobforge-prodtest` (port 8481): **stopped**, volumes kept
-  (synthetic only). Drive it only via
-  `../jobforge-overnight-evidence/prodtest.sh` with `JOBFORGE_RELEASE=b98a1383bedc`
-  (or rebuild: `JOBFORGE_RELEASE=$(git rev-parse --short=12 HEAD) …prodtest.sh build`).
-  Its env file is in the session scratchpad and may be gone in a new session:
-  regenerate with `python -m scripts.prod_env generate-env <path outside repo>`
-  and set `CORS_ORIGINS=["http://127.0.0.1:8481"]` — a new env means new
-  passwords, so the old prodtest volumes would need `init` again.
-- Throwaway demo `jobforge-ovn`: stopped.
-- Never touch: dev stack (`jobforge-*`, 5432), live demo (`jobforge-demo-*`,
+- All JobForge rehearsal/drill stacks are **stopped**, volumes kept
+  (synthetic only): `jobforge-prodtest`, `jobforge-restoretest{,2,3,4}`.
+  Removing them needs the owner's approval.
+- Throwaway test services `m166f-ci-{postgres,redis,minio}` (55721/56721/9721)
+  run for regressions; stop with `docker stop` afterwards (never `rm`/`-v`).
+- Images: `jobforge-prod-{api,web,worker}` tags `c11ff6006b3b`, `b98a1383bedc`,
+  `62ac2c04134b`, `c72ba2afbf15` (local only).
+- Drill secrets (session scratchpad, may vanish):
+  `/private/tmp/claude-501/…/scratchpad/{prodtest,drill}/`.
+- Never touch: dev stack (`jobforge-*` on 5432), live demo (`jobforge-demo-*`,
   55433), `jobforge-m166-*` review stacks.
 
-## Pending approvals (do not do without explicit owner approval)
+## Pending approvals
 
 Push branch / hosted CI · fast-forward `dev` and `main` · live AI and budget ·
-cleanup of stacks/worktrees/volumes · FileVault, firewall, Tailscale install
-and admin settings · launchd backup schedule · any real deployment.
+removal of rehearsal/drill stacks, volumes, images and scratch worktrees ·
+FileVault, firewall, Tailscale install and admin settings · launchd backup
+schedule · real deployment and real data.
 
 ## Resume commands
 
 ```sh
 cd /Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight
-git status && git log --oneline -5
+git status && git log --oneline -8
 docker start m166f-ci-postgres m166f-ci-redis m166f-ci-minio   # throwaway only
-bash ../jobforge-overnight-evidence/run_targeted.sh tests/unit/test_config.py
+bash ../jobforge-overnight-evidence/run_targeted.sh tests/unit/test_backup_crypto.py
 bash ../jobforge-overnight-evidence/run_full.sh > ../jobforge-overnight-evidence/run_full_N.log 2>&1
 (cd apps/web && npx vitest run && npm run -s typecheck && npm run -s lint)
 ```
 
 Python: `/Users/padige/Projects/jobforge-c3-design-review/jobforge-phase5/.venv/bin`
-(no `uv` on PATH). zsh does not word-split `$VAR`; use `${=VAR}` or literal paths.
+(no `uv`). zsh does not word-split `$VAR`; use literal paths. Type-check
+scripts as modules: `mypy -m scripts.backup -m scripts.restore -m scripts.prod_env`.
+Docker's VM has ~4 GB: run one JobForge stack at a time.
 
 ## Uncommitted changes
 
-None at checkpoint time. If any exist on resume, inspect with `git diff`
-and commit or stash them; never discard.
+None at checkpoint time.

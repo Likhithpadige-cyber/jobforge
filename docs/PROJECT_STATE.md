@@ -1,6 +1,6 @@
 # JobForge project state
 
-Updated: 2026-11-10 (fifth session: M20 step 1 done). Resume checkpoint: `docs/AUTONOMOUS_RESUME.md`. Keep this short; it is the handover
+Updated: 2026-11-10 (fifth session: M20 and M21 locally verified). Resume checkpoint: `docs/AUTONOMOUS_RESUME.md`. Keep this short; it is the handover
 for the next session. Verified means executed in this session, not reported.
 
 ## Where things are
@@ -96,25 +96,42 @@ seeded profile owner (covered by API/integration tests).
 Not built: tracking for jobs without an application row; automatic
 `no_response` aging; reminders by notification; mailbox signals.
 
-## M20 step 1 — production configuration (done, locally verified)
+## M20 private runtime — locally verified (rehearsal), not deployed
 
-Staging/production: `postgres_password`, `session_secret`, valid
-`totp_encryption_key` (strict base64, 32 bytes) always required; the
-Anthropic key only for `record`/`live`. Startup errors no longer echo config
-input (`hide_input_in_errors`). API and workers refuse to start on bad
-secrets without leaking values; replay starts with no provider key
-(process-level tests). Local/test unchanged.
+- Config: no provider key in replay; valid `TOTP_ENCRYPTION_KEY` required;
+  startup errors never echo values.
+- `docker-compose.prod.yml` (`jobforge-prod`): one loopback port (Caddy
+  edge 127.0.0.1:8480), internal no-egress networks, web without secrets,
+  API as `app_api`, workers as `app_agent`/`app_monitor`, owner role only in
+  the one-shot `migrate` job, deterministic workers only, filesystem
+  artifacts on a named volume (no MinIO: unpatched advisories), hardening
+  (cap_drop ALL, read-only roots, limits, log rotation, healthchecks).
+- `scripts/prod.sh` refuses `down`/`-v`, in-repo or loose env files, live AI,
+  connection-string overrides, placeholders. `scripts/prod_env.py`:
+  generate-env, init (marker + role passwords), bootstrap-owner (verified
+  TOTP before any write; same email validator as sign-in), preflight
+  (22 checks incl. TOTP decryptability). Schema guard: API/workers refuse a
+  schema they were not built for.
+- Rehearsal (`docs/verification/M20_REHEARSAL.md`): cold start, isolation
+  (no egress, web cannot reach data), persistence, crash restart,
+  refusals, Redis failure/recovery. Found and fixed 3 defects.
+- Sign out everywhere (M22 prerequisite): per-user revocation, Settings UI.
 
-## M20–M22 (design; only step 1 built)
+## M21 backups — locally verified by an isolated restore drill
 
-- `docs/deployment/M20_PRIVATE_RUNTIME_DESIGN.md`: `jobforge-prod` compose
-  project, single loopback edge port, internal no-egress networks, named
-  volumes, fail-closed preflight. Two config fixes required first: no
-  Anthropic key needed in replay; `TOTP_ENCRYPTION_KEY` required outside
-  local.
-- `docs/deployment/M21_M22_PLAN.md`: encrypted (age) pg_dump + artifact
-  mirror, verification, monthly restore drill into a new project; Tailscale
-  Serve (never Funnel) with "sign out everywhere" as a prerequisite.
+`scripts/backup_crypto.py` (X25519 + AES-256-GCM chunks, public key only on
+the Mac), `scripts/backup.py` (streamed, encrypted DB/roles/artifacts,
+manifest, keyless verify, plan-only retention), `scripts/restore.py`
+(new `jobforge-restore*` projects only). Drill
+(`docs/verification/M21_RESTORE_DRILL.md`): backup 1.5 s, restore with
+matching row counts and artifacts, full preflight, and a real sign-in
+(password + TOTP) on restored data. Found and fixed 3 defects; key lesson:
+the restore env must carry the source `TOTP_ENCRYPTION_KEY`. No schedule
+installed (launchd needs approval).
+
+## M22 (owner actions pending)
+
+Design in `docs/deployment/M21_M22_PLAN.md`; runbook still to write.
 
 ## Outstanding blockers and decisions awaiting approval
 
@@ -129,9 +146,10 @@ secrets without leaking values; replay starts with no provider key
 
 ## Next three tasks
 
-1. M20 step 2: production compose, edge and wrapper with static tests.
-2. M20 step 3: preflight + API revision guard.
-3. Sign out everywhere (M22 prerequisite).
+1. M22 Tailscale runbook and acceptance checklist (documentation; owner
+   performs the installs and admin-console changes).
+2. M21 operator runbook and the backup-recorded marker for preflight.
+3. Product: fit score on the job page; Playwright re-run on the ovn demo.
 
 ## Resume commands
 
