@@ -1,0 +1,14 @@
+# Gitleaks: exact findings reviewed as synthetic test values (not secrets).
+# Each line is one fingerprint (commit:file:rule:line); a new finding, or the
+# same value anywhere else, still fails CI. Reviewed 2026-11-10:
+#   test_config.py 148/225/227 and test_production_startup.py 26 hold
+#   "CANARY-..." strings that prove startup errors never echo secret values;
+#   test_prod_runtime_config.py 170 is a fixed test vector
+#   (base64 of the bytes 0..31), not a key in use anywhere.
+# Do not add real findings here: rotate and remove them instead
+# (docs/REPOSITORY_HYGIENE.md).
+50e53cf6216988193ecb7658639e9a9292a29e03:tests/unit/test_prod_runtime_config.py:generic-api-key:170
+c1f03944f11e17594cb90fe539217ec69691f207:tests/unit/test_config.py:generic-api-key:148
+c1f03944f11e17594cb90fe539217ec69691f207:tests/unit/test_config.py:generic-api-key:225
+c1f03944f11e17594cb90fe539217ec69691f207:tests/unit/test_config.py:generic-api-key:227
+c1f03944f11e17594cb90fe539217ec69691f207:tests/unit/test_production_startup.py:generic-api-key:26

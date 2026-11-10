@@ -13,7 +13,7 @@ for the next session. Verified means executed in this session, not reported.
 | local `main` | `cbe0d96` | stale pointer (68 behind GitHub `main`); ignore |
 
 Worktree for the overnight branch:
-`/Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight`.
+`<workspace>/jobforge-overnight`.
 Evidence, runners and logs: `../jobforge-overnight-evidence/` (outside the repo).
 
 ## Last verified milestone
@@ -160,7 +160,7 @@ backup age in preflight, fit score on the job page, .docx résumé import.
 ## Resume commands
 
 ```sh
-cd /Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight
+cd <workspace>/jobforge-overnight
 git status && git log --oneline -5
 (cd apps/web && npx vitest run)                  # frontend, ~410 tests
 ../jobforge-overnight-evidence/sco.sh ps         # isolated demo (ports 55883/56883/8383)

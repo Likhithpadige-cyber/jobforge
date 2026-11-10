@@ -5,13 +5,13 @@ with no prior conversation. Updated 2026-11-10 after M20 and M21.
 
 ## Where
 
-- Worktree: `/Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight`
+- Worktree: `<workspace>/jobforge-overnight`
 - Branch: `overnight/m16.6-m17` (local only; never pushed)
 - Latest commit: `git log --oneline -1` (this checkpoint follows `b448c56`)
 - Base: local `dev` = GitHub `main` = `6945454` (fast-forward ancestor).
   Local `main` (`cbe0d96`) is a stale pointer; ignore it.
 - Evidence, runners and logs (outside the repo):
-  `/Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight-evidence/`
+  `<workspace>/jobforge-overnight-evidence/`
 
 ## Status by milestone (CODE COMPLETE → LOCALLY VERIFIED → INTEGRATED → DEPLOYED → ACCEPTED)
 
@@ -68,7 +68,7 @@ bootstrap-owner, preflight), `packages/core/db/schema_guard.py`,
 - Images: `jobforge-prod-{api,web,worker}` tags `c11ff6006b3b`, `b98a1383bedc`,
   `62ac2c04134b`, `c72ba2afbf15` (local only).
 - Drill secrets (session scratchpad, may vanish):
-  `/private/tmp/claude-501/…/scratchpad/{prodtest,drill}/`.
+  `<session-scratchpad>`.
 - Never touch: dev stack (`jobforge-*` on 5432), live demo (`jobforge-demo-*`,
   55433), `jobforge-m166-*` review stacks.
 
@@ -82,7 +82,7 @@ schedule · real deployment and real data.
 ## Resume commands
 
 ```sh
-cd /Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight
+cd <workspace>/jobforge-overnight
 git status && git log --oneline -8
 docker start m166f-ci-postgres m166f-ci-redis m166f-ci-minio   # throwaway only
 bash ../jobforge-overnight-evidence/run_targeted.sh tests/unit/test_backup_crypto.py
@@ -90,7 +90,7 @@ bash ../jobforge-overnight-evidence/run_full.sh > ../jobforge-overnight-evidence
 (cd apps/web && npx vitest run && npm run -s typecheck && npm run -s lint)
 ```
 
-Python: `/Users/padige/Projects/jobforge-c3-design-review/jobforge-phase5/.venv/bin`
+Python: `<workspace>/jobforge-phase5/.venv/bin`
 (no `uv`). zsh does not word-split `$VAR`; use literal paths. Type-check
 scripts as modules: `mypy -m scripts.backup -m scripts.restore -m scripts.prod_env`.
 Docker's VM has ~4 GB: run one JobForge stack at a time.
