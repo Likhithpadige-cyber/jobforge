@@ -33,6 +33,13 @@ export const OUTCOME_LABEL: Record<Outcome, string> = {
 };
 export const OUTCOMES = Object.keys(OUTCOME_LABEL) as Outcome[];
 
+/** "jobforge": the approved pipeline submitted it. "manual": the owner recorded sending it. */
+export type AppliedVia = "jobforge" | "manual";
+export const APPLIED_VIA_LABEL: Record<AppliedVia, string> = {
+  jobforge: "sent by JobForge",
+  manual: "sent by you",
+};
+
 export interface Tracking {
   application_id: string;
   status: string;
@@ -42,6 +49,7 @@ export interface Tracking {
   notes: string | null;
   submitted_at: string | null;
   outcome_updated_at: string | null;
+  applied_via: AppliedVia | null;
 }
 
 export type TrackingChange = Partial<Pick<Tracking, "outcome" | "applied_on" | "follow_up_on" | "notes">>;
@@ -52,6 +60,7 @@ export interface FollowUp {
   company_name: string | null;
   outcome: Outcome;
   applied_on: string | null;
+  applied_via: AppliedVia | null;
   follow_up_on: string;
   days_overdue: number;
 }
@@ -62,9 +71,27 @@ export function localToday(now: Date = new Date()): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-export function trackingLabel(t: Pick<Tracking, "outcome" | "applied_on">): string {
-  return t.outcome === "pending" && !t.applied_on ? "Not applied yet" : OUTCOME_LABEL[t.outcome];
+export function trackingLabel(t: { outcome: Outcome; applied_via: AppliedVia | null }): string {
+  return t.outcome === "pending" && !t.applied_via ? "Not applied yet" : OUTCOME_LABEL[t.outcome];
 }
+
+/** YYYY-MM-DD plus n calendar days (local, DST-safe). */
+export function addDays(day: string, n: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return localToday(new Date(y!, m! - 1, d! + n));
+}
+
+/** List filters: each maps to the server's outcome/applied query. */
+export const TRACKING_FILTERS = {
+  any: { label: "Any outcome", query: {} },
+  not_applied: { label: "Not applied", query: { applied: false } },
+  waiting: { label: "Applied, waiting", query: { applied: true, outcome: "pending" } },
+  interviewing: { label: "Interview", query: { outcome: "interviewing" } },
+  offer: { label: "Offer", query: { outcome: "offer" } },
+  rejected: { label: "Rejected", query: { outcome: "rejected" } },
+  no_response: { label: "No response", query: { outcome: "no_response" } },
+} as const satisfies Record<string, { label: string; query: { applied?: boolean; outcome?: Outcome } }>;
+export type TrackingFilter = keyof typeof TRACKING_FILTERS;
 
 export function dueText(days: number): string {
   if (days === 0) return "due today";

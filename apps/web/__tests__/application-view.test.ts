@@ -6,6 +6,7 @@ const item = (id: string, status: ApiApplication["status"], company: string, upd
   id, job_id: id, status, job_title: "Cloud Engineer", job_company: company,
   created_at: updated, updated_at: updated, resume_count: 0,
   latest_resume_version: null, latest_verification_status: null,
+  outcome: "pending", applied_on: null, applied_via: null, follow_up_on: null,
 });
 
 describe("application workspace", () => {

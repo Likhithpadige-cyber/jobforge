@@ -12,11 +12,11 @@ captured by the `trg_applications_audit` trigger.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, timedelta
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, date, timedelta
+from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, not_, or_, select
 
 from packages.core.events import EventEnvelope, record_event
 from packages.core.models import Application, ApplicationOutcome, ApplicationStatus, Company, Job
@@ -42,6 +42,32 @@ _MISSING = "application not found"
 #: The fields a caller may change. Absent means unchanged; None clears.
 TRACKED_FIELDS = ("outcome", "applied_on", "follow_up_on", "notes")
 
+AppliedVia = Literal["jobforge", "manual"]
+
+
+def applied_via(application: Application) -> AppliedVia | None:
+    """Who sent it: JobForge's approved submission pipeline (`submitted_at`
+    is set), or the owner by hand (only an owner-recorded `applied_on`)."""
+    if application.submitted_at is not None:
+        return "jobforge"
+    if application.applied_on is not None:
+        return "manual"
+    return None
+
+
+def effective_applied_on(application: Application) -> date | None:
+    """The owner's date if recorded, else the pipeline's submission date."""
+    if application.applied_on is not None:
+        return application.applied_on
+    submitted = application.submitted_at
+    return submitted.astimezone(UTC).date() if submitted is not None else None
+
+
+def applied_clause(applied: bool) -> ColumnElement[bool]:
+    """SQL form of "has been applied to" for list filters."""
+    sent = or_(Application.applied_on.is_not(None), Application.submitted_at.is_not(None))
+    return sent if applied else not_(sent)
+
 
 @dataclass(frozen=True)
 class FollowUp:
@@ -50,6 +76,7 @@ class FollowUp:
     company_name: str | None
     outcome: ApplicationOutcome
     applied_on: date | None
+    applied_via: AppliedVia | None
     follow_up_on: date
     days_overdue: int
 
@@ -105,6 +132,15 @@ async def update_tracking(
     values.update(changes)
     values["outcome"] = ApplicationOutcome(values["outcome"])
     values["notes"] = _clean_notes(values["notes"]) if "notes" in changes else application.notes
+    # A JobForge-submitted application was applied to on its submission
+    # date; recording an outcome for it should not require retyping that.
+    if (
+        values["outcome"] is not ApplicationOutcome.PENDING
+        and values["applied_on"] is None
+        and "applied_on" not in changes
+        and application.submitted_at is not None
+    ):
+        values["applied_on"] = effective_applied_on(application)
     _validate(values, utc_today())
 
     before = application.outcome
@@ -165,7 +201,8 @@ async def due_follow_ups(
                 job_title=title,
                 company_name=company,
                 outcome=application.outcome,
-                applied_on=application.applied_on,
+                applied_on=effective_applied_on(application),
+                applied_via=applied_via(application),
                 follow_up_on=follow_up,
                 days_overdue=(on - follow_up).days,
             )

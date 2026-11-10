@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,6 +33,9 @@ class TrackingRead(BaseModel):
     notes: str | None
     submitted_at: datetime | None
     outcome_updated_at: datetime | None
+    #: "jobforge" when the approved pipeline submitted it, "manual" when only
+    #: the owner's applied date says it was sent, else null.
+    applied_via: Literal["jobforge", "manual"] | None
 
 
 class FollowUpRead(BaseModel):
@@ -40,5 +44,6 @@ class FollowUpRead(BaseModel):
     company_name: str | None
     outcome: ApplicationOutcome
     applied_on: date | None
+    applied_via: Literal["jobforge", "manual"] | None
     follow_up_on: date
     days_overdue: int

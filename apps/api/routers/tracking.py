@@ -24,7 +24,11 @@ from apps.api.deps import (
 )
 from apps.api.schemas.tracking import FollowUpRead, TrackingRead, TrackingUpdate
 from packages.core.models import Application
-from packages.core.services.application_tracking import due_follow_ups, update_tracking
+from packages.core.services.application_tracking import (
+    applied_via,
+    due_follow_ups,
+    update_tracking,
+)
 from packages.shared.clock import utc_today
 from packages.shared.errors import NotFoundError
 
@@ -41,6 +45,7 @@ def _read(application: Application) -> TrackingRead:
         notes=application.notes,
         submitted_at=application.submitted_at,
         outcome_updated_at=application.outcome_updated_at,
+        applied_via=applied_via(application),
     )
 
 

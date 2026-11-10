@@ -16,7 +16,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import selectinload
 
 from apps.api.deps import DbSession, authenticated_api
@@ -29,6 +29,7 @@ from apps.api.schemas.resumes import (
 )
 from packages.core.models import (
     Application,
+    ApplicationOutcome,
     ClaimVerdict,
     Company,
     Job,
@@ -36,6 +37,11 @@ from packages.core.models import (
     ResumeClaim,
 )
 from packages.core.services import resume_review
+from packages.core.services.application_tracking import (
+    applied_clause,
+    applied_via,
+    effective_applied_on,
+)
 from packages.shared.errors import NotFoundError
 
 router = APIRouter(prefix="/resumes", tags=["resumes"], dependencies=[Depends(authenticated_api)])
@@ -174,16 +180,24 @@ async def list_applications(
     session: DbSession,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    outcome: Annotated[ApplicationOutcome | None, Query()] = None,
+    applied: Annotated[bool | None, Query(description="Sent by JobForge or by hand")] = None,
 ) -> Any:
     """The list the studio opens from, so no one has to type a UUID.
 
     Deliberately small: enough to identify an application and say whether it
     has a resume worth opening.
     """
+    filters: list[ColumnElement[bool]] = []
+    if outcome is not None:
+        filters.append(Application.outcome == outcome)
+    if applied is not None:
+        filters.append(applied_clause(applied))
     applications = (
         (
             await session.execute(
                 select(Application)
+                .where(*filters)
                 .order_by(Application.created_at.desc(), Application.id.desc())
                 .limit(limit)
                 .offset(offset)
@@ -227,6 +241,10 @@ async def list_applications(
                 resume_count=count or 0,
                 latest_resume_version=latest_version,
                 latest_verification_status=latest_status,
+                outcome=application.outcome,
+                applied_on=effective_applied_on(application),
+                applied_via=applied_via(application),
+                follow_up_on=application.follow_up_on,
             )
         )
     return out

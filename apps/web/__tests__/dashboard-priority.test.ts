@@ -13,7 +13,7 @@ const base: DashboardSignals = {
 };
 
 function app(status: ApplicationStatus): ApiApplication {
-  return { id: status, job_id: "j", status, created_at: "", updated_at: "", job_title: null, job_company: null, resume_count: 0, latest_resume_version: null, latest_verification_status: null };
+  return { id: status, job_id: "j", status, created_at: "", updated_at: "", job_title: null, job_company: null, resume_count: 0, latest_resume_version: null, latest_verification_status: null, outcome: "pending", applied_on: null, applied_via: null, follow_up_on: null, };
 }
 
 describe("dashboard priority", () => {

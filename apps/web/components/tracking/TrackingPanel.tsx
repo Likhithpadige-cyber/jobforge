@@ -8,14 +8,30 @@
  * submitted and never contacts an employer. Reviewers see it read-only.
  * The server validates every rule (an outcome needs an applied date, dates
  * in range, notes length) and its message is shown as-is.
+ *
+ * Where the applied date came from is always shown: "sent by JobForge"
+ * only when the approved pipeline recorded a submission, "sent by you" when
+ * the owner recorded it. A manual handoff packet is not a submission, so
+ * the owner records sending it here.
  */
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthGuard";
 import { apiErrorText } from "@/lib/api";
-import { OUTCOMES, OUTCOME_LABEL, localToday, trackingLabel, tracking as trackingApi, type Outcome, type Tracking, type TrackingChange } from "@/lib/tracking";
+import { OUTCOMES, OUTCOME_LABEL, addDays, localToday, trackingLabel, tracking as trackingApi, type Outcome, type Tracking, type TrackingChange } from "@/lib/tracking";
 
+/** Pipeline states where JobForge stops and a human sends the application. */
+const MANUAL_STATES = new Set(["manual_handoff", "submission_ready", "approved"]);
+const FOLLOW_UP_PRESETS: [string, number][] = [["In 3 days", 3], ["In 1 week", 7], ["In 2 weeks", 14]];
 const FIELD = "mt-1 block w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink";
+const CHIP = "min-h-11 rounded-full border border-edge bg-surface px-3 text-xs font-medium text-ink hover:border-control";
+
+/** "Sent by JobForge on …", "Sent by you on …" or "Not recorded as sent". */
+export function appliedText(t: Pick<Tracking, "applied_via" | "applied_on" | "submitted_at">): string {
+  if (t.applied_via === "jobforge") return `Sent by JobForge on ${t.applied_on ?? t.submitted_at?.slice(0, 10)}`;
+  if (t.applied_via === "manual") return `Sent by you on ${t.applied_on}`;
+  return "Not recorded as sent";
+}
 
 interface Draft {
   outcome: Outcome;
@@ -72,7 +88,7 @@ export function TrackingPanel({ applicationId }: { applicationId: string }) {
     return (
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         <div><dt className="text-ink-soft">Where it stands</dt><dd className="text-ink">{trackingLabel(saved)}</dd></div>
-        <div><dt className="text-ink-soft">Applied</dt><dd className="text-ink">{saved.applied_on ?? "—"}</dd></div>
+        <div><dt className="text-ink-soft">Applied</dt><dd className="text-ink">{appliedText(saved)}</dd></div>
         <div><dt className="text-ink-soft">Follow up on</dt><dd className="text-ink">{saved.follow_up_on ?? "—"}</dd></div>
         <div className="sm:col-span-2"><dt className="text-ink-soft">Notes</dt><dd className="whitespace-pre-wrap text-ink">{saved.notes ?? "—"}</dd></div>
       </dl>
@@ -81,9 +97,7 @@ export function TrackingPanel({ applicationId }: { applicationId: string }) {
 
   const set = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
 
-  async function save() {
-    if (!saved || !draft) return;
-    const change = changesFrom(saved, draft);
+  async function save(change: TrackingChange) {
     if (Object.keys(change).length === 0) return setMessage({ tone: "ok", text: "Nothing changed." });
     setBusy(true);
     setMessage(null);
@@ -105,9 +119,28 @@ export function TrackingPanel({ applicationId }: { applicationId: string }) {
       className="space-y-3"
       onSubmit={(event) => {
         event.preventDefault();
-        void save();
+        void save(changesFrom(saved, draft));
       }}
     >
+      <p className="text-sm text-ink" data-testid="applied-source">{appliedText(saved)}</p>
+      {!saved.applied_via && (
+        <div className="rounded-chip bg-inset px-3 py-2 text-xs text-ink-soft">
+          {MANUAL_STATES.has(saved.status)
+            ? "JobForge has not sent this application. If you sent it yourself, record it here."
+            : "Not recorded as sent. If you applied outside JobForge, record it here."}{" "}
+          <button
+            type="button"
+            disabled={busy}
+            className="font-semibold text-accent underline disabled:opacity-60"
+            onClick={() => {
+              const today = localToday();
+              void save({ applied_on: today, ...(saved.follow_up_on ? {} : { follow_up_on: addDays(today, 7) }) });
+            }}
+          >
+            I sent it today{saved.follow_up_on ? "" : " (follow up in 1 week)"}
+          </button>
+        </div>
+      )}
       <div className="grid gap-3 sm:grid-cols-3">
         <label className="block text-sm text-ink">
           Where it stands
@@ -126,11 +159,16 @@ export function TrackingPanel({ applicationId }: { applicationId: string }) {
           <input type="date" className={FIELD} value={draft.follow_up_on} onChange={(e) => set({ follow_up_on: e.target.value })} />
         </label>
       </div>
-      {!draft.applied_on && saved.submitted_at && (
-        <button type="button" className="text-xs font-semibold text-accent underline" onClick={() => set({ applied_on: saved.submitted_at!.slice(0, 10) })}>
-          Use the recorded submission date ({saved.submitted_at.slice(0, 10)})
+      <div role="group" aria-label="Follow-up shortcuts" className="flex flex-wrap gap-2">
+        {FOLLOW_UP_PRESETS.map(([label, days]) => (
+          <button key={label} type="button" className={CHIP} onClick={() => set({ follow_up_on: addDays(localToday(), days) })}>
+            {label}
+          </button>
+        ))}
+        <button type="button" className={CHIP} onClick={() => set({ follow_up_on: "" })}>
+          No follow-up
         </button>
-      )}
+      </div>
       <label className="block text-sm text-ink">
         Notes
         <textarea className={`${FIELD} min-h-24`} maxLength={4000} value={draft.notes} onChange={(e) => set({ notes: e.target.value })} />

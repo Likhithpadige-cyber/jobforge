@@ -33,7 +33,7 @@ function run(overrides: Partial<AgentRun> = {}): AgentRun {
 const SUMMARY: AgentRunSummary = { since: "2026-10-27T00:00:00Z", runs: 4, by_status: { succeeded: 3, failed: 1 }, input_tokens: 400, output_tokens: 200, cost_usd: "0.0123" };
 
 function application(status: ApiApplication["status"], id: string = status): ApiApplication {
-  return { id, job_id: "j", status, created_at: "", updated_at: "", job_title: "Cloud Engineer", job_company: "Demo Co", resume_count: 1, latest_resume_version: 1, latest_verification_status: null };
+  return { id, job_id: "j", status, created_at: "", updated_at: "", job_title: "Cloud Engineer", job_company: "Demo Co", resume_count: 1, latest_resume_version: 1, latest_verification_status: null, outcome: "pending", applied_on: null, applied_via: null, follow_up_on: null, };
 }
 
 const APPROVAL: ApprovalInboxItem = {

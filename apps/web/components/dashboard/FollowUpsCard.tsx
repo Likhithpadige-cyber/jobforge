@@ -6,28 +6,51 @@
  * Dates come from the owner's own tracking records; "today" is the
  * browser's local date, sent to the server so the cut-off matches what the
  * owner sees. Closed outcomes (accepted, rejected, withdrawn) never appear.
+ * The owner can mark a follow-up done (clears the date) or snooze it a week
+ * from here; both are the same owner-only tracking update as the workspace.
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth } from "@/components/AuthGuard";
 import { SectionHeader } from "@/components/SectionHeader";
-import { OUTCOME_LABEL, dueText, localToday, tracking, type FollowUp } from "@/lib/tracking";
+import { apiErrorText } from "@/lib/api";
+import { APPLIED_VIA_LABEL, OUTCOME_LABEL, addDays, dueText, localToday, tracking, type FollowUp, type TrackingChange } from "@/lib/tracking";
 
 export const LOOK_AHEAD_DAYS = 7;
+const ACTION = "min-h-11 rounded-full border border-edge bg-surface px-3 text-xs font-medium text-ink hover:border-control disabled:opacity-60";
 
 export function FollowUpsCard() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "owner";
   const [rows, setRows] = useState<FollowUp[] | null | undefined>(undefined);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setRows(await tracking.followUps(localToday(), LOOK_AHEAD_DAYS));
+    } catch {
+      setRows(null);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    tracking
-      .followUps(localToday(), LOOK_AHEAD_DAYS)
-      .then((r) => !cancelled && setRows(r))
-      .catch(() => !cancelled && setRows(null));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    void load();
+  }, [load]);
+
+  async function act(row: FollowUp, change: TrackingChange) {
+    setBusy(row.application_id);
+    setProblem(null);
+    try {
+      await tracking.update(row.application_id, change);
+      await load();
+    } catch (cause) {
+      setProblem(apiErrorText(cause, "The follow-up could not be updated."));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const due = rows?.filter((r) => r.days_overdue >= 0) ?? [];
   const upcoming = rows?.filter((r) => r.days_overdue < 0) ?? [];
@@ -58,7 +81,7 @@ export function FollowUpsCard() {
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-soft">{group.label}</h3>
                   <ul className="mt-2 space-y-2">
                     {group.items.map((row) => (
-                      <li key={row.application_id}>
+                      <li key={row.application_id} className="space-y-1">
                         <Link
                           href={`/applications/${row.application_id}`}
                           className="flex min-h-11 flex-wrap items-center justify-between gap-2 rounded-chip border border-edge px-3 py-2 text-sm hover:border-control"
@@ -66,13 +89,23 @@ export function FollowUpsCard() {
                           <span className="min-w-0">
                             <span className="font-medium text-ink">{row.job_title}</span>
                             <span className="text-ink-soft">
-                              {row.company_name ? ` at ${row.company_name}` : ""} · {row.applied_on ? OUTCOME_LABEL[row.outcome] : "Not applied yet"}
+                              {row.company_name ? ` at ${row.company_name}` : ""} · {row.applied_via ? `${OUTCOME_LABEL[row.outcome]}, ${APPLIED_VIA_LABEL[row.applied_via]}` : "Not applied yet"}
                             </span>
                           </span>
                           <span className={`text-xs ${row.days_overdue > 0 ? "font-semibold text-attention" : "text-ink-soft"}`}>
                             {row.follow_up_on} · {dueText(row.days_overdue)}
                           </span>
                         </Link>
+                        {isOwner && (
+                          <div className="flex flex-wrap gap-2 pl-1">
+                            <button type="button" disabled={busy !== null} aria-label={`Mark follow-up done: ${row.job_title}`} className={ACTION} onClick={() => void act(row, { follow_up_on: null })}>
+                              Done
+                            </button>
+                            <button type="button" disabled={busy !== null} aria-label={`Snooze one week: ${row.job_title}`} className={ACTION} onClick={() => void act(row, { follow_up_on: addDays(localToday(), 7) })}>
+                              Snooze 1 week
+                            </button>
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -80,6 +113,7 @@ export function FollowUpsCard() {
               ))}
           </div>
         )}
+        {problem && <p role="alert" className="mt-3 text-sm text-danger">{problem}</p>}
       </div>
     </section>
   );

@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { api, type ApiApplication } from "@/lib/api";
 import { APPLICATION_GROUPS, applicationGroup, applicationStatus, filterApplications, nextAction, type ApplicationGroup } from "@/lib/application-view";
 import { formatTimestamp, VERIFICATION_LABEL } from "@/lib/resumes";
+import { APPLIED_VIA_LABEL, TRACKING_FILTERS, trackingLabel, type TrackingFilter } from "@/lib/tracking";
 
 export default function Page() {
   const [items, setItems] = useState<ApiApplication[]>([]);
@@ -17,18 +18,24 @@ export default function Page() {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<ApplicationGroup>("All");
   const [sort, setSort] = useState<"recent" | "oldest" | "company">("recent");
+  const [outcome, setOutcome] = useState<TrackingFilter>("any");
 
+  // The outcome filter runs on the server, so it covers every application,
+  // not just the 200 loaded here.
   useEffect(() => {
     let active = true;
-    api.listApplications({ limit: 200 }).then(result => { if (active) setItems(result); })
+    setLoading(true);
+    setError(null);
+    api.listApplications({ limit: 200, ...TRACKING_FILTERS[outcome].query }).then(result => { if (active) setItems(result); })
       .catch(cause => { if (active) setError(cause instanceof Error ? cause.message : "Could not load applications"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [outcome]);
 
   const visible = useMemo(() => filterApplications(items, query, group, sort), [items, query, group, sort]);
   const attention = items.filter(item => applicationGroup(item.status) === "Needs attention").length;
-  const applied = items.filter(item => item.status === "submitted").length;
+  // Sent by JobForge or recorded as sent by the owner (manual handoff).
+  const applied = items.filter(item => item.applied_via !== null).length;
 
   return <AppShell title="Applications" description="Every opportunity, its latest step, and what needs you next.">
     <div id="content" className="mx-auto max-w-[84rem] space-y-7">
@@ -43,10 +50,11 @@ export default function Page() {
       <section aria-label="Find applications" className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row">
           <label className="min-w-0 flex-1 text-sm font-medium text-ink">Search applications<input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder="Company, role, or status" className="mt-1.5 h-11 w-full rounded-chip border border-edge bg-surface px-4 text-sm font-normal text-ink placeholder:text-ink-soft" /></label>
+          <label className="text-sm font-medium text-ink">Outcome<select value={outcome} onChange={event => setOutcome(event.target.value as TrackingFilter)} className="mt-1.5 h-11 w-full rounded-chip border border-edge bg-surface px-4 text-sm font-normal text-ink sm:w-48">{(Object.keys(TRACKING_FILTERS) as TrackingFilter[]).map(key => <option key={key} value={key}>{TRACKING_FILTERS[key].label}</option>)}</select></label>
           <label className="text-sm font-medium text-ink">Sort by<select value={sort} onChange={event => setSort(event.target.value as typeof sort)} className="mt-1.5 h-11 w-full rounded-chip border border-edge bg-surface px-4 text-sm font-normal text-ink sm:w-44"><option value="recent">Recent activity</option><option value="oldest">Oldest activity</option><option value="company">Company A–Z</option></select></label>
         </div>
         <div role="group" aria-label="Filter applications by status" className="flex flex-wrap gap-2">{APPLICATION_GROUPS.map(value => <button key={value} type="button" aria-pressed={group === value} onClick={() => setGroup(value)} className={`min-h-11 rounded-full border px-4 text-sm font-medium transition-transform ${group === value ? "border-edge bg-action text-action-ink" : "border-edge bg-surface text-ink-soft hover:border-control hover:text-accent"}`}>{value}</button>)}</div>
-        <p className="text-xs text-ink-soft">Interview, offer, and rejected outcomes are not yet included in the application API, so they cannot be filtered here.</p>
+        <p className="text-xs text-ink-soft">Outcomes are your own record, set on each application&apos;s Tracking card. “Applied” counts applications sent by JobForge or recorded as sent by you.</p>
       </section>
 
       {loading && <div className="rounded-card border border-edge bg-surface" data-testid="loading"><SkeletonRow /><SkeletonRow /><SkeletonRow /></div>}
@@ -58,7 +66,7 @@ export default function Page() {
         return <article key={item.id} className="reveal lift rounded-[1.25rem] border border-edge bg-surface p-5 shadow-raised sm:p-6">
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.12em] text-accent">{item.job_company ?? "Company unavailable"}</p><h3 className="mt-1 text-lg font-semibold text-ink">{item.job_title ?? "Untitled role"}</h3><p className="mt-1 text-xs text-ink-soft">Location not available in application record</p></div><StatusBadge label={status.label} tone={status.tone} /></div>
           <dl className="mt-5 grid gap-3 border-t border-edge pt-4 text-sm sm:grid-cols-3"><div><dt className="text-xs text-ink-soft">Last activity</dt><dd className="mt-1 font-medium text-ink">{formatTimestamp(item.updated_at)}</dd></div><div><dt className="text-xs text-ink-soft">Resume</dt><dd className="mt-1 font-medium text-ink">{item.latest_resume_version === null ? "Not generated" : `Version ${item.latest_resume_version}`}</dd></div><div><dt className="text-xs text-ink-soft">Verification</dt><dd className="mt-1 font-medium text-ink">{item.latest_verification_status ? VERIFICATION_LABEL[item.latest_verification_status] : "Not available"}</dd></div></dl>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-ink-soft">Interview and offer updates are not available yet.</p><Link href={action.href === "resume" && item.latest_resume_version !== null ? `/resume-studio/${item.id}` : `/applications/${item.id}`} className="inline-flex min-h-11 items-center rounded-chip bg-action px-4 text-sm font-semibold text-action-ink hover:bg-action-hover">{action.label} <span aria-hidden="true" className="ml-2">→</span></Link></div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-ink-soft" data-testid="tracking-line"><span className="font-medium text-ink">{trackingLabel(item)}</span>{item.applied_via ? ` · ${APPLIED_VIA_LABEL[item.applied_via]} on ${item.applied_on}` : ""}{item.follow_up_on ? ` · follow up ${item.follow_up_on}` : ""}</p><Link href={action.href === "resume" && item.latest_resume_version !== null ? `/resume-studio/${item.id}` : `/applications/${item.id}`} className="inline-flex min-h-11 items-center rounded-chip bg-action px-4 text-sm font-semibold text-action-ink hover:bg-action-hover">{action.label} <span aria-hidden="true" className="ml-2">→</span></Link></div>
         </article>;
       })}</div>}
       {items.length === 200 && <p className="text-xs text-ink-soft">Showing the 200 most recent applications. Search and filters apply to this loaded set.</p>}

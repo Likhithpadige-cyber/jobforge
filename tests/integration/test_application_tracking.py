@@ -9,7 +9,11 @@ from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 
 from packages.core.models import Application, ApplicationOutcome, ApplicationStatus, Event, User
-from packages.core.services.application_tracking import due_follow_ups, update_tracking
+from packages.core.services.application_tracking import (
+    applied_via,
+    due_follow_ups,
+    update_tracking,
+)
 from packages.shared.clock import utc_today
 from packages.shared.errors import ForbiddenError, ValidationError
 from packages.shared.ids import uuid7
@@ -204,3 +208,71 @@ async def test_tracking_api_roles_csrf_and_due_list(
 
     stored = await session.get(Application, app_id, populate_existing=True)
     assert stored is not None and stored.notes == "Synthetic offer note."
+
+
+async def test_jobforge_submission_date_fills_the_applied_date(session, demo_application) -> None:
+    # Only the approved pipeline writes submitted_at; here it is set
+    # directly (status stays `created`) to isolate the tracking rule.
+    owner = await _user(session, "owner")
+    app_id = demo_application["id"]
+    await session.execute(
+        text("UPDATE applications SET submitted_at = '2026-11-02 23:30:00+00' WHERE id = :id"),
+        {"id": app_id},
+    )
+    application = await session.get(Application, app_id, populate_existing=True)
+    assert application is not None and applied_via(application) == "jobforge"
+
+    await update_tracking(
+        session, actor=owner, application_id=app_id, changes={"outcome": "interviewing"}
+    )
+    assert str(application.applied_on) == "2026-11-02"
+    assert applied_via(application) == "jobforge"
+
+
+async def test_manual_application_is_recorded_as_manual(session, demo_application) -> None:
+    owner = await _user(session, "owner")
+    app_id = demo_application["id"]
+    application = await update_tracking(
+        session,
+        actor=owner,
+        application_id=app_id,
+        changes={"applied_on": utc_today() - timedelta(days=1)},
+    )
+    assert applied_via(application) == "manual"
+    assert application.status is ApplicationStatus.CREATED  # nothing claims a submission
+    assert application.submitted_at is None
+
+
+async def test_applications_list_filters_by_outcome_and_applied(
+    client_factory, session, demo_application, demo_user
+) -> None:
+    owner = await _user(session, "owner")
+    app_id = demo_application["id"]
+    await update_tracking(
+        session,
+        actor=owner,
+        application_id=app_id,
+        changes={"applied_on": utc_today() - timedelta(days=6), "outcome": "offer"},
+    )
+    await session.commit()
+
+    async with await client_factory(demo_user) as client:
+
+        async def ids(**params: str) -> dict[str, dict]:
+            response = await client.get("/api/v1/applications", params={"limit": 200, **params})
+            assert response.status_code == 200, response.text
+            return {row["id"]: row for row in response.json()}
+
+        offers = await ids(outcome="offer")
+        assert str(app_id) in offers
+        assert all(row["outcome"] == "offer" for row in offers.values())
+        row = offers[str(app_id)]
+        assert row["applied_via"] == "manual"
+        assert row["applied_on"] == str(utc_today() - timedelta(days=6))
+        assert str(app_id) not in await ids(outcome="rejected")
+        assert str(app_id) in await ids(applied="true")
+        not_applied = await ids(applied="false")
+        assert str(app_id) not in not_applied
+        assert all(row["applied_via"] is None for row in not_applied.values())
+        bad = await client.get("/api/v1/applications", params={"outcome": "hired"})
+        assert bad.status_code == 422

@@ -6,6 +6,7 @@
  * the frontend contract cannot drift from the backend (ARCHITECTURE.md §8).
  */
 
+import type { AppliedVia, Outcome } from "./tracking";
 import { env } from "./env";
 
 export type HealthState = "ok" | "degraded" | "unavailable";
@@ -335,10 +336,12 @@ export const api = {
     }),
 
   /** GET /api/v1/applications — how Resume Studio finds an application. */
-  listApplications: (params: { limit?: number; offset?: number } = {}) => {
+  listApplications: (params: { limit?: number; offset?: number; outcome?: string; applied?: boolean } = {}) => {
     const query = new URLSearchParams();
     query.set("limit", String(params.limit ?? 50));
     query.set("offset", String(params.offset ?? 0));
+    if (params.outcome) query.set("outcome", params.outcome);
+    if (params.applied !== undefined) query.set("applied", String(params.applied));
     return request<ApiApplication[]>(
       `${env.apiPrefix}/applications?${query.toString()}`,
     );
@@ -563,6 +566,11 @@ export interface ApiApplication {
   resume_count: number;
   latest_resume_version: number | null;
   latest_verification_status: VerificationStatus | null;
+  /** M19 tracking; applied_on is the owner's date, else the pipeline's submission date. */
+  outcome: Outcome;
+  applied_on: string | null;
+  applied_via: AppliedVia | null;
+  follow_up_on: string | null;
 }
 
 export interface ApiExportPreview {

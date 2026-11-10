@@ -12,14 +12,14 @@ yet - this one will not leak it by accident.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from apps.api.schemas.resume_review import ResumeReviewRead
-from packages.core.models import ApplicationStatus, ClaimVerdict
+from packages.core.models import ApplicationOutcome, ApplicationStatus, ClaimVerdict
 
 
 class ORMModel(BaseModel):
@@ -101,3 +101,9 @@ class ApplicationRead(ORMModel):
     resume_count: int = 0
     latest_resume_version: int | None = None
     latest_verification_status: str | None = None
+    # M19 tracking. applied_on is the owner's date, else the pipeline's
+    # submission date; applied_via says which.
+    outcome: ApplicationOutcome = ApplicationOutcome.PENDING
+    applied_on: date | None = None
+    applied_via: Literal["jobforge", "manual"] | None = None
+    follow_up_on: date | None = None
