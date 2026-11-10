@@ -588,7 +588,8 @@ async def e2e_fixture() -> int:
 
     Prints one JSON line: an application in `awaiting_approval` (pending
     resume and cover-letter review, one required question nobody has
-    answered) and a draft fact. Each run creates new rows, so tests that
+    answered), an application at `resume_ready` with no questions yet, and
+    a draft fact. Each run creates new rows, so tests that
     approve or retire never depend on what an earlier run left behind.
     Everything goes through the real services with replayed generation;
     if generation is paused, this fails closed rather than bypassing it.
@@ -691,6 +692,21 @@ async def e2e_fixture() -> int:
             await resume_review.enter_review(session, application_id=application.id, actor=owner)
             await session.flush()
             await _replay_cover_letter(session, application.id)
+            # A second run-unique application left at `resume_ready` with no
+            # questions, for the question-preparation journey. Its posting
+            # and resume are synthetic, built from the demo's verified facts.
+            ready, _ = await studio.build_tailored_application(
+                session,
+                profile_id=profile_id,
+                facts=facts,
+                source=await studio._source(session),
+                company=await studio._company(session),
+                url=f"https://jobs.example/e2e/{run}/ready",
+                title=f"E2E Ready Engineer {run}",
+                description=f"Fictional browser E2E posting {run}. Linux, Ansible and on-call.",
+                actor_id="demo_e2e_fixture",
+            )
+            await session.flush()
             experience = await session.scalar(
                 select(Experience.id).where(Experience.profile_id == profile_id).limit(1)
             )
@@ -707,6 +723,7 @@ async def e2e_fixture() -> int:
                     {
                         "run": run,
                         "application_id": str(application.id),
+                        "ready_application_id": str(ready.id),
                         "fact_id": str(fact.id),
                         **accounts,
                     }

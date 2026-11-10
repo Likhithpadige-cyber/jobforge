@@ -474,6 +474,14 @@ describe("application workspace", () => {
     expect(await screen.findByTestId("review-error")).toBeInTheDocument();
   });
 
+  it("at resume_ready an empty question list reads as not prepared, not as 0 questions", async () => {
+    mockWorkspace();
+    vi.spyOn(review, "readiness").mockResolvedValue(readiness({ application_status: "resume_ready" }));
+    render(<ApplicationWorkspace applicationId="a1" />);
+    expect(await screen.findByText("Questions have not been prepared yet.")).toBeInTheDocument();
+    expect(screen.queryByText("0 questions")).not.toBeInTheDocument();
+  });
+
   it("a missing application is not found", async () => {
     mockWorkspace();
     vi.spyOn(review, "readiness").mockRejectedValue(new ApiError("x", 404, { detail: "application not found" }));

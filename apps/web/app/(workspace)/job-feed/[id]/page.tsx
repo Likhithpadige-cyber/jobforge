@@ -233,9 +233,9 @@ export default function JobDetailPage({
             </div>
 
             <NotWiredNotice
-              title="Fit score not available"
-              body="Nothing here scores this job against your profile yet. JobForge can calculate a fit score and work out which requirements you meet, but no endpoint returns that, so showing a number would be making one up."
-              needs="GET /api/v1/jobs/{id}/evaluation"
+              title="Fit score not shown here yet"
+              body="The background evaluator stores a deterministic fit result for each job (the draft panel below uses it), but this page does not display the score or matched requirements yet. Nothing is estimated in its place."
+              needs="a fit-score view of GET /api/v1/jobs/{id}/evaluation"
             />
 
             <NotWiredNotice

@@ -79,6 +79,7 @@ class Accounts:
 
     run: str
     application_id: str
+    ready_application_id: str
     fact_id: str
     owner_email: str
     reviewer_email: str
@@ -242,7 +243,8 @@ def fresh(demo: Demo) -> Iterator[Accounts]:
     """Run-unique synthetic records and test accounts.
 
     Records: an application awaiting review with an unanswered required
-    question, and a draft fact. Accounts: `e2e-owner-<run>` and
+    question, an application at resume_ready with no questions, and a
+    draft fact. Accounts: `e2e-owner-<run>` and
     `e2e-reviewer-<run>`. Their passwords are generated here, in memory,
     and reach the fixture script only through its environment; they are
     never written to disk, printed or logged. The seeded demo owner (and its
@@ -265,6 +267,7 @@ def fresh(demo: Demo) -> Iterator[Accounts]:
     accounts = Accounts(
         run=data["run"],
         application_id=data["application_id"],
+        ready_application_id=data["ready_application_id"],
         fact_id=data["fact_id"],
         owner_email=data["owner_email"],
         reviewer_email=data["reviewer_email"],
@@ -286,4 +289,4 @@ def no_horizontal_overflow(page: Page) -> None:
     assert widths[0] <= widths[1], f"horizontal overflow on {page.url}: {widths}"
 
 
-__all__ = ["DESKTOP", "MOBILE", "csrf_headers", "expect", "no_horizontal_overflow"]
+__all__ = ["DESKTOP", "MOBILE", "Accounts", "csrf_headers", "expect", "no_horizontal_overflow"]

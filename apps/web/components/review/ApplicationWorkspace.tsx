@@ -235,7 +235,7 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
         <SectionCard title="Application answers" action={questions && <Link href={`/applications/${applicationId}/answers`} className="inline-flex min-h-6 items-center text-sm font-semibold text-accent hover:underline">Open</Link>}>
           {failed("answers") ? (
             <Unavailable />
-          ) : questions ? (
+          ) : questions && (questions.length > 0 || readiness.application_status !== "resume_ready") ? (
             <p className="text-sm text-ink">{questions.length} question{questions.length === 1 ? "" : "s"}{needsHuman > 0 ? ` · ${needsHuman} need your answer` : ""}{snapshot.answersApproved ? " · approved" : readiness.application_status === "awaiting_approval" && questions.length > 0 ? " · waiting for review" : ""}</p>
           ) : (
             <p className="text-sm text-ink-soft">Questions have not been prepared yet.</p>

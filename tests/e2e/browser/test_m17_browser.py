@@ -13,7 +13,7 @@ from uuid import uuid4
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.browser.conftest import csrf_headers
+from tests.e2e.browser.conftest import Accounts, csrf_headers
 
 pytestmark = pytest.mark.e2e
 
@@ -40,6 +40,11 @@ def test_owner_pastes_a_job_from_an_unreviewed_domain_and_opens_it(owner: Page) 
     owner.get_by_role("link", name="Open job").click()
     expect(owner).to_have_url(re.compile(r"/job-feed/[0-9a-f-]{36}$"))
     expect(owner.get_by_text(title).first).to_be_visible()
+    # The draft panel states the deployment's mode before anything is
+    # requested: the demo replays recorded responses and live AI is off.
+    expect(owner.get_by_test_id("draft-mode")).to_contain_text("Replay demonstration only")
+    expect(owner.get_by_test_id("draft-mode")).to_contain_text("Live AI is disabled")
+    expect(owner.get_by_role("button", name="Request AI draft")).to_have_count(0)
 
 
 def test_import_validation_and_reviewer_denial(owner: Page, reviewer: Page) -> None:
@@ -94,3 +99,35 @@ def test_export_panel_lists_files_and_relays_the_ownership_refusal(owner: Page) 
     download.click()
     expect(export.get_by_role("alert")).to_contain_text("artifact not found")
     expect(export.get_by_role("button", name="Download DOCX")).to_be_visible()
+
+
+def test_owner_hands_application_questions_to_the_deterministic_worker(
+    owner: Page, reviewer: Page, fresh: Accounts
+) -> None:
+    # The fixture's run-unique application sits at resume_ready with no
+    # questions. The demo runs no application worker, so this journey covers
+    # the UI and API trigger; the worker's deterministic preparation of the
+    # queued payload is covered by tests/integration/test_applications.py.
+    path = f"/applications/{fresh.ready_application_id}"
+
+    reviewer.goto(path)
+    expect(reviewer.get_by_text("Questions have not been prepared yet.")).to_be_visible()
+    expect(reviewer.get_by_role("button", name="Prepare answers")).to_have_count(0)
+    denied = reviewer.request.post(
+        f"/api/v1{path}/prepare",
+        data=json.dumps({"questions": []}),
+        headers=csrf_headers(reviewer),
+    )
+    assert denied.status == 403
+
+    owner.goto(path)
+    owner.get_by_role("button", name="Prepare answers").click()
+    refusal = owner.get_by_role("alert").filter(has_text="Enter at least one question")
+    expect(refusal).to_be_visible()
+    owner.get_by_label("The employer's application questions, one per line").fill(
+        "Why are you interested in this role?\nAre you authorised to work in the UK?"
+    )
+    owner.get_by_role("button", name="Prepare answers").click()
+    expect(owner.get_by_role("status").filter(has_text="Queued")).to_contain_text(
+        "without any AI call"
+    )

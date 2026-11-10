@@ -476,6 +476,37 @@ async def test_request_application_questions_emits_the_owner_supplied_capture(
     assert event.payload["questions"][0]["question_text"] == "What is your city?"
 
 
+async def test_requested_capture_round_trips_through_the_worker_payload(
+    session, demo_profile, demo_job, demo_application, inputs
+):
+    # The web UI's path end to end, minus the queue: the owner's request is
+    # recorded as an event, and the application worker rebuilds the questions
+    # from that payload alone and prepares them deterministically.
+    await _ready(session, demo_profile, demo_job, demo_application, inputs)
+    app_id = demo_application["id"]
+    owner = await _actor(session, demo_application)
+    asked = [
+        RawQuestion(question_text="What is your email address?", input_type="text"),
+        RawQuestion(question_text="Why do you want this role?", input_type="textarea"),
+    ]
+    result = await request_application_questions(
+        session, actor=owner, application_id=app_id, questions=asked
+    )
+    await session.flush()
+    event = await session.get(Event, result.event_id)
+
+    rebuilt = service.questions_from_event_payload(event.payload)
+    assert [(q.question_text, q.input_type) for q in rebuilt] == [
+        (q.question_text, q.input_type) for q in asked
+    ]
+    prepared = await prepare_application(
+        session, application_id=app_id, questions=rebuilt, causation_id=event.id
+    )
+    assert [q.question_text for q in prepared] == [q.question_text for q in asked]
+    application = await session.get(Application, app_id)
+    assert application.status is ApplicationStatus.QUESTIONS_PENDING
+
+
 # ------------------------------------------------------ human editing / review
 
 
