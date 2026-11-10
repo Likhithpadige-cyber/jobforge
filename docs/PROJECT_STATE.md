@@ -1,6 +1,6 @@
 # JobForge project state
 
-Updated: 2026-11-10 (fourth session: integration review, M19 essentials, M20–M22 plans). Keep this short; it is the handover
+Updated: 2026-11-10 (fifth session: M20 step 1 done). Resume checkpoint: `docs/AUTONOMOUS_RESUME.md`. Keep this short; it is the handover
 for the next session. Verified means executed in this session, not reported.
 
 ## Where things are
@@ -96,7 +96,16 @@ seeded profile owner (covered by API/integration tests).
 Not built: tracking for jobs without an application row; automatic
 `no_response` aging; reminders by notification; mailbox signals.
 
-## M20–M22 (design only, nothing built or installed)
+## M20 step 1 — production configuration (done, locally verified)
+
+Staging/production: `postgres_password`, `session_secret`, valid
+`totp_encryption_key` (strict base64, 32 bytes) always required; the
+Anthropic key only for `record`/`live`. Startup errors no longer echo config
+input (`hide_input_in_errors`). API and workers refuse to start on bad
+secrets without leaking values; replay starts with no provider key
+(process-level tests). Local/test unchanged.
+
+## M20–M22 (design; only step 1 built)
 
 - `docs/deployment/M20_PRIVATE_RUNTIME_DESIGN.md`: `jobforge-prod` compose
   project, single loopback edge port, internal no-egress networks, named
@@ -120,11 +129,9 @@ Not built: tracking for jobs without an application row; automatic
 
 ## Next three tasks
 
-1. Owner decision on integration (GO recommended, see above).
-2. M20 step 1: config fixes (API key only for non-replay; TOTP key
-   required outside local) with tests — safe, local, no deployment.
-3. M20 steps 2–3: `docker-compose.prod.yml`, edge, preflight, rehearsed on a
-   throwaway `jobforge-prodtest` project with synthetic data.
+1. M20 step 2: production compose, edge and wrapper with static tests.
+2. M20 step 3: preflight + API revision guard.
+3. Sign out everywhere (M22 prerequisite).
 
 ## Resume commands
 
