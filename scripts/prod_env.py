@@ -352,13 +352,114 @@ async def init() -> None:
         await engine.dispose()
 
 
+# -------------------------------------------------------- bootstrap-owner
+MIN_OWNER_PASSWORD = 14
+
+
+async def bootstrap_owner(
+    engine: Any,
+    *,
+    email: str,
+    encryption_key: str,
+    read_password: Any,
+    read_code: Any,
+    show: Any,
+    expected_db: str = PROD_DATABASE,
+) -> str:
+    """Create the single owner with a password and verified TOTP enrolment.
+
+    Interactive by design: the password comes from `read_password` (a no-echo
+    prompt), the authenticator URI is passed to `show` exactly once, and a
+    code from the authenticator must verify before anything is written - a
+    mistyped enrolment can never lock the owner out. Refuses when any owner
+    already exists. Returns the new user's id.
+    """
+    from sqlalchemy import text
+
+    from packages.core.auth import generate_secret, hash_password, provisioning_uri, verify_code
+    from packages.core.crypto import encrypt_totp_secret
+    from packages.shared.ids import uuid7
+
+    email = email.strip().lower()
+    if "@" not in email or len(email) > 254 or any(c.isspace() for c in email):
+        raise ProdGuardError("a valid email address is required")
+    async with engine.connect() as conn:
+        name = await conn.scalar(text("SELECT current_database()"))
+        if name != expected_db:
+            raise ProdGuardError(f"connected to {name!r}, not {expected_db!r}")
+        if await conn.scalar(text("SELECT count(*) FROM users WHERE role = 'owner'")):
+            raise ProdGuardError("an owner already exists; nothing was changed")
+
+    password = read_password()
+    if not password or len(password) < MIN_OWNER_PASSWORD:
+        raise ProdGuardError(f"the password must be at least {MIN_OWNER_PASSWORD} characters")
+    secret = generate_secret()
+    show(provisioning_uri(secret, email))
+    if not verify_code(secret, read_code().strip()):
+        raise ProdGuardError("the authenticator code did not verify; nothing was written")
+
+    user_id = uuid7()
+    async with engine.begin() as conn:
+        if await conn.scalar(text("SELECT count(*) FROM users WHERE role = 'owner'")):
+            raise ProdGuardError("an owner was created concurrently; nothing was changed")
+        await conn.execute(
+            text(
+                "INSERT INTO users (id, email, role, password_hash, totp_secret_enc, "
+                "created_at, updated_at) VALUES (:id, :email, 'owner', :hash, :totp, now(), now())"
+            ),
+            {
+                "id": user_id,
+                "email": email,
+                "hash": hash_password(password),
+                "totp": encrypt_totp_secret(secret, encryption_key),
+            },
+        )
+    return str(user_id)
+
+
 # -------------------------------------------------------------------- cli
+async def _bootstrap_cli(email: str) -> None:
+    import getpass
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from packages.shared.config import get_settings
+
+    settings = get_settings()
+
+    def read_password() -> str:
+        first = getpass.getpass("Owner password (not echoed): ")
+        if first != getpass.getpass("Repeat password: "):
+            raise ProdGuardError("the passwords do not match; nothing was written")
+        return first
+
+    def show(uri: str) -> None:
+        # Shown once on this terminal only; never logged or stored.
+        print("\nAdd this to your authenticator app now (shown once):\n\n  " + uri + "\n")
+
+    engine = create_async_engine(str(settings.database_url))
+    try:
+        await bootstrap_owner(
+            engine,
+            email=email,
+            encryption_key=settings.totp_encryption_key,
+            read_password=read_password,
+            read_code=lambda: input("Code from the authenticator: "),
+            show=show,
+        )
+    finally:
+        await engine.dispose()
+    print("owner created; sign in with the password and an authenticator code")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.prod_env")
     sub = parser.add_subparsers(dest="command", required=True)
     gen = sub.add_parser("generate-env")
     gen.add_argument("path", type=Path)
     sub.add_parser("init")
+    boot = sub.add_parser("bootstrap-owner")
+    boot.add_argument("--email", required=True)
     pre = sub.add_parser("preflight")
     pre.add_argument("--bootstrap", action="store_true", help="allow no owner account yet")
     args = parser.parse_args(argv)
@@ -366,6 +467,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "generate-env":
             names = generate_env(args.path)
             print(f"wrote {len(names)} settings (values not shown) to {args.path.expanduser()}")
+            return 0
+        if args.command == "bootstrap-owner":
+            asyncio.run(_bootstrap_cli(args.email))
             return 0
         if args.command == "init":
             asyncio.run(init())

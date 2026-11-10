@@ -22,8 +22,8 @@ die() { echo "prod.sh: refusing: $*" >&2; exit 2; }
 
 command=${1:-}
 case "$command" in
-  config|build|up|start|stop|ps|logs|migrate|init|preflight|check-ports) ;;
-  *) die "unknown command '${command}' (config|build|up|start|stop|ps|logs|migrate|init|preflight|check-ports)" ;;
+  config|build|up|start|stop|ps|logs|migrate|init|preflight|check-ports|bootstrap-owner) ;;
+  *) die "unknown command '${command}' (config|build|up|start|stop|ps|logs|migrate|init|preflight|check-ports|bootstrap-owner)" ;;
 esac
 shift || true
 for arg in "$@"; do
@@ -84,6 +84,8 @@ case "$command" in
   migrate) exec "${compose[@]}" --profile release run --rm migrate ;;
   # Owner role, release container: database marker + runtime role passwords.
   init)    exec "${compose[@]}" --profile release run --rm migrate python -m scripts.prod_env init ;;
+  # Interactive (TTY): password prompt, one-time TOTP enrolment, code check.
+  bootstrap-owner) exec "${compose[@]}" exec api python -m scripts.prod_env bootstrap-owner "$@" ;;
   # As app_api inside the api container; fails closed. Then the host-side
   # exposure check.
   preflight)
