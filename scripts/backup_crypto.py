@@ -28,7 +28,7 @@ import os
 import struct
 from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Protocol
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
@@ -42,6 +42,10 @@ CHUNK = 1024 * 1024
 _FRAME = struct.Struct(">IB")
 _LEN = struct.Struct(">I")
 MAX_HEADER = 64 * 1024
+
+
+class Readable(Protocol):
+    def read(self, n: int, /) -> bytes: ...
 
 
 class BackupCryptoError(Exception):
@@ -100,7 +104,7 @@ def _aad(header: bytes, counter: int, final: bool) -> bytes:
     return header + counter.to_bytes(8, "big") + (b"\1" if final else b"\0")
 
 
-def _chunks(source: BinaryIO | Iterable[bytes]) -> Iterator[bytes]:
+def _chunks(source: Readable | Iterable[bytes]) -> Iterator[bytes]:
     if hasattr(source, "read"):
         while block := source.read(CHUNK):
             yield block
@@ -116,7 +120,7 @@ def _chunks(source: BinaryIO | Iterable[bytes]) -> Iterator[bytes]:
 
 
 def encrypt_stream(
-    source: BinaryIO | Iterable[bytes], out: BinaryIO, recipient: X25519PublicKey, label: str
+    source: Readable | Iterable[bytes], out: BinaryIO, recipient: X25519PublicKey, label: str
 ) -> int:
     """Encrypt `source` to `out`; returns the plaintext byte count."""
     ephemeral = X25519PrivateKey.generate()
