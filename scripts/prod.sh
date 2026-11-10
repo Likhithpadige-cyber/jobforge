@@ -22,8 +22,8 @@ die() { echo "prod.sh: refusing: $*" >&2; exit 2; }
 
 command=${1:-}
 case "$command" in
-  config|build|up|start|stop|ps|logs|migrate) ;;
-  *) die "unknown command '${command}' (config|build|up|start|stop|ps|logs|migrate)" ;;
+  config|build|up|start|stop|ps|logs|migrate|init|preflight|check-ports) ;;
+  *) die "unknown command '${command}' (config|build|up|start|stop|ps|logs|migrate|init|preflight|check-ports)" ;;
 esac
 shift || true
 for arg in "$@"; do
@@ -82,4 +82,23 @@ case "$command" in
   ps)      exec "${compose[@]}" ps "$@" ;;
   logs)    exec "${compose[@]}" logs --tail=200 "$@" ;;
   migrate) exec "${compose[@]}" --profile release run --rm migrate ;;
+  # Owner role, release container: database marker + runtime role passwords.
+  init)    exec "${compose[@]}" --profile release run --rm migrate python -m scripts.prod_env init ;;
+  # As app_api inside the api container; fails closed. Then the host-side
+  # exposure check.
+  preflight)
+    "${compose[@]}" exec -T api python -m scripts.prod_env preflight "$@"
+    exec "$0" check-ports ;;
+  check-ports)
+    # Every published port of this project must be the edge on 127.0.0.1.
+    published=$("${compose[@]}" ps --format '{{.Service}} {{.Ports}}' | grep -E -- '->' || true)
+    [[ -n "$published" ]] || die "no published port found (is the stack up?)"
+    while read -r service ports; do
+      [[ "$service" == "edge" ]] || die "service $service publishes a port"
+      for binding in ${ports//,/ }; do
+        [[ "$binding" == *"->"* ]] || continue
+        [[ "$binding" == 127.0.0.1:* ]] || die "edge is published beyond loopback ($binding)"
+      done
+    done <<< "$published"
+    echo "ports ok: only the edge, on 127.0.0.1" ;;
 esac

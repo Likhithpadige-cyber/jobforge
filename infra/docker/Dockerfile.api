@@ -34,6 +34,8 @@ COPY --chown=1000:1000 packages ./packages
 COPY --chown=1000:1000 workers ./workers
 COPY --chown=1000:1000 migrations ./migrations
 COPY --chown=1000:1000 alembic.ini pyproject.toml ./
+# Only the private-runtime helper (init/preflight), not the dev/demo scripts.
+COPY --chown=1000:1000 scripts/prod_env.py ./scripts/prod_env.py
 RUN useradd --create-home --uid 1000 app && chown -R app:app /app \
     && install -d -o app -g app -m 700 /var/lib/jobforge/artifacts
 # A new named volume mounted here inherits this ownership, so the
