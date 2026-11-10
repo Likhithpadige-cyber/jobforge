@@ -9,9 +9,11 @@ system without explicit human approval: submission needs an owner's confirmed
 action, a complete approval trail and a deployment deliberately switched out
 of dry-run mode.
 
-> **Status:** a locally verified portfolio project. It is **not production-ready**
-> — see [Project status](#project-status) and the
-> [deployment readiness report](docs/deployment/M15_READINESS_REPORT.md).
+> **Status:** a portfolio project, verified locally and in GitHub Actions. It ships a
+> rehearsed, loopback-only **private** runtime for a single owner; it is not a hosted
+> public service. Live AI is **off** by default: model-backed drafting stages run
+> against recorded replay fixtures, and no test or demo calls a model provider.
+> See [Project status](#project-status).
 
 ![JobForge dashboard](docs/screenshots/dashboard.png)
 
@@ -40,19 +42,38 @@ of dry-run mode.
   DOCX/PDF rendering with checksummed artifacts.
 - **Operations** — worker heartbeats, operator alerts, an automatic generation
   pause on safety incidents, and a monitoring view.
+- **Job import** — paste a posting (never fetched) or bulk-import CSV/JSON
+  through per-employer site policies.
+- **Master résumé import** — paste text or open a `.txt`, `.md` or `.docx` file,
+  edit the sectioned preview, then save; imported lines are not evidence until
+  individual facts are verified. DOCX text is extracted server-side with
+  archive-size, ratio and entity protections; PDF is paste-only.
+- **Application tracking** — outcomes (applied, interview, offer, rejected and
+  more), follow-up dates and notes, outcome filters, and a due-follow-ups
+  dashboard. A manual handoff is never counted as a JobForge submission.
+- **Honest AI labelling** — the first-draft panel states whether the
+  deployment is replay-only (demonstration) or live (may be billable), and the
+  stored fit score is labelled as fixed-rule, not AI.
+- **Private single-owner runtime** — a production Docker Compose stack with one
+  loopback edge port, internal no-egress networks, least-privilege database
+  roles, a fail-closed startup preflight and a schema-revision guard.
+- **Encrypted backups and restore drills** — streamed, public-key-encrypted
+  database, role and artifact backups; restore only into a new isolated stack.
+- **Session safety** — TOTP outside local mode, revocable sessions, "sign out
+  everywhere" and authenticator re-enrolment for a lost device.
 
 ## Screenshots
 
 From the fictional demo dataset, in dry-run mode
 ([capture notes](docs/screenshots/README.md)).
 
-| Sign in | Applications |
+| Sign in | Application tracking |
 |---|---|
-| ![Sign-in page](docs/screenshots/login.png) | ![Applications list](docs/screenshots/applications.png) |
+| ![Sign-in page](docs/screenshots/login.png) | ![Application tracking card](docs/screenshots/application-tracking.png) |
 | **Approvals inbox** | **Cover-letter review with cited evidence** |
 | ![Approvals inbox](docs/screenshots/approvals.png) | ![Cover-letter review](docs/screenshots/cover-letter-review.png) |
-| **Submission readiness (blocked by dry-run)** | |
-| ![Submission readiness](docs/screenshots/submission-readiness.png) | |
+| **Submission readiness (blocked by dry-run)** | **Settings: dry-run gate and sign out everywhere** |
+| ![Submission readiness](docs/screenshots/submission-readiness.png) | ![Settings](docs/screenshots/settings-sessions.png) |
 
 ## Safety model
 
@@ -88,7 +109,7 @@ flowchart LR
 | Backend | Python 3.12, FastAPI 0.133, Pydantic 2.10, SQLAlchemy 2.0 (async, asyncpg), Alembic 1.14 |
 | Data | PostgreSQL 16 with pgvector; Redis 7 (sessions, rate limits, event streams) |
 | Artifacts | S3-compatible storage (MinIO locally) or an explicit filesystem backend |
-| Local runtime | Docker Compose: a development stack and an isolated, loopback-only demo stack |
+| Local runtime | Docker Compose: a development stack, an isolated loopback-only demo stack, and a private production stack (`docker-compose.prod.yml`, Caddy edge) |
 | Testing | pytest (unit, integration, safety, offline evaluations), opt-in API and Playwright E2E |
 
 PostgreSQL holds domain state, verified facts, citations, approval decisions,
@@ -108,7 +129,7 @@ Only deliberate live configuration can enable external provider/SMTP traffic.
 | `packages/agents/` | Evaluation, drafting and verification orchestration |
 | `packages/services/` | Ingestion, document rendering, storage and email transport |
 | `workers/` | Process entrypoints and durable event consumers |
-| `migrations/` | Ten Alembic revisions; head `0010_submission_retry_schedule` |
+| `migrations/` | Eleven Alembic revisions; head `0011_application_tracking` |
 | `tests/` | Unit, integration, contract, offline evaluation and opt-in E2E |
 | `infra/docker/` | Development and production Dockerfiles |
 | `infra/terraform/` | Reserved directory; no deployed infrastructure supplied |
@@ -118,19 +139,46 @@ Dependencies flow from apps/agents/services toward core and shared code.
 `make verify` checks the intended import direction; it currently reports 31
 pre-existing upward imports (see the hygiene review). Workers are entrypoints,
 not a library.
-The schema check currently verifies 38 tables, 20 enums and ten revisions.
+The schema check currently verifies 38 tables, 20 enums and eleven revisions.
 
 ## Project status
 
 | Scope | State |
 |---|---|
-| Implemented | Milestones M1–M13 (ingestion through review and submission UI), M14 hardening and CI repair, M15 deployment assessment, the approved cream-and-teal design, M16 publication preparation. Full history: [milestone changelog](docs/MILESTONE_CHANGELOG.md). |
-| Locally verified | Backend, frontend, API E2E and browser E2E suites run locally; latest exact counts are in the [changelog](docs/MILESTONE_CHANGELOG.md). |
-| GitHub Actions | All six CI jobs pass on GitHub Actions, and the manual Playwright workflow passes all 26 browser tests ([CI guide](docs/CI.md); run links and counts in the [changelog](docs/MILESTONE_CHANGELOG.md)). |
-| Production | **NO-GO.** Release blockers (production build/routing, configuration preflight, TLS/edge, backups, release evidence) are listed in the [readiness report](docs/deployment/M15_READINESS_REPORT.md) and [blueprint](docs/deployment/M15_DEPLOYMENT_BLUEPRINT.md). |
+| Implemented | M1–M13 (ingestion through review and submission UI), M14 hardening, M15 deployment assessment, M16 publication and résumé export, M17 core workflow UI, M19 application tracking, M20 private runtime, M21 encrypted backups, M22 app-side session safety. Full history: [milestone changelog](docs/MILESTONE_CHANGELOG.md). |
+| Verified | Locally: backend (about 3,750 tests, none skipped), safety suite, API E2E, frontend (about 420 tests) and Playwright browser journeys including 375 px views. GitHub Actions runs the CI jobs on every push ([CI guide](docs/CI.md)). |
+| Private runtime | Rehearsed on a throwaway synthetic stack ([report](docs/verification/M20_REHEARSAL.md)); an encrypted backup was restored into an isolated stack and signed into ([drill](docs/verification/M21_RESTORE_DRILL.md)). |
+| Not provided | A hosted public deployment, live AI by default, multi-tenant accounts, or automatic submission. |
 
 Architecture documents also contain future design; they are not a claim that
 every planned feature exists.
+
+## Private runtime (single owner)
+
+For running JobForge for yourself on one machine, not as a public service:
+[runtime design](docs/deployment/M20_PRIVATE_RUNTIME_DESIGN.md),
+[backup runbook](docs/deployment/M21_BACKUP_RUNBOOK.md) and
+[private phone access over Tailscale](docs/deployment/M22_TAILSCALE_RUNBOOK.md)
+(tailnet-only, never Funnel). In short: `python -m scripts.prod_env generate-env`
+(env file outside the repository), `scripts/prod.sh build`, `migrate`, `init`,
+`up`, `bootstrap-owner`, then `preflight`. The wrapper refuses destructive
+commands and live AI.
+
+```mermaid
+flowchart LR
+  Phone[Owner's devices] -->|HTTPS, tailnet only| Serve[Tailscale Serve on the Mac]
+  Serve --> Edge[Caddy edge, 127.0.0.1 only]
+  Edge -->|/api/v1| API[FastAPI as app_api]
+  Edge --> Web[Next.js, no secrets]
+  API --> PG[(PostgreSQL)]
+  API --> R[(Redis)]
+  API --> Vol[(Artifact volume)]
+  Workers[Deterministic workers] --> PG
+  Backup[Encrypted backups] -. public key only .-> PG
+```
+
+The `app` and `data` networks are internal, so no container can reach the
+internet, a model provider or an employer.
 
 ## Setup
 
@@ -329,11 +377,14 @@ data before any intentional reset. Avoid pasting logs containing PII or secrets.
   documents describes planned work. `infra/terraform/` contains only a placeholder.
 - Live execution supports the explicitly permitted email path; arbitrary ATS
   browser submission is not implemented. No CAPTCHA or anti-detection bypass.
+- New real jobs cannot get AI drafts while live AI is off; the deterministic
+  paths (import, evaluation, evidence, review, export, tracking) all work.
 - Replay generation needs matching cassettes; the fictional demo mainly exposes
   seeded review flows. No external model-quality claim follows from offline tests.
-- The production web build does not use the development API rewrite. Configure
-  its public API origin, cookie/CORS policy and deployment routing explicitly;
-  this repository does not supply a production deployment recipe.
+- The production web build calls the API on its own origin
+  (`NEXT_PUBLIC_API_BASE_URL=same-origin`) behind the Caddy edge in
+  `docker-compose.prod.yml`; that stack is designed for a single private owner,
+  not for public hosting.
 - Login limits use the socket peer, with no trusted-forwarded-header model.
   A reverse proxy can collapse clients into one rate-limit bucket.
 - Browser runs leave synthetic E2E rows and can hit the deliberate login limit

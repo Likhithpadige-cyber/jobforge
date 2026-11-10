@@ -14,10 +14,19 @@ image.
 |---|---|
 | `login.png` | Sign-in page (no credentials entered) |
 | `dashboard.png` | Dashboard: next decision, workspace totals, application pipeline |
-| `applications.png` | Applications list with status and verification |
 | `approvals.png` | Approvals inbox: work waiting for a human decision |
 | `cover-letter-review.png` | Cover-letter review: each paragraph with its cited-evidence verdict |
 | `submission-readiness.png` | Submission readiness checklist, blocked by dry-run mode |
 
 Every image shows the seed data as served, with nothing filtered or edited, so
 the totals agree across pages: 2 applications, 2 items awaiting review.
+
+## Added 2026-11-10
+
+`application-tracking.png` and `settings-sessions.png` were captured the same
+way (Playwright, Chromium, 1280×800, reduced motion; Next.js development
+overlay hidden) from a throwaway copy of the fictional demo, signed in as a
+run-unique synthetic E2E owner. The tracking values on the seeded fictional
+"Cloud Engineer" application (dates and the note "Fictional demo: phone
+screen booked.") were entered for the capture. The earlier `applications.png`
+was retired because it showed a note that outcomes were not yet available.
