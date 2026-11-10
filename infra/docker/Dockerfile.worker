@@ -28,6 +28,9 @@ FROM base AS production
 COPY --chown=1000:1000 apps ./apps
 COPY --chown=1000:1000 packages ./packages
 COPY --chown=1000:1000 workers ./workers
-RUN useradd --create-home --uid 1000 app && chown -R app:app /app
+RUN useradd --create-home --uid 1000 app && chown -R app:app /app \
+    && install -d -o app -g app -m 700 /var/lib/jobforge/artifacts
+# A new named volume mounted here inherits this ownership, so the
+# filesystem artifact store (private runtime) is writable by `app` only.
 USER app
 CMD ["python", "-m", "workers.outbox_relay"]

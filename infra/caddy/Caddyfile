@@ -1,0 +1,54 @@
+# JobForge private runtime edge (M20). Single origin: /api/v1/* -> API,
+# everything else -> web. Plain HTTP inside the host; HTTPS for remote
+# devices is terminated by Tailscale Serve on the Mac (M22), never by a
+# public listener. Published only on 127.0.0.1 (docker-compose.prod.yml).
+{
+	admin off
+	auto_https off
+	persist_config off
+}
+
+:8080 {
+	# Résumé/job imports are small; refuse oversized bodies early.
+	request_body {
+		max_size 12MB
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		# Report-only until tuned against the real pages (M20 design §2).
+		Content-Security-Policy-Report-Only "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	}
+
+	# The API's internal /health and docs are not exposed through the edge.
+	@internal path /health /docs /docs/* /redoc /openapi.json
+	respond @internal 404
+
+	handle /api/v1/* {
+		header Cache-Control "no-store"
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+
+	log {
+		output stdout
+		# Never log cookies, CSRF tokens or authorization headers.
+		format filter {
+			wrap json
+			fields {
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				request>headers>X-Csrf-Token delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+}

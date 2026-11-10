@@ -31,7 +31,7 @@ iPhone / Mac browser
  │           application, render                                              │
  │  postgres 16 + pgvector   (volume)          network: data                  │
  │  redis (sessions/limits/streams, password)  network: data                  │
- │  minio (private artifact bucket, volume)    network: data                  │
+ │  artifacts: filesystem store on a named volume (api + render/application)  │
  │  migrate (one-shot job, profile `release`)  network: data                  │
  └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -68,7 +68,7 @@ iPhone / Mac browser
 | Data | Store | Volume (project-scoped) | Source of truth? |
 |---|---|---|---|
 | Domain data, audit, events | PostgreSQL | `jobforge-prod_pg_data` | **yes** |
-| Résumé PDFs/DOCX, packets | MinIO bucket | `jobforge-prod_object_data` | **yes** (with DB manifest) |
+| Résumé PDFs/DOCX, packets | filesystem artifact store | `jobforge-prod_artifact_data` | **yes** (with DB checksums) |
 | Sessions, rate limits, streams | Redis (AOF on) | `jobforge-prod_redis_data` | no — rebuildable |
 
 - Volumes are named, never bind-mounted from the repository, and carry a
@@ -86,6 +86,14 @@ iPhone / Mac browser
 - Data at rest lives inside Docker Desktop's VM disk on the Mac. **FileVault
   must be on** before real data is loaded (owner action; not changed by
   Claude). Time Machine is not a database backup (M21).
+
+**Change from the first draft (step 2):** no MinIO. Its image is built from
+MinIO's last public source release, which has known unpatched advisories
+(`infra/docker/Dockerfile.minio` says never to use it for production). The
+existing `FilesystemArtifactStore` (atomic writes, root containment,
+checksum verification) on a named volume replaces it; M21 backs the volume up.
+Behind the edge every client shares one per-IP login budget (no trusted-proxy
+model); the per-identifier limit still applies. Fails safe for one user.
 
 ## 4. Startup safeguards (to build in M20)
 
@@ -113,7 +121,8 @@ worker entrypoints before they serve. Each check fails closed:
 6. Owner account has TOTP enrolled (TOTP is mandatory outside local); the
    bootstrap creates the owner once, interactively, with the password typed
    by the owner, never printed or stored.
-7. Object bucket exists, is private (no anonymous policy) and versioned.
+7. Artifact root exists, is writable only by the app user, and every
+   artifact row's object exists with a matching checksum (sampled).
 8. Persisted submission-dispatch switch is false.
 
 ## 5. Secrets and configuration
@@ -166,8 +175,10 @@ first-draft worker only.
 1. ✅ Done 2026-11-10: API key only when `llm_mode != replay`;
    `TOTP_ENCRYPTION_KEY` required and validated outside local; startup errors
    no longer echo configuration values; unit + process-level tests.
-2. `docker-compose.prod.yml` + Caddyfile + wrapper; built only from
-   production image targets.
+2. ✅ Done 2026-11-10: `docker-compose.prod.yml`, `infra/caddy/Caddyfile`,
+   `scripts/prod.sh` (refuses `down`/`-v`, in-repo or loose-permission env
+   files, live AI, connection-string overrides, placeholders); static tests.
+   Not yet built or started.
 3. `scripts/prod_preflight.py` + API startup revision check; tests.
 4. Owner bootstrap script (interactive, TOTP enrolment).
 5. Rehearsal on a throwaway `jobforge-prodtest` project with synthetic data,

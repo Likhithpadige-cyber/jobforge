@@ -75,7 +75,9 @@ def _digest(data: bytes) -> str:
 
 
 class FilesystemArtifactStore:
-    """Non-networked store for tests and local development.
+    """Non-networked store for tests, local development and the single-host
+    private runtime (M20), where `root` is a persistent named Docker volume
+    shared by the API and render worker and backed up by M21.
 
     Writes through a temporary file in the same directory and an atomic
     rename, so a crash mid-write cannot leave a partial object under a key the

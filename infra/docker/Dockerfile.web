@@ -15,6 +15,12 @@ CMD ["npm", "run", "dev"]
 
 # ----------------------------------------------------------- build/prod
 FROM deps AS builder
+# NEXT_PUBLIC_ values are inlined at build time. The private runtime builds
+# with NEXT_PUBLIC_API_BASE_URL=same-origin (docker-compose.prod.yml).
+ARG NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_APP_NAME=JobForge
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL} \
+    NEXT_PUBLIC_APP_NAME=${NEXT_PUBLIC_APP_NAME}
 COPY apps/web ./
 RUN npm run build
 

@@ -265,8 +265,9 @@ class Settings(BaseSettings):
     #: Which ArtifactStore the API and the render worker construct.
     #: "s3" is the production backend - MinIO locally (docker compose
     #: --profile full), real S3 in production - backed by boto3.
-    #: "filesystem" is for tests and local development without MinIO and
-    #: writes under `artifact_storage_root`. There is no automatic fallback
+    #: "filesystem" writes under `artifact_storage_root`: tests, local
+    #: development without MinIO, and the single-host private runtime (M20),
+    #: where the root is a persistent named volume covered by M21 backups. There is no automatic fallback
     #: between the two: an "s3" deployment that cannot reach its store fails
     #: closed through ArtifactStoreUnavailableError rather than writing to
     #: local disk.

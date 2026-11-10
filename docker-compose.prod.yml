@@ -1,0 +1,242 @@
+# JobForge private production runtime (M20). See
+# docs/deployment/M20_PRIVATE_RUNTIME_DESIGN.md.
+#
+# Always run through scripts/prod.sh, which pins the project name
+# (`jobforge-prod`), this file and an env file kept OUTSIDE the repository.
+# Never run `down -v` against this project: the named volumes hold the only
+# copy of the data until an M21 backup exists.
+#
+# Exposure: exactly one published port, the edge on 127.0.0.1. The `app` and
+# `data` networks are internal (no route to the internet), so no container can
+# reach a model provider, an SMTP server or an employer site. Live AI stays
+# off: no model-calling or submission worker is defined here.
+name: jobforge-prod
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "5"}
+
+x-app-env: &app-env
+  ENVIRONMENT: production
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  LLM_MODE: replay
+  SUBMISSION_MODE: dry_run
+  EMAIL_TRANSPORT_MODE: fake
+  ARTIFACT_STORAGE_BACKEND: filesystem
+  ARTIFACT_STORAGE_ROOT: /var/lib/jobforge/artifacts
+  PYTHONDONTWRITEBYTECODE: "1"
+
+x-python-app: &python-app
+  <<: *hardening
+  env_file: ["${JOBFORGE_PROD_ENV_FILE:?run through scripts/prod.sh}"]
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: ["/tmp:size=64m,mode=1777"]
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+
+x-worker: &worker
+  <<: *python-app
+  build:
+    context: .
+    dockerfile: infra/docker/Dockerfile.worker
+    target: production
+  image: jobforge-prod-worker:${JOBFORGE_RELEASE:?set by scripts/prod.sh}
+  stop_grace_period: 40s
+  networks: [data]
+  mem_limit: 384m
+  cpus: 0.5
+
+services:
+  edge:
+    <<: *hardening
+    image: caddy:2.8-alpine
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ["/tmp:size=16m", "/data:size=16m", "/config:size=16m"]
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      - "127.0.0.1:${JOBFORGE_PROD_PORT:-8480}:8080"
+    networks: [public, app]
+    mem_limit: 128m
+    cpus: 0.5
+    depends_on:
+      api: {condition: service_healthy}
+      web: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  web:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+      target: production
+      args:
+        NEXT_PUBLIC_API_BASE_URL: same-origin
+        NEXT_PUBLIC_APP_NAME: JobForge
+    image: jobforge-prod-web:${JOBFORGE_RELEASE:?set by scripts/prod.sh}
+    # No env_file: the browser-facing process holds no database, Redis,
+    # session or TOTP secrets, and is not on the `data` network.
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      NEXT_TELEMETRY_DISABLED: "1"
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777", "/app/.next/cache:size=64m,uid=1001"]
+    networks: [app]
+    mem_limit: 384m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  api:
+    <<: *python-app
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+      target: production
+    image: jobforge-prod-api:${JOBFORGE_RELEASE:?set by scripts/prod.sh}
+    environment:
+      <<: *app-env
+      # Least privilege: the API connects as app_api, never the owner role.
+      DATABASE_URL: postgresql+asyncpg://app_api:${APP_API_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+      AUDIT_DATABASE_URL: postgresql+asyncpg://app_audit:${APP_AUDIT_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+    volumes:
+      - artifact_data:/var/lib/jobforge/artifacts
+    networks: [app, data]
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # Deterministic, offline workers only.
+  worker-outbox:
+    <<: *worker
+    command: ["python", "-m", "workers.outbox_relay"]
+    environment:
+      <<: *app-env
+      WORKER_DATABASE_URL: postgresql+asyncpg://app_agent:${APP_AGENT_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+
+  worker-application:
+    <<: *worker
+    command: ["python", "-m", "workers.application"]
+    environment:
+      <<: *app-env
+      WORKER_DATABASE_URL: postgresql+asyncpg://app_agent:${APP_AGENT_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+    volumes:
+      - artifact_data:/var/lib/jobforge/artifacts
+
+  worker-render:
+    <<: *worker
+    command: ["python", "-m", "workers.render"]
+    environment:
+      <<: *app-env
+      WORKER_DATABASE_URL: postgresql+asyncpg://app_agent:${APP_AGENT_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+    volumes:
+      - artifact_data:/var/lib/jobforge/artifacts
+
+  worker-monitor:
+    <<: *worker
+    command: ["python", "-m", "workers.monitor"]
+    environment:
+      <<: *app-env
+      WORKER_DATABASE_URL: postgresql+asyncpg://app_monitor:${APP_MONITOR_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+
+  worker-scheduler:
+    <<: *worker
+    command: ["python", "-m", "workers.scheduler"]
+    environment:
+      <<: *app-env
+      WORKER_DATABASE_URL: postgresql+asyncpg://app_monitor:${APP_MONITOR_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-jobforge}
+
+  # One-shot release job (profile `release`): migrations run here, as the
+  # owner role, after a verified backup - never on API startup.
+  migrate:
+    <<: *python-app
+    image: jobforge-prod-api:${JOBFORGE_RELEASE:?set by scripts/prod.sh}
+    restart: "no"
+    profiles: ["release"]
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      <<: *app-env
+    networks: [data]
+
+  postgres:
+    <<: *hardening
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:-jobforge}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks: [data]
+    shm_size: 128m
+    mem_limit: 1g
+    cpus: 1.0
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    <<: *hardening
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes
+        --appendfsync everysec --maxmemory 256mb --maxmemory-policy noeviction
+    volumes:
+      - redis_data:/data
+    networks: [data]
+    mem_limit: 320m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+networks:
+  public: {}
+  app: {internal: true}
+  data: {internal: true}
+
+volumes:
+  pg_data:
+    labels: {com.jobforge.env: prod, com.jobforge.data: database}
+  redis_data:
+    labels: {com.jobforge.env: prod, com.jobforge.data: sessions}
+  artifact_data:
+    labels: {com.jobforge.env: prod, com.jobforge.data: artifacts}
