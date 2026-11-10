@@ -267,10 +267,10 @@ class Settings(BaseSettings):
     #: --profile full), real S3 in production - backed by boto3.
     #: "filesystem" writes under `artifact_storage_root`: tests, local
     #: development without MinIO, and the single-host private runtime (M20),
-    #: where the root is a persistent named volume covered by M21 backups. There is no automatic fallback
-    #: between the two: an "s3" deployment that cannot reach its store fails
-    #: closed through ArtifactStoreUnavailableError rather than writing to
-    #: local disk.
+    #: where the root is a persistent named volume covered by M21 backups.
+    #: There is no automatic fallback between the two: an "s3" deployment
+    #: that cannot reach its store fails closed through
+    #: ArtifactStoreUnavailableError rather than writing to local disk.
     artifact_storage_backend: str = "s3"
     artifact_storage_root: str = "/var/lib/jobforge/artifacts"
 
