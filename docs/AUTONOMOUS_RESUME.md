@@ -16,39 +16,31 @@ with no prior conversation. Update at every milestone.
 
 ## Current milestone
 
-**M20 private runtime.** Steps 1–3 done and tested statically/integration-level
-(config fixes; compose + edge + wrapper; schema guard + env/init/preflight).
-Next: step 5 rehearsal on `jobforge-prodtest` (images never built or started yet).
+**M20 private runtime: rehearsed.** Steps 1–3 and step 5 (rehearsal) done;
+see `docs/verification/M20_REHEARSAL.md`. Sign-out-everywhere (M22
+prerequisite) done. Next: production owner bootstrap (step 4), then M21.
 
 ## Completed (locally verified, not integrated)
 
 M16.6 export security · M17 core UI · M19 tracking essentials · integration
-review (GO after approval + hosted CI) · M20 design · M21/M22 plan ·
-M20 step 1 (no AI key in replay, valid TOTP key required, startup errors do
-not echo config values).
+review (GO after approval + hosted CI) · M20 config fixes · production
+compose/edge/wrapper · schema guard · prod_env generate-env/init/preflight ·
+`jobforge-prodtest` rehearsal (3 defects found and fixed) · sign out everywhere.
 
 ## Unfinished, in order
 
-1. ✅ M20 step 2: `docker-compose.prod.yml`, `infra/caddy/Caddyfile`, `scripts/prod.sh`
-   (31 static/wrapper tests). Artifacts use the filesystem store on a named
-   volume (no MinIO: unpatched advisories).
-2. ✅ M20 step 3: `packages/core/db/schema_guard.py` (API + workers refuse a
-   schema mismatch in staging/production); `scripts/prod_env.py`
-   generate-env / init / preflight; wrapper `init`, `preflight`, `check-ports`.
-   **Next (step 5):** rehearsal: `python -m scripts.prod_env generate-env
-   /tmp/…/prodtest.env` (outside repo), then with
-   `JOBFORGE_PROD_PROJECT=jobforge-prodtest JOBFORGE_PROD_PORT=8481`:
-   `prod.sh build`, `up -d postgres redis`, `migrate`, `init`, `up`,
-   `preflight --bootstrap`; verify cold start, restart, persistence, egress
-   probe, missing-secret refusal. Synthetic data only.
-3. M22 prerequisite: "sign out everywhere" (per-user session revocation) +
-   Settings UI + tests.
-4. M20 step 5: rehearsal on a throwaway `jobforge-prodtest` project with
-   synthetic data (cold start, restart, persistence, egress probe).
-5. M21: backup/restore scripts (age-encrypted pg_dump + artifact mirror),
-   verification, isolated restore drill.
-6. Product: show stored fit score on the job page; master résumé PDF/DOCX
-   extraction if feasible.
+1. **Next:** M20 step 4 — owner bootstrap inside the production image
+   (interactive: email, password typed by the owner, TOTP enrolment shown
+   once; never printed to logs), wrapper command `bootstrap-owner`, tests.
+   Check `scripts/setup_demo_auth.py` for reusable TOTP enrolment code.
+2. M21: `scripts/backup.py` (pg_dump custom format from a one-shot container
+   on the data network + artifact volume tar, encrypted with a public key;
+   integrity manifest; retention; disk check) and restore into a NEW project
+   only; then a real isolated restore drill on `jobforge-prodtest` data.
+   Encryption tool decision pending: `age` is not installed; prefer Python
+   `cryptography` (already a dependency) with an RSA/X25519 hybrid, or ask.
+3. M22: Tailscale runbook (owner actions), mobile Playwright for tracking.
+4. Product: fit score on the job page; master résumé PDF/DOCX extraction.
 
 ## Last verified tests (2026-11-10, isolated throwaway services)
 
@@ -61,7 +53,15 @@ run at `70a0eea` (no web changes since).
 
 - Throwaway test services `m166f-ci-{postgres,redis,minio}` (55721/56721/9721):
   may be running; stop with `docker stop` (never `rm`, never `-v`).
-- Throwaway demo `jobforge-ovn` (via evidence `sco.sh`): stopped.
+- Rehearsal `jobforge-prodtest` (port 8481): **stopped**, volumes kept
+  (synthetic only). Drive it only via
+  `../jobforge-overnight-evidence/prodtest.sh` with `JOBFORGE_RELEASE=b98a1383bedc`
+  (or rebuild: `JOBFORGE_RELEASE=$(git rev-parse --short=12 HEAD) …prodtest.sh build`).
+  Its env file is in the session scratchpad and may be gone in a new session:
+  regenerate with `python -m scripts.prod_env generate-env <path outside repo>`
+  and set `CORS_ORIGINS=["http://127.0.0.1:8481"]` — a new env means new
+  passwords, so the old prodtest volumes would need `init` again.
+- Throwaway demo `jobforge-ovn`: stopped.
 - Never touch: dev stack (`jobforge-*`, 5432), live demo (`jobforge-demo-*`,
   55433), `jobforge-m166-*` review stacks.
 
