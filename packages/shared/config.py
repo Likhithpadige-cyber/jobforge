@@ -10,6 +10,8 @@ See SECURITY.md §3.3 for the secret-handling rules this module implements.
 
 from __future__ import annotations
 
+import base64
+import binascii
 from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
@@ -57,6 +59,19 @@ class EmailTransportMode(StrEnum):
     SMTP = "smtp"
 
 
+#: AES-256 key size for `TOTP_ENCRYPTION_KEY` (packages/core/crypto/totp_secret.py).
+TOTP_KEY_BYTES = 32
+
+
+def totp_key_is_valid(key_b64: str) -> bool:
+    """Strict base64 that decodes to exactly 32 bytes - the same rule the
+    TOTP crypto layer enforces at use time, checked here at startup."""
+    try:
+        return len(base64.b64decode(key_b64, validate=True)) == TOTP_KEY_BYTES
+    except (binascii.Error, ValueError):
+        return False
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -64,6 +79,9 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
         extra="ignore",
         case_sensitive=False,
+        # A startup validation error must never echo configuration values:
+        # the input includes every secret read from the environment.
+        hide_input_in_errors=True,
     )
 
     # ---------------------------------------------------------------- app
@@ -312,17 +330,33 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _require_secrets_outside_local(self) -> Settings:
-        """Fail fast rather than run production with empty secrets."""
-        if self.environment in (Environment.STAGING, Environment.PRODUCTION):
-            missing = [
-                name
-                for name in ("postgres_password", "session_secret", "anthropic_api_key")
-                if not getattr(self, name)
-            ]
-            if missing:
-                raise ValueError(
-                    f"Missing required secrets for {self.environment}: {', '.join(missing)}"
-                )
+        """Fail fast rather than run staging/production with unusable secrets.
+
+        Always required: the database password, the session secret and a
+        valid TOTP encryption key (TOTP is mandatory outside local, so a
+        deployment that cannot decrypt TOTP secrets cannot sign anyone in).
+        The model-provider key is required only when a provider can be
+        called (`record` or `live`); `replay` makes no provider calls, so a
+        private deployment with live AI disabled needs no paid API key.
+        Whitespace-only values count as missing. Messages name settings,
+        never values.
+        """
+        if self.environment not in (Environment.STAGING, Environment.PRODUCTION):
+            return self
+        required = ["postgres_password", "session_secret", "totp_encryption_key"]
+        if self.llm_mode is not LLMMode.REPLAY:
+            required.append("anthropic_api_key")
+        missing = [name for name in required if not str(getattr(self, name)).strip()]
+        if missing:
+            raise ValueError(
+                f"Missing required secrets for {self.environment}: {', '.join(missing)}"
+            )
+        if not totp_key_is_valid(self.totp_encryption_key):
+            raise ValueError(
+                f"totp_encryption_key is invalid for {self.environment}: it must be "
+                f"standard base64 of exactly {TOTP_KEY_BYTES} random bytes "
+                "(generate one with `python -m scripts.setup_demo_auth --generate-key`)"
+            )
         return self
 
     @model_validator(mode="after")

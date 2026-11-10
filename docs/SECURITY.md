@@ -137,6 +137,13 @@ The key lives in `TOTP_ENCRYPTION_KEY` (32 random bytes, base64). It is
 deliberately **not** derived from `SESSION_SECRET`: rotating a session signing
 key should never silently invalidate every stored MFA secret.
 
+Outside local/test (staging, production) the key is checked at startup
+(M20 step 1): the API and every worker refuse to start if it is missing,
+blank, not strict base64, or not exactly 32 bytes, because TOTP is mandatory
+there and an unusable key would lock every account out. Startup errors name
+the setting, never its value (`hide_input_in_errors`). The model-provider key
+is required at startup only when `LLM_MODE` is `record` or `live`.
+
 **Limitation, stated plainly.** In local development this key sits in `.env`,
 on the same machine as PostgreSQL. Against the threat §3.3 describes - a
 database dump alone yielding usable credentials - that is weak protection,

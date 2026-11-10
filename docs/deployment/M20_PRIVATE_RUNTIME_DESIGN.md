@@ -97,13 +97,12 @@ worker entrypoints before they serve. Each check fails closed:
    marker), so a production process can never attach to the dev, demo or
    test databases, and vice versa.
 2. Secrets present and not placeholders: postgres/runtime role passwords,
-   `SESSION_SECRET`, `TOTP_ENCRYPTION_KEY` (currently **not** in the required
-   list — fix), Redis password, object-store keys (not `minioadmin`).
+   `SESSION_SECRET`, `TOTP_ENCRYPTION_KEY` (enforced since step 1), Redis
+   password, object-store keys (not `minioadmin`).
 3. `LLM_MODE=replay` unless a separately approved budget flag is present;
    `SUBMISSION_MODE=dry_run`; `EMAIL_TRANSPORT_MODE` fake/disabled.
-   **Required code change:** `_require_secrets_outside_local` demands
-   `anthropic_api_key` in production even in replay mode; it must require it
-   only when `llm_mode != replay`, so production runs with no paid API key.
+   (Step 1 done: `anthropic_api_key` is now required only when
+   `llm_mode != replay`, so production runs with no paid API key.)
 4. Alembic revision equals the code's head; the API refuses to start on a
    mismatch instead of running against an unmigrated schema. Migrations run
    only in the one-shot `migrate` job after a verified backup (M21), never
@@ -164,8 +163,9 @@ first-draft worker only.
 
 ## 9. Implementation steps (each a separate, reviewed change)
 
-1. Config fix: API key only when `llm_mode != replay`; `TOTP_ENCRYPTION_KEY`
-   required outside local; tests.
+1. ✅ Done 2026-11-10: API key only when `llm_mode != replay`;
+   `TOTP_ENCRYPTION_KEY` required and validated outside local; startup errors
+   no longer echo configuration values; unit + process-level tests.
 2. `docker-compose.prod.yml` + Caddyfile + wrapper; built only from
    production image targets.
 3. `scripts/prod_preflight.py` + API startup revision check; tests.
