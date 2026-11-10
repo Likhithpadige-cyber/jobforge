@@ -26,6 +26,7 @@ from packages.agents.resume_optimizer.evaluation import evaluation_handler
 from packages.agents.resume_optimizer.first_draft import FirstDraftClient, generate_first_draft
 from packages.agents.resume_optimizer.persistence import Thresholds
 from packages.core.db.audit_session import dispose_audit_engine, init_audit_engine
+from packages.core.db.schema_guard import assert_schema_current
 from packages.core.events.guardrail_alerts import open_guardrail_alert
 from packages.core.events.monitoring import schedule_snapshot
 from packages.core.events.operational_monitoring import Thresholds as MonitorThresholds
@@ -205,6 +206,9 @@ async def run(
             }
             else "app_monitor",
         )
+        # M20: never process events against a schema this code was not built
+        # for (staging/production only; a mismatch exits via main()).
+        await assert_schema_current(settings, engine)
         sessions = async_sessionmaker(engine, expire_on_commit=False)
         # M12 Phase 2: registered only once the worker is verified and serving.
         heartbeat = HeartbeatWriter(

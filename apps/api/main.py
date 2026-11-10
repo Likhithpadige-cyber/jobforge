@@ -42,9 +42,11 @@ from packages.core.cache import close_redis, init_redis
 from packages.core.db import (
     dispose_audit_engine,
     dispose_engine,
+    get_engine,
     init_audit_engine,
     init_engine,
 )
+from packages.core.db.schema_guard import assert_schema_current
 from packages.shared.config import get_settings
 from packages.shared.errors import AppError
 from packages.shared.ids import uuid7_str
@@ -76,6 +78,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await init_engine(settings)
     except Exception as exc:
         log.error("api.startup.database_failed", error=type(exc).__name__)
+    else:
+        # M20: in staging/production, refuse to serve against a schema this
+        # release was not built for. Deliberately outside the try: unlike an
+        # unreachable database, a positively wrong schema stops startup.
+        await assert_schema_current(settings, get_engine())
 
     # Separate engine, separate pool, separate failure. A domain database that
     # is up while the audit one is not is a real state, and the API reports it
