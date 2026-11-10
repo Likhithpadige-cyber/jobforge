@@ -45,6 +45,11 @@ def test_owner_pastes_a_job_from_an_unreviewed_domain_and_opens_it(owner: Page) 
     expect(owner.get_by_test_id("draft-mode")).to_contain_text("Replay demonstration only")
     expect(owner.get_by_test_id("draft-mode")).to_contain_text("Live AI is disabled")
     expect(owner.get_by_role("button", name="Request AI draft")).to_have_count(0)
+    # The fit card replaces the old "not shown here yet" placeholder and
+    # never shows a number for an unevaluated job.
+    fit = owner.get_by_role("region", name="Fit with your profile")
+    expect(fit).to_be_visible()
+    expect(owner.get_by_text("Fit score not shown here yet")).to_have_count(0)
 
 
 def test_import_validation_and_reviewer_denial(owner: Page, reviewer: Page) -> None:

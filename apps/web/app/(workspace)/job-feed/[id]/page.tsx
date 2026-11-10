@@ -5,6 +5,7 @@ import { use, useEffect, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { Icon } from "@/components/Icon";
 import { FirstDraftPanel } from "@/components/FirstDraftPanel";
+import { FitScoreCard } from "@/components/FitScoreCard";
 import { NotWiredNotice } from "@/components/NotWiredNotice";
 import { ProvenanceTag } from "@/components/ProvenanceTag";
 import { RequirementList } from "@/components/RequirementList";
@@ -232,11 +233,7 @@ export default function JobDetailPage({
               </div>
             </div>
 
-            <NotWiredNotice
-              title="Fit score not shown here yet"
-              body="The background evaluator stores a deterministic fit result for each job (the draft panel below uses it), but this page does not display the score or matched requirements yet. Nothing is estimated in its place."
-              needs="a fit-score view of GET /api/v1/jobs/{id}/evaluation"
-            />
+            <FitScoreCard jobId={job.id} />
 
             <NotWiredNotice
               title="Evidence from your profile not available"

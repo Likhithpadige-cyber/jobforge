@@ -5,7 +5,7 @@ const auth = vi.hoisted(() => ({ user: { id: "u1", email: "o@example.com", role:
 vi.mock("@/components/AuthGuard", () => ({ useAuth: () => ({ user: auth.user, loading: false, signOut: async () => {} }) }));
 
 import { FirstDraftPanel } from "@/components/FirstDraftPanel";
-import { ApiError, api, type RuntimeModes } from "@/lib/api";
+import { ApiError, api, type ApiEvaluation, type RuntimeModes } from "@/lib/api";
 import { profile, type ProfileDetail } from "@/lib/profile";
 
 const REPLAY: RuntimeModes = { llm_mode: "replay", live_ai_enabled: false, submission_mode: "dry_run", email_transport_mode: "fake" };
@@ -15,7 +15,7 @@ function ready(modes: RuntimeModes = REPLAY) {
   vi.spyOn(api, "runtimeModes").mockResolvedValue(modes);
   vi.spyOn(profile, "get").mockResolvedValue({ id: "p1" } as unknown as ProfileDetail);
   vi.spyOn(profile, "latestMasterResume").mockResolvedValue({ resume_id: "m1", version: 2, created_at: "2026-11-10T00:00:00Z", source_label: "resume.txt" });
-  vi.spyOn(api, "jobEvaluation").mockResolvedValue({ id: "e1" });
+  vi.spyOn(api, "jobEvaluation").mockResolvedValue({ id: "e1" } as ApiEvaluation);
 }
 
 describe("FirstDraftPanel", () => {

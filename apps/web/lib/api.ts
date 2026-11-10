@@ -318,7 +318,7 @@ export const api = {
   runtimeModes: () => request<RuntimeModes>(`${env.apiPrefix}/settings/runtime-modes`),
 
   /** GET /api/v1/jobs/{id}/evaluation — the latest deterministic evaluation. */
-  jobEvaluation: (jobId: string) => request<{ id: string }>(`${env.apiPrefix}/jobs/${jobId}/evaluation`),
+  jobEvaluation: (jobId: string) => request<ApiEvaluation>(`${env.apiPrefix}/jobs/${jobId}/evaluation`),
 
   /** POST /api/v1/jobs/{id}/first-draft — owner-only; queues the drafting worker. */
   requestFirstDraft: (jobId: string, body: { profile_id: string; master_resume_id: string; evaluation_id: string }) =>
@@ -577,6 +577,20 @@ export interface ApiApplication {
   applied_on: string | null;
   applied_via: AppliedVia | null;
   follow_up_on: string | null;
+}
+
+/** GET /jobs/{id}/evaluation: the latest stored, deterministic evaluation. */
+export interface ApiEvaluation {
+  id: string;
+  assessment_status: "assessed" | "insufficient_evidence";
+  score: number | null;
+  recommendation: "strong" | "moderate" | "weak" | "no" | null;
+  matched_requirements: { count?: number };
+  missing_requirements: { count?: number };
+  gaps: string[];
+  score_breakdown: { insufficient_reasons?: string[] } & Record<string, unknown>;
+  profile_version: number;
+  created_at: string;
 }
 
 export interface ApiExportPreview {
