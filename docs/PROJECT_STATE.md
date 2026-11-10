@@ -1,6 +1,6 @@
 # JobForge project state
 
-Updated: 2026-11-10 (third session: M17 completed, M19 started). Keep this short; it is the handover
+Updated: 2026-11-10 (fourth session: integration review, M19 essentials, M20–M22 plans). Keep this short; it is the handover
 for the next session. Verified means executed in this session, not reported.
 
 ## Where things are
@@ -9,7 +9,8 @@ for the next session. Verified means executed in this session, not reported.
 |---|---|---|
 | GitHub `main` (private) / local `dev` | `6945454` | M16.5 complete; hosted CI 6/6 + Playwright 26/26 |
 | `feature/p0-resume-export` | `69fca08` | Codex's M16.6 résumé export (10 commits). Not modified here. |
-| `overnight/m16.6-m17` (local only) | see `git log -1` | `6945454` + merge of `69fca08` + M17 UI work |
+| `overnight/m16.6-m17` (local only) | see `git log -1` | fast-forward of `dev`: M16.6 merge + M17 + M19 + M20–M22 docs |
+| local `main` | `cbe0d96` | stale pointer (68 behind GitHub `main`); ignore |
 
 Worktree for the overnight branch:
 `/Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight`.
@@ -31,14 +32,21 @@ Evidence, runners and logs: `../jobforge-overnight-evidence/` (outside the repo)
   H3/source-repair tests pass (on b9031f6 they fail at import); offline
   evaluation 0 provider calls; frontend 386; Playwright 28/28.
 
+## Integration recommendation
+
+**GO** to fast-forward `dev` and then `main` to this branch, after owner
+approval and a green hosted CI run (push the branch first, not `dev`).
+**NO-GO** for real personal data until M20 and M21 are built and a restore
+drill passes. Full review: `docs/verification/INTEGRATION_REVIEW_M16.6_M17_M19.md`.
+
 ## Verification (branch tip, 2026-11-10, isolated throwaway services)
 
-Backend 3,584 passed / 0 skipped; safety 1,659; API E2E 6; main's original
-22 readiness tests 22/22; H3 regressions 100/100 (and still fail at import
-on b9031f6, as intended); offline eval 0 provider calls; schema
-verification 12/12; frontend 404 (34 files); Playwright 31/31 against the
-throwaway `jobforge-ovn` demo (migrated to 0011). Typecheck, ESLint and ruff
-clean.
+Backend 3,587 passed / 0 skipped; safety 1,659; API E2E 6; `dev`'s original
+22 readiness tests 22/22; H3 regressions 100/100 (still fail at import on
+b9031f6, as intended); offline eval 0 provider calls; schema verification
+12/12; frontend 410 (35 files); Playwright 32/32 against the throwaway
+`jobforge-ovn` demo (at 0011). Typecheck, ESLint and ruff clean. Hosted CI
+not run (nothing pushed).
 
 ## M17 core workflow UI — complete (locally)
 
@@ -67,55 +75,63 @@ Still open: showing the fit score/matched requirements on the job page;
 PDF/DOCX text extraction for the master résumé; a browser download as the
 seeded profile owner (covered by API/integration tests).
 
-## M19 application tracking — started (first slice done)
+## M19 application tracking — essentials done
 
-- Migration `0011_application_tracking`: `applications.applied_on`,
-  `follow_up_on` (DATE); CHECK that an outcome beyond `pending` has an
-  applied date; partial index for follow-ups. Not in app_agent's grant.
-- Uses the existing orthogonal `outcome` enum (ARCHITECTURE §7.3):
-  pending (shown as "Applied" once dated), acknowledged, screening,
-  interviewing, offer, accepted, rejected, no_response, withdrawn.
-- `GET/PATCH /applications/{id}/tracking` (PATCH owner-only + CSRF; never
-  touches pipeline status or `submitted_at`; emits
-  `application.outcome.updated` with source "human" on outcome change);
-  `GET /follow-ups?on=&within_days=` (excludes accepted/rejected/withdrawn
-  and abandoned).
-- Web: Tracking card in the application workspace (reviewers read-only);
-  Follow-ups card on the dashboard (due now + next 7 days, browser date).
+- Migration `0011_application_tracking`: `applied_on`, `follow_up_on`;
+  CHECK outcome-beyond-pending needs an applied date; follow-up index.
+- Uses the orthogonal `outcome` enum (ARCHITECTURE §7.3).
+- `GET/PATCH /applications/{id}/tracking` (PATCH owner + CSRF; never
+  touches pipeline status or `submitted_at`; outcome change emits
+  `application.outcome.updated`, source "human"); `GET /follow-ups`.
+- `GET /applications?outcome=&applied=` server-side filters; rows carry
+  outcome, applied date, `applied_via` and follow-up.
+- Manual submissions: `applied_via` = "jobforge" only when the approved
+  pipeline set `submitted_at`, "manual" when only the owner's date exists; a
+  manual handoff packet is never shown as sent. "I sent it today (follow up
+  in 1 week)" on the Tracking card; recording an outcome on a
+  JobForge-submitted application fills the applied date from `submitted_at`.
+- Follow-ups: presets (3 days / 1 week / 2 weeks / none); dashboard Done and
+  Snooze 1 week (owner-only); reviewers read-only.
 
-Not built yet: tracking for jobs that have no application row; outcome
-filter/column in the applications list; automatic `no_response` aging;
-mailbox signals; reminders by email/notification.
+Not built: tracking for jobs without an application row; automatic
+`no_response` aging; reminders by notification; mailbox signals.
+
+## M20–M22 (design only, nothing built or installed)
+
+- `docs/deployment/M20_PRIVATE_RUNTIME_DESIGN.md`: `jobforge-prod` compose
+  project, single loopback edge port, internal no-egress networks, named
+  volumes, fail-closed preflight. Two config fixes required first: no
+  Anthropic key needed in replay; `TOTP_ENCRYPTION_KEY` required outside
+  local.
+- `docs/deployment/M21_M22_PLAN.md`: encrypted (age) pg_dump + artifact
+  mirror, verification, monthly restore drill into a new project; Tailscale
+  Serve (never Funnel) with "sign out everywhere" as a prerequisite.
 
 ## Outstanding blockers and decisions awaiting approval
 
-1. Approve integrating M16.6 into `dev`/`main` (merge commit; fast-forward is
-   impossible), then hosted CI.
-2. Decide whether/when to enable live AI and its budget. Until then tailoring
-   of new real jobs cannot run (replay only covers recorded fixtures).
-3. Approve cleanup of review/test stacks and scratch worktrees (list in the
-   overnight report). Nothing has been deleted.
-4. Bulk-import sources can be registered with `POST /sources` but are always
-   created disabled pending a recorded ToS review, and there is no API/UI to
-   enable one. Pasted postings do not need a source (internal owner-pasted).
-5. Private deployment prerequisites (FileVault, firewall) are owner actions.
-6. Resolved 2026-11-10: owner-pasted postings are exempt from site
-   policies (approved); everything automated stays policy-gated.
+1. Integration: approve pushing the branch for hosted CI, then
+   fast-forwarding `dev` and `main` (procedure in the integration review).
+2. Live AI stays off. Enabling it later needs a budget decision.
+3. Cleanup of review/test stacks and scratch worktrees. Nothing deleted.
+4. M20/M22 owner actions: FileVault, macOS firewall, Tailscale install and
+   admin-console settings; launchd backup schedule (M21) needs approval.
+5. Bulk-import sources stay disabled pending ToS review; pasted postings
+   need no source.
 
 ## Next three tasks
 
-1. Approval to integrate `overnight/m16.6-m17` into `dev` (merge, then
-   hosted CI); nothing has been pushed.
-2. M19 next slice: outcome column/filter on the applications list and
-   tracking for applications recorded outside the pipeline.
-3. Show the stored deterministic fit score on the job page.
+1. Owner decision on integration (GO recommended, see above).
+2. M20 step 1: config fixes (API key only for non-replay; TOTP key
+   required outside local) with tests — safe, local, no deployment.
+3. M20 steps 2–3: `docker-compose.prod.yml`, edge, preflight, rehearsed on a
+   throwaway `jobforge-prodtest` project with synthetic data.
 
 ## Resume commands
 
 ```sh
 cd /Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight
 git status && git log --oneline -5
-(cd apps/web && npx vitest run)                  # frontend, ~404 tests
+(cd apps/web && npx vitest run)                  # frontend, ~410 tests
 ../jobforge-overnight-evidence/sco.sh ps         # isolated demo (ports 55883/56883/8383)
 bash ../jobforge-overnight-evidence/run_full.sh  # full backend on throwaway services (55721/56721/9721)
 bash ../jobforge-overnight-evidence/run_targeted.sh tests/integration/test_owner_pasted_import.py  # targeted
