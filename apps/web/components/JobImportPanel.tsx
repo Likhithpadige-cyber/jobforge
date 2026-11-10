@@ -126,7 +126,16 @@ export function JobImportPanel({
         onImported();
       }
     } catch (cause) {
-      setProblems([apiErrorText(cause, "The import failed.")]);
+      const text = apiErrorText(cause, "The import failed.");
+      setProblems(
+        /site.?polic/i.test(text)
+          ? [
+              text,
+              "JobForge only records postings from domains with a reviewed site policy that permits manual import. " +
+                "No such policy covers this link's domain yet.",
+            ]
+          : [text],
+      );
     } finally {
       setBusy(false);
     }

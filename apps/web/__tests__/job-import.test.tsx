@@ -109,6 +109,20 @@ describe("JobImportPanel", () => {
     expect(onImported).not.toHaveBeenCalled();
   });
 
+  it("explains a site-policy refusal in plain language", async () => {
+    vi.spyOn(api, "importJobs").mockRejectedValue(
+      new ApiError("Request failed: 403", 403, { detail: "no site_policies row for 'jobs.example'; unknown domains are blocked" }),
+    );
+    render(<JobImportPanel sources={SOURCES} onImported={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add a job" }));
+    fill(/Job title/, "Linux Administrator");
+    fill(/Company/, "Example Health");
+    fill(/Posting link/, "https://jobs.example/1");
+    fill(/Job description/, DESCRIPTION);
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/reviewed site policy that permits manual import/);
+  });
+
   it("rejects unsupported and oversized files before uploading", async () => {
     const spy = vi.spyOn(api, "importJobs");
     openForm();
