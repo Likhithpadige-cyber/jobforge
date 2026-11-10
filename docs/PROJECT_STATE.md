@@ -25,9 +25,11 @@ Evidence, runners and logs: `../jobforge-overnight-evidence/` (outside the repo)
   expire, retire and delete are refused; unchanged evidence and
   unverify-then-re-verify with identical content still work.
 - H1/H2, M1/M2/M4/M5 unchanged from the 2026-11-06 review (fixed).
-- Full backend suite on the overnight merge: 3,535 passed, 0 skipped.
-  Offline evaluation: 0 provider calls. See the overnight report for the
-  safety, legacy-readiness, before/after and Playwright results.
+- On the overnight merge (all executed 2026-11-10, isolated services):
+  full backend 3,535 passed / 0 skipped; safety 1,642; API E2E 6; main's
+  original 22 readiness tests 22/22 (byte-identical file); Codex's 100 new
+  H3/source-repair tests pass (on b9031f6 they fail at import); offline
+  evaluation 0 provider calls; frontend 386; Playwright 28/28.
 
 ## M17 core workflow UI — in progress
 
@@ -37,11 +39,14 @@ Done (frontend only; backend unchanged):
   `POST /jobs/import`. Owner-only. The posting link is never fetched.
 - Resume Studio export: download the current version's PDF/DOCX through
   `GET /artifacts/{id}/content`, with a client-side SHA-256 check.
+- Application workspace: owner enters the employer's questions (or "No
+  extra questions") at `resume_ready`; `POST /applications/{id}/prepare`
+  grounds answers offline.
+- Playwright: import wiring/refusal and reviewer denial journeys.
 
-Not done yet: master résumé import UI, application-question preparation UI
-(`POST /applications/{id}/prepare` is deterministic, safe to wire next),
-first-draft trigger (needs live AI or recorded replay; must show an honest
-disabled/demo state), Playwright journeys for the new screens.
+Not done yet: master résumé import UI, first-draft trigger (needs live AI or
+recorded replay; must show an honest disabled/demo state), Playwright
+journeys for export download and preparation, M19 tracking.
 
 ## Outstanding blockers and decisions awaiting approval
 
@@ -54,12 +59,18 @@ disabled/demo state), Playwright journeys for the new screens.
 4. Job sources can only be listed, not created, through the API; a real
    deployment needs a manual-import source row (no UI for this yet).
 5. Private deployment prerequisites (FileVault, firewall) are owner actions.
+6. **Job import is blocked for every real domain.** Ingestion requires a
+   reviewed `site_policies` row per domain with `ingestion_method =
+   manual_import`; unknown domains are refused (403). There is no API or UI
+   to create policies, and the demo's only policy blocks ingestion. Decide:
+   an owner-reviewed site-policy screen, or treating owner-pasted postings
+   (nothing fetched) as exempt. Not changed overnight (compliance decision).
 
 ## Next three tasks
 
-1. Application-question preparation UI on the application page + tests.
+1. Resolve decision 6 (site policies), then a success-path import journey.
 2. Master résumé import UI (`POST /profiles/{id}/master-resumes`) + review.
-3. Playwright journeys for job import, export download and preparation.
+3. Playwright journeys for export download and question preparation.
 
 ## Resume commands
 
