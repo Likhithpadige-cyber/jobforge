@@ -421,6 +421,12 @@ export const api = {
       method: "POST",
     }),
 
+  /** POST /api/v1/auth/logout-everywhere — revokes every session of this user, on every device. */
+  logoutEverywhere: () =>
+    request<{ revoked: boolean }>(`${env.apiPrefix}/auth/logout-everywhere`, {
+      method: "POST",
+    }),
+
   /** GET /api/v1/auth/me — session bootstrap. 401 when signed out. */
   me: () => request<ApiUser>(`${env.apiPrefix}/auth/me`),
 };

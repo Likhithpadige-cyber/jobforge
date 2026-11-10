@@ -287,3 +287,69 @@ async def test_csrf_token_of_another_session_is_rejected(redis: FakeRedis) -> No
     """Double submit binds to *this* session, not to any valid-looking token."""
     first, second = await new_session(redis), await new_session(redis)
     assert not csrf_matches(first, second.csrf_token)
+
+
+# ------------------------------------------- sign out everywhere (M22 prerequisite)
+OTHER = UUID("00000000-0000-4000-8000-0000000000b2")
+
+
+async def test_revoke_all_signs_out_every_session_of_that_user_only(redis: FakeRedis) -> None:
+    from packages.core.auth import revoke_all_sessions
+
+    phone = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
+    laptop = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
+    someone_else = await create_session(
+        redis, user_id=OTHER, idle_minutes=IDLE, absolute_hours=ABSOLUTE
+    )
+
+    await revoke_all_sessions(redis, USER, absolute_hours=ABSOLUTE)
+
+    assert await load_session(redis, phone.id, idle_minutes=IDLE) is None
+    assert await load_session(redis, laptop.id, idle_minutes=IDLE) is None
+    # Refused sessions are deleted, not just ignored.
+    assert await redis.get(f"{KEY_PREFIX}{phone.id}") is None
+    assert await load_session(redis, someone_else.id, idle_minutes=IDLE) is not None
+
+
+async def test_signing_in_again_after_revoke_all_works(redis: FakeRedis) -> None:
+    import asyncio
+
+    from packages.core.auth import revoke_all_sessions
+
+    await revoke_all_sessions(redis, USER, absolute_hours=ABSOLUTE)
+    await asyncio.sleep(0.001)  # utc_now() strictly after the epoch
+    fresh = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
+    assert await load_session(redis, fresh.id, idle_minutes=IDLE) is not None
+
+
+async def test_revoke_all_record_outlives_any_session_it_covers(redis: FakeRedis) -> None:
+    from packages.core.auth import revoke_all_sessions
+    from packages.core.auth.sessions import EPOCH_PREFIX
+
+    await revoke_all_sessions(redis, USER, absolute_hours=ABSOLUTE)
+    key = f"{EPOCH_PREFIX}{USER}"
+    assert redis.expires_at[key] - redis.now == (ABSOLUTE + 1) * 3600
+
+
+async def test_a_session_created_at_the_epoch_instant_is_revoked(redis: FakeRedis) -> None:
+    from packages.core.auth.sessions import EPOCH_PREFIX
+
+    session = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
+    await redis.set(f"{EPOCH_PREFIX}{USER}", session.created_at.isoformat(), ex=3600)
+    assert await load_session(redis, session.id, idle_minutes=IDLE) is None
+
+
+async def test_an_unreadable_epoch_fails_closed(redis: FakeRedis) -> None:
+    from packages.core.auth.sessions import EPOCH_PREFIX
+
+    session = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
+    await redis.set(f"{EPOCH_PREFIX}{USER}", "not-a-timestamp", ex=3600)
+    assert await load_session(redis, session.id, idle_minutes=IDLE) is None
+
+
+async def test_an_older_epoch_does_not_affect_newer_sessions(redis: FakeRedis) -> None:
+    from packages.core.auth.sessions import EPOCH_PREFIX
+
+    await redis.set(f"{EPOCH_PREFIX}{USER}", (utc_now() - timedelta(hours=1)).isoformat(), ex=3600)
+    session = await create_session(redis, user_id=USER, idle_minutes=IDLE, absolute_hours=ABSOLUTE)
+    assert await load_session(redis, session.id, idle_minutes=IDLE) is not None

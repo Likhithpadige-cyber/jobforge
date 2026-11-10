@@ -38,6 +38,9 @@ from packages.shared.clock import utc_now
 #: Redis key prefix. Kept distinct so a flush of session keys cannot touch
 #: cached application data.
 KEY_PREFIX = "session:"
+#: Per-user "signed out everywhere at" timestamp (M22 prerequisite). Any
+#: session created at or before it is refused and deleted on next use.
+EPOCH_PREFIX = "session-epoch:"
 
 #: 256 bits of entropy in the cookie and in the CSRF token.
 _TOKEN_BYTES = 32
@@ -95,6 +98,10 @@ class Session:
 
 def _key(session_id: str) -> str:
     return f"{KEY_PREFIX}{session_id}"
+
+
+def _epoch_key(user_id: UUID) -> str:
+    return f"{EPOCH_PREFIX}{user_id}"
 
 
 def _aware(value: datetime) -> datetime:
@@ -157,6 +164,9 @@ async def load_session(
     if session is None:
         await redis.delete(_key(session_id))
         return None
+    if await _revoked_by_epoch(redis, session):
+        await redis.delete(_key(session_id))
+        return None
 
     now = utc_now()
     if now >= _aware(session.absolute_expires_at):
@@ -199,3 +209,33 @@ def csrf_matches(session: Session, presented: str | None) -> bool:
     if not presented:
         return False
     return hmac.compare_digest(session.csrf_token, presented)
+
+
+async def _revoked_by_epoch(redis: SessionStore, session: Session) -> bool:
+    """True when the user signed out everywhere after this session began.
+    An unreadable epoch fails closed: the session is treated as revoked."""
+    raw = await redis.get(_epoch_key(session.user_id))
+    if raw is None:
+        return False
+    if isinstance(raw, bytes | bytearray):
+        raw = raw.decode("utf-8", errors="replace")
+    try:
+        epoch = _aware(datetime.fromisoformat(raw))
+    except (TypeError, ValueError):
+        return True
+    return _aware(session.created_at) <= epoch
+
+
+async def revoke_all_sessions(
+    redis: SessionStore, user_id: UUID, *, absolute_hours: int
+) -> datetime:
+    """Sign a user out everywhere, including the calling session.
+
+    Records the moment rather than enumerating sessions (no key scan): every
+    session created at or before it is refused by `load_session`. The record
+    outlives the longest possible session by an hour, so it can expire
+    without ever re-admitting a session it covered.
+    """
+    now = utc_now()
+    await redis.set(_epoch_key(user_id), now.isoformat(), ex=(absolute_hours + 1) * 3600)
+    return now

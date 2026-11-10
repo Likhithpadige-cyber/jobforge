@@ -5,6 +5,7 @@ from packages.core.auth.sessions import (
     create_session,
     csrf_matches,
     load_session,
+    revoke_all_sessions,
     revoke_session,
 )
 from packages.core.auth.totp import generate_secret, provisioning_uri, verify_code
@@ -19,6 +20,7 @@ __all__ = [
     "load_session",
     "needs_rehash",
     "provisioning_uri",
+    "revoke_all_sessions",
     "revoke_session",
     "verify_code",
     "verify_password",

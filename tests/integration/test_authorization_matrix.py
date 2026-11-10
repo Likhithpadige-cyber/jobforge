@@ -331,6 +331,8 @@ OWNER_AND_REVIEWER = frozenset(
     {
         ("GET", "/api/v1/auth/me"),
         ("POST", "/api/v1/auth/logout"),
+        # M22 prerequisite: any signed-in user may revoke all of their own sessions.
+        ("POST", "/api/v1/auth/logout-everywhere"),
         ("GET", "/api/v1/profile"),
         ("GET", "/api/v1/profile/certifications"),
         ("GET", "/api/v1/profile/educations"),

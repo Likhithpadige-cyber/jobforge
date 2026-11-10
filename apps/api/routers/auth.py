@@ -50,6 +50,7 @@ from apps.api.schemas.auth import (
 from packages.core.auth import (
     create_session,
     hash_password,
+    revoke_all_sessions,
     revoke_session,
     verify_code,
     verify_password,
@@ -222,6 +223,29 @@ async def logout(
     _clear_session_cookies(response, settings)
     log.info("auth.logout", revoked=revoked)
     return LogoutResponse(revoked=revoked)
+
+
+@router.post(
+    "/logout-everywhere",
+    response_model=LogoutResponse,
+    summary="Revoke every session of the signed-in user, on every device",
+)
+async def logout_everywhere(
+    response: Response,
+    redis: RedisClient,
+    settings: AppSettings,
+    session: CsrfProtected,
+) -> Any:
+    """For a lost or shared device: every session this user holds - this
+    one included - stops working at once, and the cookies here are cleared.
+    Signing in again (password + TOTP) starts a fresh session."""
+    await revoke_all_sessions(
+        redis, session.user_id, absolute_hours=settings.session_absolute_timeout_hours
+    )
+    await revoke_session(redis, session.id)
+    _clear_session_cookies(response, settings)
+    log.info("auth.logout_everywhere", user_id=str(session.user_id))
+    return LogoutResponse(revoked=True)
 
 
 @router.get(
