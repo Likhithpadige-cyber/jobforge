@@ -1,6 +1,6 @@
 # JobForge project state
 
-Updated: 2026-11-10 (overnight session). Keep this short; it is the handover
+Updated: 2026-11-10 (second session, after the overnight run). Keep this short; it is the handover
 for the next session. Verified means executed in this session, not reported.
 
 ## Where things are
@@ -33,7 +33,22 @@ Evidence, runners and logs: `../jobforge-overnight-evidence/` (outside the repo)
 
 ## M17 core workflow UI — in progress
 
-Done (frontend only; backend unchanged):
+Latest verification (branch tip, 2026-11-10, isolated services): backend
+3,554 passed / 0 skipped; safety 1,656; API E2E 6; main's 22 readiness 22/22;
+H3 regressions 100/100; offline eval 0 provider calls; frontend 391;
+Playwright 28/28 (plus the 3 M17 journeys run separately: 3/3).
+
+Done:
+
+- Owner-pasted job import (approved decision, 2026-11-10): owner-only
+  `POST /jobs/manual` records one typed/pasted posting under the internal
+  `owner-pasted` source without an employer-domain site policy, because the
+  link is never fetched. Bulk CSV/JSON import and connectors keep full
+  site-policy enforcement; the exemption is refused for any other source and
+  the reserved source name cannot be registered. Also fixed: successful
+  `POST /jobs/import` responses previously raised a 500.
+- Master résumé import from pasted text or a .txt/.md file with an editable,
+  sectioned preview (`POST /profiles/{id}/master-resumes`); nothing verified.
 
 - Job Feed "Add a job": paste a posting or upload CSV/JSON via the existing
   `POST /jobs/import`. Owner-only. The posting link is never fetched.
@@ -42,11 +57,15 @@ Done (frontend only; backend unchanged):
 - Application workspace: owner enters the employer's questions (or "No
   extra questions") at `resume_ready`; `POST /applications/{id}/prepare`
   grounds answers offline.
-- Playwright: import wiring/refusal and reviewer denial journeys.
+- Playwright: pasted import success, validation and reviewer denial, export
+  panel with the server's ownership refusal.
 
-Not done yet: master résumé import UI, first-draft trigger (needs live AI or
-recorded replay; must show an honest disabled/demo state), Playwright
-journeys for export download and preparation, M19 tracking.
+Not done yet: first-draft trigger (needs live AI or recorded replay; must
+show an honest disabled/demo state); a browser journey for question
+preparation (no seeded application reaches `resume_ready`); a successful
+contact-bearing download in the browser (the suite never signs in as the
+seeded profile owner; covered by API/integration tests); PDF/DOCX text
+extraction for the master résumé; M19 tracking.
 
 ## Outstanding blockers and decisions awaiting approval
 
@@ -56,30 +75,30 @@ journeys for export download and preparation, M19 tracking.
    of new real jobs cannot run (replay only covers recorded fixtures).
 3. Approve cleanup of review/test stacks and scratch worktrees (list in the
    overnight report). Nothing has been deleted.
-4. Job sources can only be listed, not created, through the API; a real
-   deployment needs a manual-import source row (no UI for this yet).
+4. Bulk-import sources can be registered with `POST /sources` but are always
+   created disabled pending a recorded ToS review, and there is no API/UI to
+   enable one. Pasted postings do not need a source (internal owner-pasted).
 5. Private deployment prerequisites (FileVault, firewall) are owner actions.
-6. **Job import is blocked for every real domain.** Ingestion requires a
-   reviewed `site_policies` row per domain with `ingestion_method =
-   manual_import`; unknown domains are refused (403). There is no API or UI
-   to create policies, and the demo's only policy blocks ingestion. Decide:
-   an owner-reviewed site-policy screen, or treating owner-pasted postings
-   (nothing fetched) as exempt. Not changed overnight (compliance decision).
+6. Resolved 2026-11-10: owner-pasted postings are exempt from site
+   policies (approved); everything automated stays policy-gated.
 
 ## Next three tasks
 
-1. Resolve decision 6 (site policies), then a success-path import journey.
-2. Master résumé import UI (`POST /profiles/{id}/master-resumes`) + review.
-3. Playwright journeys for export download and question preparation.
+1. First-draft entry point with an honest replay/disabled state (no live AI).
+2. A deterministic `resume_ready` demo fixture, then a question-preparation
+   browser journey.
+3. M19 tracking: applied/interview/rejected/offer, follow-up date and notes,
+   due-follow-ups list.
 
 ## Resume commands
 
 ```sh
 cd /Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight
 git status && git log --oneline -5
-(cd apps/web && npx vitest run)                  # frontend, ~380 tests
+(cd apps/web && npx vitest run)                  # frontend, ~391 tests
 ../jobforge-overnight-evidence/sco.sh ps         # isolated demo (ports 55883/56883/8383)
 bash ../jobforge-overnight-evidence/run_full.sh  # full backend on throwaway services (55721/56721/9721)
+bash ../jobforge-overnight-evidence/run_targeted.sh tests/integration/test_owner_pasted_import.py  # targeted
 ```
 
 Never point tests at the development (5432) or live demo (55433) databases.
