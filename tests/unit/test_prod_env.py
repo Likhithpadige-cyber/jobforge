@@ -11,6 +11,7 @@ import hashlib
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -179,20 +180,27 @@ def test_backup_readiness_is_a_warning_until_m21(monkeypatch: pytest.MonkeyPatch
     assert check.ok is False and check.fatal is False
 
 
-def test_preflight_cli_fails_without_tracebacks_or_values(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from packages.shared.config import get_settings
-
-    get_settings.cache_clear()
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("POSTGRES_PASSWORD", "CANARY-PREFLIGHT-PG")
-    monkeypatch.setenv("SESSION_SECRET", "CANARY-PREFLIGHT-SESSION")
-    monkeypatch.setenv("TOTP_ENCRYPTION_KEY", "CANARY-PREFLIGHT-bad")
-    try:
-        assert prod_env.main(["preflight"]) == 1
-    finally:
-        get_settings.cache_clear()
-    out = capsys.readouterr()
-    assert "Traceback" not in out.err and "CANARY-PREFLIGHT" not in out.out + out.err
-    assert "preflight failed: invalid configuration" in out.err and "totp_encryption_key" in out.err
+def test_preflight_cli_fails_without_tracebacks_or_values() -> None:
+    """Run as a real process (as in the container): a bad TOTP key stops the
+    preflight before any check, naming the setting but no value."""
+    env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
+    env.update(
+        ENVIRONMENT="production",
+        POSTGRES_PASSWORD="CANARY-PREFLIGHT-PG",
+        SESSION_SECRET="CANARY-PREFLIGHT-SESSION",
+        TOTP_ENCRYPTION_KEY="CANARY-PREFLIGHT-bad",
+    )
+    result = subprocess.run(  # noqa: S603 - our own module
+        [sys.executable, "-m", "scripts.prod_env", "preflight"],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert result.returncode == 1
+    out = result.stdout + result.stderr
+    assert "Traceback" not in out and "CANARY-PREFLIGHT" not in out
+    assert "preflight failed: invalid configuration" in result.stderr
+    assert "totp_encryption_key" in result.stderr
