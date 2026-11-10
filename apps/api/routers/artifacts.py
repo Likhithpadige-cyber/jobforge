@@ -13,6 +13,7 @@ are indistinguishable from outside.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from fastapi import APIRouter, Depends, Response
 
 from apps.api.deps import (
     AppSettings,
+    CurrentUser,
     DbSession,
     artifact_download_limit,
     artifact_store,
@@ -27,7 +29,7 @@ from apps.api.deps import (
     rate_limited,
 )
 from apps.api.schemas.artifacts import ArtifactRead
-from packages.core.models import Artifact, Resume
+from packages.core.models import Approval, Artifact, Resume
 from packages.core.services.artifacts import artifact_payloads
 from packages.services.rendering.keys import download_filename
 from packages.services.rendering.protocol import ALLOWED_CONTENT_TYPES
@@ -68,7 +70,7 @@ async def list_resume_artifacts(resume_id: UUID, session: DbSession) -> Any:
     dependencies=[Depends(rate_limited(artifact_download_limit))],
 )
 async def download_artifact(
-    artifact_id: UUID, session: DbSession, settings: AppSettings
+    artifact_id: UUID, session: DbSession, settings: AppSettings, user: CurrentUser
 ) -> Response:
     """The bytes, with the checksum re-checked on the way out.
 
@@ -84,6 +86,61 @@ async def download_artifact(
     artifact = await session.get(Artifact, artifact_id)
     if artifact is None or artifact.resume_id is None:
         raise NotFoundError(_MISSING)
+    approval = (
+        await session.get(
+            Approval, artifact.approval_id, with_for_update=True, populate_existing=True
+        )
+        if artifact.approval_id
+        else None
+    )
+    contact_snapshot = approval is not None and "export_document" in (
+        approval.subject_snapshot or {}
+    )
+    from packages.services.rendering.protocol import LEGACY_REVIEWER_TEMPLATES
+
+    resume = await session.get(Resume, artifact.resume_id)
+    if resume is None:
+        raise NotFoundError(_MISSING)
+    if contact_snapshot or artifact.template_version not in LEGACY_REVIEWER_TEMPLATES:
+        from packages.core.models import Profile
+
+        profile = await session.get(Profile, resume.profile_id) if resume else None
+        if user.role != "owner" or profile is None or profile.user_id != user.id:
+            raise NotFoundError(_MISSING)
+    if (
+        artifact.template_version not in LEGACY_REVIEWER_TEMPLATES
+        and not contact_snapshot
+        and artifact.content_type
+        in {
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+    ):
+        from packages.shared.errors import ConflictError
+
+        raise ConflictError("Contact export lacks a bound owner approval and evidence fingerprints")
+    from packages.core.services.resume_export import (
+        approved_export,
+        approved_fingerprints,
+        validate_current_evidence,
+        validate_export_records,
+    )
+
+    await validate_current_evidence(
+        session,
+        resume,
+        lock=True,
+        fingerprints=approved_fingerprints(approval.subject_snapshot or {}) if approval else None,
+        approved_at=approval.decided_at if approval else None,
+    )
+    if approval is not None:
+        if contact_snapshot:
+            from packages.shared.errors import ConflictError
+
+            if str(approval.status) != "approved":
+                raise ConflictError("Export approval is no longer granted")
+            approved_export(approval.subject_snapshot, resume)
+        await validate_export_records(session, approval.subject_snapshot or {})
     if artifact.content_type not in ALLOWED_CONTENT_TYPES:
         # Not served, not guessed. The row is wrong and that is a defect.
         log.error("artifact.content_type_rejected", artifact_id=str(artifact_id))
@@ -93,8 +150,8 @@ async def download_artifact(
     # absent/unreadable identifiers remain indistinguishable without storage.
     store = artifact_store(settings)
     data = await store.get(artifact.storage_key)
-    if artifact.sha256:
-        await store.verify(artifact.storage_key, sha256=artifact.sha256)
+    if artifact.sha256 and hashlib.sha256(data).hexdigest() != artifact.sha256:
+        raise ArtifactIntegrityError("artifact checksum mismatch")
 
     filename = download_filename(
         application_id=artifact.application_id or artifact.resume_id,

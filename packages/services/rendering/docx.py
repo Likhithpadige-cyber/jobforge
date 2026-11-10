@@ -119,14 +119,51 @@ class DocxResumeRenderer:
         props.modified = DETERMINISTIC_DOC_TIMESTAMP
         props.revision = 1
 
+        from docx.oxml.ns import qn
+        from docx.shared import Inches, Pt, RGBColor
+
+        normal = doc.styles["Normal"]
+        normal.font.name = "Arial"
+        normal.font.size = Pt(10)
+        for style_name, size in (
+            ("Title", 18),
+            (_HEADING_STYLE, 12),
+            (_BODY_STYLE, 10),
+            (_BULLET_STYLE, 10),
+        ):
+            style = doc.styles[style_name]
+            style.font.name = "Arial"
+            style.font.size = Pt(size)
+            style.font.color.rgb = RGBColor(0, 0, 0)
+            style.paragraph_format.space_after = Pt(4)
+            # Third-party default templates can carry inherited title rules.
+            for border in list(style.element.iter(qn("w:pBdr"))):
+                border.getparent().remove(border)
+        for page in doc.sections:
+            page.page_width, page.page_height = Inches(8.5), Inches(11)
+            page.top_margin = page.bottom_margin = page.left_margin = page.right_margin = Inches(
+                0.75
+            )
+        for style in doc.styles:
+            for border in list(style.element.iter(qn("w:pBdr"))):
+                border.getparent().remove(border)
+        for index, line in enumerate(document.contact_lines):
+            paragraph = doc.add_paragraph(line, style="Title" if index == 0 else _BODY_STYLE)
+            paragraph.paragraph_format.keep_with_next = True
         for section in document.sections:
             doc.add_paragraph(section.heading, style=_HEADING_STYLE)
             for entry in section.entries:
                 # `entry.text` is copied verbatim. There is no branch here
                 # that shortens, reflows, capitalises or punctuates it: the
                 # words a human approved are the words that appear.
-                style = _BULLET_STYLE if section.key != "summary" else _BODY_STYLE
-                doc.add_paragraph(entry.text, style=style)
+                style = (
+                    _BULLET_STYLE if section.key != "summary" and not entry.heading else _BODY_STYLE
+                )
+                paragraph = doc.add_paragraph(entry.text, style=style)
+                if entry.heading:
+                    for run in paragraph.runs:
+                        run.bold = True
+                    paragraph.paragraph_format.keep_with_next = True
 
         buffer = io.BytesIO()
         doc.save(buffer)

@@ -1,57 +1,91 @@
-"""PDF rendering with ReportLab.
+"""Deterministic PDF with embedded Unicode glyphs and measured, bounded lines.
 
-Real selectable text on a single column, never an image of text - an image is
-unreadable to every ATS and to every screen reader, and a resume that cannot
-be parsed is a resume that does not get read.
-
-Determinism came down to one switch and one measurement. A default ReportLab
-canvas writes `/CreationDate` from the clock and a random `/ID`, and two runs
-in separate processes differ. `Canvas(..., invariant=1)` pins both: measured
-here across three separate processes with a second between them, the output
-was byte-identical, with `/CreationDate` fixed at `D:20000101000000+00'00'`.
-
-Only the base-14 fonts are used, so nothing is embedded. Font subsetting is
-the remaining realistic source of nondeterminism in a PDF - a subset built
-from a set of glyphs can be serialised in an unstable order - and avoiding
-embedding avoids the problem outright rather than betting on it.
-
-Pagination is deterministic because layout is: a fixed frame, a fixed leading,
-and text measured by ReportLab's own metrics for a fixed font. No widow or
-orphan heuristics, no optimisation pass, no randomness.
+Unsupported glyphs and scripts needing shaping fail explicitly; no replacement
+boxes may reach an approved export. Font bytes and template identity are pinned.
 """
 
 from __future__ import annotations
 
 import io
+import unicodedata
+from pathlib import Path
+from threading import Lock
+from typing import Any
 
-from packages.services.rendering.document import ResumeDocument
+from packages.services.rendering.document import DocumentEntry, ResumeDocument
 from packages.services.rendering.protocol import RendererUnavailableError
+from packages.services.rendering.text import normalise_text
 
 PDF_CONTENT_TYPE = "application/pdf"
+_PAGE_WIDTH, _PAGE_HEIGHT = 612.0, 792.0
+_MARGIN = 54.0
+_BODY_FONT, _BODY_SIZE = "JobForgeNoto", 10.0
+_HEAD_FONT, _HEAD_SIZE = _BODY_FONT, 12.0
+_LEADING = 14.0
+_FONT_PATH = Path(__file__).with_name("fonts") / "NotoSans-Regular.ttf"
+_FONT_LOCK = Lock()
 
-# --- fixed page geometry, in points -----------------------------------------
-_PAGE_WIDTH, _PAGE_HEIGHT = 612.0, 792.0  # US Letter
-_MARGIN = 54.0  # 0.75in
-_BODY_FONT, _BODY_SIZE = "Helvetica", 10.0
-_HEAD_FONT, _HEAD_SIZE = "Helvetica-Bold", 12.0
-_LEADING = 13.0
-_HEADING_SPACE_BEFORE = 10.0
-_HEADING_SPACE_AFTER = 4.0
-#: An ASCII hyphen, not U+2022. Measured, not assumed: with ReportLab's
-#: base-14 Helvetica the real bullet glyph extracts as \x7f under pypdf and
-#: as (cid:127) under pdfminer - two independent extractors agreeing that an
-#: ATS would not see a bullet there. A control character at the front of every
-#: achievement is worse than a plain hyphen, and a hyphen is the conventional
-#: plain-text bullet anyway. Fixing it properly would mean registering a
-#: WinAnsi-encoded font, which buys a nicer glyph at the cost of an embedded
-#: subset - the one remaining realistic source of PDF nondeterminism.
-_BULLET = "- "
-_BULLET_INDENT = 12.0
+
+def _font() -> Any:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    with _FONT_LOCK:
+        if _BODY_FONT not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(_BODY_FONT, str(_FONT_PATH)))
+        return pdfmetrics.getFont(_BODY_FONT)
+
+
+def validate_text(text: str) -> None:
+    """Fail before upload for missing glyphs, controls and unsupported shaping."""
+    text = normalise_text(text)
+    font = _font()
+    glyphs = font.face.charToGlyph
+    for char in text:
+        code = ord(char)
+        if char in "\n\r":
+            continue
+        if (
+            unicodedata.combining(char) != 0
+            or code < 32
+            or 0x7F <= code < 0xA0
+            or code not in glyphs
+            or 0x0590 <= code <= 0x109F
+            or 0x200B <= code <= 0x200F
+            or 0x202A <= code <= 0x202E
+            or 0x2066 <= code <= 0x2069
+        ):
+            raise RendererUnavailableError(
+                f"Unsupported export character U+{code:04X}; "
+                "revise text or add a tested font/shaping implementation"
+            )
+
+
+def wrap_text(text: str, width: float, size: float = _BODY_SIZE) -> list[str]:
+    """Break long tokens without inserting hyphens or dropping characters."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    _font()
+    lines: list[str] = []
+    for paragraph in normalise_text(text).splitlines() or [""]:
+        remaining = paragraph
+        while stringWidth(remaining, _BODY_FONT, size) > width:
+            end = 0
+            for index in range(1, len(remaining) + 1):
+                if stringWidth(remaining[:index], _BODY_FONT, size) > width:
+                    break
+                end = index
+            if end == 0:
+                raise RendererUnavailableError("A glyph exceeds the available line width")
+            space = remaining.rfind(" ", 0, end + 1)
+            cut = space if space > 0 else end
+            lines.append(remaining[:cut])
+            remaining = remaining[cut + 1 :] if space > 0 else remaining[cut:]
+        lines.append(remaining)
+    return lines
 
 
 class PdfResumeRenderer:
-    """Single column, selectable text, identical bytes every time."""
-
     kind = "resume_pdf"
     extension = "pdf"
     content_type = PDF_CONTENT_TYPE
@@ -66,83 +100,74 @@ class PdfResumeRenderer:
             import reportlab  # noqa: F401
         except ImportError:
             return False
-        return True
+        return _FONT_PATH.is_file()
 
     def render(self, document: object) -> bytes:
         if not isinstance(document, ResumeDocument):
             raise TypeError("PdfResumeRenderer requires a ResumeDocument")
         try:
-            from reportlab.pdfbase.pdfmetrics import stringWidth
             from reportlab.pdfgen import canvas
         except ImportError as exc:
             raise RendererUnavailableError("PDF rendering requires ReportLab") from exc
-
+        validate_text("\n".join(document.all_text()))
+        validate_text("\n".join(section.heading for section in document.sections))
         buffer = io.BytesIO()
-        # invariant=1 is what makes this reproducible: it pins /CreationDate,
-        # /ModDate and the /ID array, which are otherwise the clock and a
-        # random value.
         pdf = canvas.Canvas(buffer, pagesize=(_PAGE_WIDTH, _PAGE_HEIGHT), invariant=1)
         pdf.setTitle("")
         pdf.setAuthor("JobForge")
         pdf.setSubject("")
         pdf.setCreator("JobForge")
-
-        usable = _PAGE_WIDTH - (2 * _MARGIN)
         y = _PAGE_HEIGHT - _MARGIN
+        width = _PAGE_WIDTH - 2 * _MARGIN
 
-        def new_page() -> float:
-            pdf.showPage()
-            return _PAGE_HEIGHT - _MARGIN
+        def room(height: float) -> None:
+            nonlocal y
+            if y - height < _MARGIN:
+                pdf.showPage()
+                y = _PAGE_HEIGHT - _MARGIN
 
-        def wrap(text: str, font: str, size: float, width: float) -> list[str]:
-            """Greedy wrap on whitespace. Deterministic and not clever.
+        def draw(
+            text: str, size: float = _BODY_SIZE, bullet: bool = False, keep: bool = False
+        ) -> None:
+            nonlocal y
+            from reportlab.pdfbase.pdfmetrics import stringWidth
 
-            A word longer than the line is emitted on its own rather than
-            hyphenated: breaking a token would alter a string a human
-            approved, which this renderer may not do even cosmetically.
-            """
-            lines: list[str] = []
-            current = ""
-            for word in text.split():
-                candidate = f"{current} {word}".strip()
-                if current and stringWidth(candidate, font, size) > width:
-                    lines.append(current)
-                    current = word
+            prefix = "•   " if bullet else ""
+            indent = stringWidth(prefix, _BODY_FONT, size)
+            lines = wrap_text(text, width - indent, size)
+            room(min(len(lines) + int(keep), 4) * _LEADING)
+            for index, line in enumerate(lines):
+                room(_LEADING)
+                pdf.setFont(_BODY_FONT, size)
+                if bullet and index == 0:
+                    pdf.drawString(_MARGIN, y, prefix + line)
                 else:
-                    current = candidate
-            if current:
-                lines.append(current)
-            return lines or [""]
+                    pdf.drawString(_MARGIN + indent, y, line)
+                y -= _LEADING
+
+        for index, line in enumerate(document.contact_lines):
+            draw(line, 16 if index == 0 else _BODY_SIZE, keep=True)
+
+        def entry_height(entry: DocumentEntry) -> float:
+            indent = 12 if not entry.heading else 0
+            return min(len(wrap_text(entry.text, width - indent)), 4) * _LEADING
 
         for section in document.sections:
-            if y - (_HEADING_SPACE_BEFORE + _HEAD_SIZE + _LEADING) < _MARGIN:
-                y = new_page()
-            y -= _HEADING_SPACE_BEFORE
-            pdf.setFont(_HEAD_FONT, _HEAD_SIZE)
-            pdf.drawString(_MARGIN, y, section.heading)
-            y -= _HEAD_SIZE + _HEADING_SPACE_AFTER
-
-            pdf.setFont(_BODY_FONT, _BODY_SIZE)
-            for entry in section.entries:
-                bullet = section.key != "summary"
-                indent = _BULLET_INDENT if bullet else 0.0
-                lines = wrap(entry.text, _BODY_FONT, _BODY_SIZE, usable - indent)
-                for index, line in enumerate(lines):
-                    if y - _LEADING < _MARGIN:
-                        y = new_page()
-                        pdf.setFont(_BODY_FONT, _BODY_SIZE)
-                    if bullet and index == 0:
-                        # The bullet is drawn as part of the same string, not
-                        # as a separate one at its own x. Two text-showing
-                        # operations on one visual line extract as two
-                        # fragments, and a parser that sees a lone glyph on
-                        # its own line can treat the bullet as content. One
-                        # string keeps the line contiguous for an ATS.
-                        pdf.drawString(_MARGIN, y, _BULLET + line)
-                    else:
-                        pdf.drawString(_MARGIN + indent, y, line)
-                    y -= _LEADING
-
-        pdf.showPage()
+            first = section.entries[0]
+            reserve = 10 + _LEADING + entry_height(first)
+            if first.heading and len(section.entries) > 1:
+                reserve += entry_height(section.entries[1])
+            room(reserve)
+            y -= 10
+            draw(section.heading, _HEAD_SIZE, keep=True)
+            for index, entry in enumerate(section.entries):
+                if entry.heading and index + 1 < len(section.entries):
+                    room(entry_height(entry) + entry_height(section.entries[index + 1]))
+                draw(
+                    entry.text,
+                    _BODY_SIZE,
+                    bullet=section.key != "summary" and not entry.heading,
+                    keep=entry.heading and index + 1 < len(section.entries),
+                )
         pdf.save()
         return buffer.getvalue()

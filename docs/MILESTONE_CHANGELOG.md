@@ -2148,3 +2148,70 @@ Playwright was not re-run after `6ca02a0`. The later commits changed only the se
 - **The stopped fresh stack** still has an all-interfaces port mapping, so starting it again would re-expose it. Remove it, or recreate it on loopback, before any further use.
 - **Default local credentials:** development services keep their local default credentials. They are now reachable only from this machine.
 - **Not done:** production remains NO-GO (M15); the repository is still private; the profile README is unpublished.
+
+## P0 resume export — isolated implementation (2026-11-06)
+
+Implemented on `feature/p0-resume-export` from `7323d42`, for review before
+integration. See [implementation design](design/P0_RESUME_EXPORT.md).
+
+- Owner-reviewed contact and structured source snapshots, digest-bound to the
+  exact resume version/content; model inputs remain free of contact data.
+- Body contact paragraphs, employment/education/certification grouping, embedded
+  Noto Sans PDF font, measured long-token wrapping and pagination safeguards.
+- Template v2 artifact identities and approval revalidation, plus a separate
+  owner-only manual PDF+DOCX packet action. Existing SMTP dispatch is unchanged.
+- Synthetic consent, provenance, extraction, layout, integrity and authorization
+  regression coverage. Historical text-only approvals cannot authorize v2 exports.
+- 2,077 offline backend tests and 364 frontend tests passed; schema conformance
+  12 passed; route policy checks 4 passed; Ruff, canonical mypy, frontend types,
+  lint and production build passed. Final two-page PDF/DOCX samples visually
+  inspected. Database/browser suites were not run; disposable-stack verification
+  remains required before integration.
+- [SMTP recovery proposal](design/SMTP_DISPATCH_RECOVERY.md) is design only.
+  No push, merge, deployment, Docker change, real email or personal data use.
+
+### M16.6 final verification follow-up
+
+Self-review reproduced and fixed three post-upload approval races, bound download
+checksums to the returned bytes, made contact-bearing artifact access independent
+of template naming, and included custom headings in Unicode validation. Added
+synthetic unit and real-PostgreSQL regressions. SMTP dispatch remains unchanged;
+its unresolved send/commit window is documented as a live-send blocker.
+
+Verification evidence and remaining UI/compatibility limitations are recorded in
+`docs/verification/M16_6_VERIFICATION.md`. The feature is prepared for independent
+review only; no merge, push, deployment or live submission is authorized.
+
+### M16.6 Cowork findings reconciliation
+
+The READY statement at 09ee084 was too broad: Cowork's H1-H3 remained open.
+This correction restores legacy text rendering and owner consent on an unchanged
+approved version while preserving reviewer attribution, restores reviewer text
+approval in the UI, and gates exports/packages on current evidence. Tabs,
+single-line fields, URL validation, NFC normalization and default artifact privacy
+are corrected. Template 2.1 preserves prior artifact identities and accepts
+complete earlier approved v2 pairs for manual packages.
+
+Full verification: 3,430 backend tests, 6 API E2E journeys, 26 Playwright tests,
+366 frontend tests, 12 schema checks; final runs have no failures or skips.
+M3 is explicitly PARTIALLY FIXED: dates, contact density, bullet alignment and
+DOCX font selection improved; PDF bold weight and native Word/iPhone validation
+remain outstanding. No integration, push, deployment or SMTP enablement occurred.
+Final download corrections also reject inactive legacy evidence and stale packet
+versions, hash the exact PDF bytes inserted into legacy ZIPs, revalidate older contact
+snapshots before reuse, and reject superseded contact approval on downloads. See the
+verification report and findings matrix for exact evidence and scope.
+
+
+### M16.6 final H3 residual and source integrity
+
+Cowork correctly reproduced edited-and-reverified evidence bypassing b9031f6.
+Immutable per-fact material versions now bind text and owner export approval;
+render, reuse, package and download refuse changed or missing proof. Source
+creation validates ownership/existence. Owner-authorized source repair preserves
+original facts, creates unverified replacements and records linked history.
+It never relinks an approved résumé; fresh generation/reapproval is required,
+with existing terminal-state reopening limits documented. Full backend 3,535,
+safety 1,642, API E2E 6, Playwright 26, frontend 366 and schema 12 pass.
+See the verification report and evidence-binding design. No live data repair,
+merge, push, deployment or SMTP behavior change was made.

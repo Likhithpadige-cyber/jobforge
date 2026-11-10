@@ -278,15 +278,17 @@ export const api = {
       },
     ),
 
+  exportPreview: (applicationId: string) => request<ApiExportPreview>(`${env.apiPrefix}/applications/${applicationId}/resume-review/export-preview`),
+
   /** POST /api/v1/applications/{id}/resume-review/approve */
-  approveResume: (applicationId: string, decisionNote?: string) =>
+  approveResume: (applicationId: string, decisionNote?: string, exportDigest?: string) =>
     request<ApiResumeReview>(
       `${env.apiPrefix}/applications/${applicationId}/resume-review/approve`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          decisionNote ? { decision_note: decisionNote } : {},
+          { decision_note: decisionNote, export_digest: exportDigest },
         ),
       },
     ),
@@ -450,6 +452,7 @@ export interface ApiResumeReview {
   can_approve: boolean;
   can_request_changes: boolean;
   blocked_reason: string | null;
+  export_consent_required?: boolean;
 }
 
 export interface ApiApplication {
@@ -463,4 +466,14 @@ export interface ApiApplication {
   resume_count: number;
   latest_resume_version: number | null;
   latest_verification_status: VerificationStatus | null;
+}
+
+export interface ApiExportPreview {
+  digest: string;
+  rendered_lines?: string[];
+  document: {
+    schema_version: number; profile_id: string; profile_version: number;
+    contact: Record<string, string>; links: Record<string, string>;
+    records: { section: string; source_table: string; source_id: string; fields: Record<string, string>; fact_ids: string[] }[];
+  };
 }

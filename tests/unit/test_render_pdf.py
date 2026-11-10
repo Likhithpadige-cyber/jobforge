@@ -93,11 +93,11 @@ def test_the_extracted_text_has_no_control_characters(extract: object) -> None:
 
 
 @pytest.mark.parametrize("extract", [by_pypdf, by_pdfminer], ids=["pypdf", "pdfminer"])
-def test_bullets_extract_as_ascii_and_stay_on_their_line(extract: object) -> None:
+def test_bullets_extract_as_unicode_and_stay_on_their_line(extract: object) -> None:
     """A bullet drawn as its own string extracts as a lone fragment, which a
     parser can read as content. It is joined to its line instead."""
     text = extract(rendered())
-    assert "- Ran a synthetic migration." in text
+    assert "• Ran a synthetic migration." in " ".join(text.split())
 
 
 def test_the_text_is_real_text_and_not_an_image() -> None:

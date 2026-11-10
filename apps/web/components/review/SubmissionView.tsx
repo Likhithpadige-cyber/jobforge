@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { readCsrfToken } from "@/lib/api";
+import { env } from "@/lib/env";
 import { useAuth } from "@/components/AuthGuard";
 import { EmptyState } from "@/components/EmptyState";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -33,6 +35,19 @@ const SENDING_REFRESH_MS = 10_000;
  * execution time regardless of what this page shows.
  */
 export function SubmissionView({ applicationId }: { applicationId: string }) {
+  const [packetBusy, setPacketBusy] = useState(false);
+  const [packetError, setPacketError] = useState<string | null>(null);
+  async function downloadManualPacket() {
+    setPacketBusy(true); setPacketError(null);
+    try {
+      const response = await fetch(`${process.env.NODE_ENV === "development" ? "" : env.apiBaseUrl}${env.apiPrefix}/applications/${applicationId}/manual-packet`, { method: "POST", credentials: "include", headers: { "X-CSRF-Token": readCsrfToken() ?? "" } });
+      if (!response.ok) throw new Error("The package is unavailable. Check that current PDF, DOCX and all approvals are complete.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a"); link.href = url; link.download = `jobforge-manual-${applicationId}.zip`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (cause) { setPacketError(cause instanceof Error ? cause.message : "Package download failed"); }
+    finally { setPacketBusy(false); }
+  }
   const { user } = useAuth();
   const isOwner = user?.role === "owner";
   const [readiness, setReadiness] = useState<SubmissionReadiness | null>(null);
@@ -93,6 +108,12 @@ export function SubmissionView({ applicationId }: { applicationId: string }) {
         <p className="mt-1 text-xs text-ink-soft">Real email requires both the deployment&apos;s live mode and the submission switch. Either one off means nothing is sent.</p>
       </section>
 
+      {isOwner && <section className="rounded-card border border-edge p-5">
+        <h2 className="font-semibold">Apply manually</h2>
+        <p className="mt-2 text-sm">Download the approved PDF, DOCX, cover letter and answers. This action sends nothing.</p>
+        <button type="button" disabled={packetBusy} onClick={() => void downloadManualPacket()} className="mt-3 rounded-chip border border-edge px-4 py-2">{packetBusy ? "Preparing package…" : "Download manual package"}</button>
+        {packetError && <p role="alert">{packetError}</p>}
+      </section>}
       <SectionCard
         title="Submission readiness"
         action={<button type="button" onClick={() => void load()} className="inline-flex min-h-11 items-center rounded-chip border border-edge bg-surface px-3 text-sm font-semibold text-accent hover:border-control">Refresh</button>}

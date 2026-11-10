@@ -53,6 +53,13 @@ from packages.core.models import (
     ResumeClaim,
     User,
 )
+from packages.core.services.resume_export import (
+    approved_fingerprints,
+    digest,
+    export_binding,
+    preview_export,
+    validate_current_evidence,
+)
 from packages.core.state_machines.application import transition_application
 from packages.shared.clock import utc_now
 from packages.shared.errors import ConflictError, NotFoundError, ValidationError
@@ -220,6 +227,13 @@ def snapshot_matches(snapshot: dict[str, Any], resume: Resume) -> bool:
     return (
         str(snapshot.get("resume_id")) == str(resume.id)
         and snapshot.get("resume_version") == resume.version
+        and (
+            "content_digest" not in snapshot or snapshot["content_digest"] == digest(resume.content)
+        )
+        and (
+            "export_document" not in snapshot
+            or snapshot.get("export_digest") == export_binding(resume, snapshot["export_document"])
+        )
     )
 
 
@@ -228,16 +242,16 @@ def build_subject_snapshot(
 ) -> dict[str, Any]:
     """Exactly what the reviewer was shown, recorded at request time.
 
-    Identifiers, counts and verdict tallies only. No claim prose, no job
-    description, no profile payload: the audit trail needs to prove *which*
-    artefact was approved, and it can point at the rows that still hold the
-    text. Copying the text here would duplicate it into a second place that
-    nothing keeps in sync.
+    At review opening this stores identifiers, counts and a content digest.
+    On explicit owner export approval, `approve` adds the frozen contact and
+    structured export document. Generated claim prose is never duplicated.
+    The export snapshot is immutable historical consent, not a live profile.
     """
     return {
         "resume_id": str(resume.id),
         "resume_version": resume.version,
         "resume_kind": resume.kind,
+        "content_digest": digest(resume.content),
         "verification_status": resume.verification_status,
         "claim_count": len(claims),
         "application_id": str(application.id),
@@ -349,6 +363,9 @@ async def _context(session: AsyncSession, application_id: UUID, *, lock: bool) -
         raise NotFoundError(f"no resume has been generated for {application_id}")
     claims = list(resume.claims)
     approval = await resume_approval(session, application_id)
+    if lock and approval is not None:
+        # Match render/download order: approval before evidence locks.
+        await session.refresh(approval, with_for_update=True)
     return ReviewContext(application=application, resume=resume, claims=claims, approval=approval)
 
 
@@ -384,6 +401,7 @@ class ReviewState:
     can_approve: bool = False
     can_request_changes: bool = False
     blocked_reason: str | None = None
+    export_consent_required: bool = False
 
 
 #: `review_status` values. Derived from the application status and the
@@ -399,7 +417,7 @@ CHANGES_REQUESTED = "changes_requested"
 def _review_status(application: Application, approval: Approval | None) -> str:
     if application.status is ApplicationStatus.AWAITING_APPROVAL:
         return IN_REVIEW
-    if application.status is ApplicationStatus.APPROVED:
+    if approval is not None and approval.status is ApprovalStatus.APPROVED:
         return APPROVED
     if application.status is ApplicationStatus.CHANGES_REQUESTED:
         return CHANGES_REQUESTED
@@ -473,6 +491,18 @@ async def review_state(session: AsyncSession, application_id: UUID) -> ReviewSta
         can_approve=decidable,
         can_request_changes=decidable,
         blocked_reason=blocked,
+        export_consent_required=bool(
+            current
+            and approval
+            and approval.status is ApprovalStatus.APPROVED
+            and (
+                "export_document" not in approval.subject_snapshot
+                or (
+                    "evidence_fingerprints" not in approval.subject_snapshot["export_document"]
+                    and "evidence_fingerprints" in approval.subject_snapshot
+                )
+            )
+        ),
     )
 
 
@@ -679,6 +709,7 @@ async def approve(
     application_id: UUID,
     actor: User,
     decision_note: str | None = None,
+    export_digest: str | None = None,
 ) -> ReviewState:
     """Record a human approval of the resume.
 
@@ -699,6 +730,106 @@ async def approve(
     completion gate ever queries for it.
     """
     context = await _context(session, application_id, lock=True)
+    if export_digest is not None and _already_decided(
+        context, status=ApprovalStatus.APPROVED, application_status=None
+    ):
+        approval = context.approval
+        assert approval is not None
+        previous_document = approval.subject_snapshot.get("export_document")
+        renewing = (
+            isinstance(previous_document, dict) and "evidence_fingerprints" not in previous_document
+        )
+        if previous_document is not None and not renewing:
+            if approval.subject_snapshot.get(
+                "export_digest"
+            ) != export_digest or approval.subject_snapshot.get("export_owner_id") != str(actor.id):
+                raise StaleResumeError("Export approval differs; request a new resume review")
+        else:
+            if str(context.application.status) not in {
+                "awaiting_approval",
+                "approved",
+                "submission_ready",
+                "manual_handoff",
+                "policy_blocked",
+                "submission_failed",
+            }:
+                raise ReviewStateError("Export consent is unavailable in this application state")
+            readiness = evaluate_readiness(
+                verification_status=context.resume.verification_status,
+                claims=context.claims,
+                content=context.resume.content,
+            )
+            if not readiness.ready:
+                raise ReviewStateError(readiness.reason or "Resume is not ready for export consent")
+            export = await preview_export(session, context.resume, actor)
+            if renewing and "evidence_fingerprints" not in approval.subject_snapshot:
+                raise StaleResumeError(
+                    "Older contact approval lacks immutable evidence history; "
+                    "generate and approve a new resume version"
+                )
+            cutoff = approval.decided_at
+            if renewing and approval.subject_snapshot.get("export_consented_at"):
+                cutoff = datetime.fromisoformat(approval.subject_snapshot["export_consented_at"])
+            await validate_current_evidence(
+                session,
+                context.resume,
+                lock=True,
+                fingerprints=(
+                    approved_fingerprints(
+                        {
+                            "evidence_fingerprints": approval.subject_snapshot[
+                                "evidence_fingerprints"
+                            ]
+                        }
+                    )
+                    if renewing
+                    else approved_fingerprints(approval.subject_snapshot)
+                ),
+                approved_at=cutoff,
+            )
+            if renewing and digest(previous_document) != digest(
+                {k: v for k, v in export["document"].items() if k != "evidence_fingerprints"}
+            ):
+                raise StaleResumeError(
+                    "Older export details changed; generate and approve a new resume version"
+                )
+            if export["digest"] != export_digest:
+                raise StaleResumeError("Export details changed; reload and review them again")
+            approval.subject_snapshot = {
+                **approval.subject_snapshot,
+                "content_digest": digest(context.resume.content),
+                "export_document": export["document"],
+                "export_digest": export_digest,
+                "export_owner_id": str(actor.id),
+                "export_consented_at": utc_now().isoformat(),
+                **(
+                    {"export_fingerprints_renewed_from": approval.subject_snapshot["export_digest"]}
+                    if renewing
+                    else {}
+                ),
+            }
+            await session.flush()
+            # Records the separate owner consent without overwriting the original
+            # reviewer's decision or replaying application approval transitions.
+            await emit(
+                session,
+                type="resume.render.requested",
+                aggregate_type="resume",
+                aggregate_id=context.resume.id,
+                correlation_id=context.application.id,
+                actor_type="human",
+                actor_id=str(actor.id),
+                payload={
+                    "resume_id": str(context.resume.id),
+                    "resume_version": context.resume.version,
+                    "application_id": str(context.application.id),
+                    "approval_id": str(approval.id),
+                    "formats": list(RENDER_FORMATS),
+                    "export_digest": export_digest,
+                    "owner_export_consent": True,
+                },
+            )
+        return await review_state(session, application_id)
     if _already_decided(
         context,
         status=ApprovalStatus.APPROVED,
@@ -709,6 +840,24 @@ async def approve(
 
     approval = await _decidable_approval(context, session, application_id)
     application, resume = context.application, context.resume
+    if export_digest is not None:
+        export = await preview_export(session, resume, actor)
+        if export["digest"] != export_digest:
+            raise StaleResumeError("Export details changed; reload and review them again")
+        approval.subject_snapshot = {
+            **approval.subject_snapshot,
+            "content_digest": digest(resume.content),
+            "export_document": export["document"],
+            "export_digest": export_digest,
+            "export_owner_id": str(actor.id),
+        }
+    if export_digest is None:
+        fingerprints = await validate_current_evidence(session, resume, lock=True)
+        approval.subject_snapshot = {
+            **approval.subject_snapshot,
+            "content_digest": digest(resume.content),
+            "evidence_fingerprints": fingerprints,
+        }
     decided_at = utc_now()
 
     approval.status = ApprovalStatus.APPROVED

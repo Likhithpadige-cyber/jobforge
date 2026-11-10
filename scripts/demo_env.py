@@ -549,7 +549,15 @@ async def _seed_review_workflow() -> None:
                 resume = await resume_review.latest_tailored_resume(session, app_b.id)
                 if resume is None:
                     raise DemoGuardError("the submission demo has no tailored resume")
-                await resume_review.approve(session, application_id=app_b.id, actor=owner)
+                from packages.core.services.resume_export import preview_export
+
+                export_preview = await preview_export(session, resume, owner)
+                await resume_review.approve(
+                    session,
+                    application_id=app_b.id,
+                    actor=owner,
+                    export_digest=export_preview["digest"],
+                )
                 await render_resume(
                     session, store=store, renderers=production_renderers(), resume_id=resume.id
                 )

@@ -25,6 +25,7 @@ documents.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -69,7 +70,7 @@ from packages.core.services.submission_execution import request_submission
 from packages.services.rendering.keys import sanitize_filename
 from packages.services.rendering.store import ArtifactIntegrityError
 from packages.shared.config import Settings
-from packages.shared.errors import NotFoundError
+from packages.shared.errors import ConflictError, NotFoundError
 
 router = APIRouter(
     prefix="/applications", tags=["applications"], dependencies=[Depends(authenticated_api)]
@@ -235,7 +236,7 @@ async def request_package_changes(
     dependencies=[Depends(rate_limited(artifact_download_limit))],
 )
 async def download_packet(
-    application_id: UUID, session: DbSession, settings: AppSettings
+    application_id: UUID, session: DbSession, settings: AppSettings, user: RequireOwner
 ) -> Response:
     """The bytes, with the checksum re-checked on the way out - the same
     three-step discipline `download_artifact` uses in `artifacts.py`: read
@@ -243,21 +244,40 @@ async def download_packet(
     echoing it, re-hash before returning. Serves the packet M10 Phase 2's
     readiness step already generated; does not generate one on the fly.
 
-    Owner and reviewer alike, matching every other application-review route
-    in this file - this system has no per-resource ACL beyond that role
-    check (SECURITY.md's own threat model excludes multi-tenant isolation).
+    Owner-only: the PDF can now contain explicitly approved contact details.
+    Review access does not implicitly authorize downloading those details.
     """
-    await _existing_application(session, application_id)
+    application = await _existing_application(session, application_id)
+    from packages.core.models import Profile
+
+    profile = await session.get(Profile, application.profile_id)
+    if profile is None or profile.user_id != user.id:
+        raise NotFoundError("no handoff packet exists yet for this application")
     artifact = await current_packet(session, application_id)
     if artifact is None:
         raise NotFoundError("no handoff packet exists yet for this application")
     if artifact.content_type != PACKET_CONTENT_TYPE:
         raise ArtifactIntegrityError("packet artifact has an unsupported content type")
 
+    from packages.core.services.handoff_packet import load_packet_source, packet_storage_key
+
+    # Validate exactly the materials represented by the cached packet. Checking
+    # newer sources would say nothing about evidence in historical ZIP bytes.
+    source = await load_packet_source(session, application)
+    expected_key = packet_storage_key(
+        application_id=application.id,
+        resume_id=source.resume.id,
+        resume_version=source.resume.version,
+        cover_letter_id=source.cover_letter.id,
+        cover_letter_version=source.cover_letter.version,
+        answers_digest=source.answers_digest,
+    )
+    if artifact.storage_key != expected_key:
+        raise ConflictError("Handoff packet is stale; regenerate from current approved materials")
     store = artifact_store(settings)
     data = await store.get(artifact.storage_key)
-    if artifact.sha256:
-        await store.verify(artifact.storage_key, sha256=artifact.sha256)
+    if artifact.sha256 and hashlib.sha256(data).hexdigest() != artifact.sha256:
+        raise ArtifactIntegrityError("packet checksum mismatch")
 
     filename = sanitize_filename(f"jobforge-packet-{application_id}.zip")
     return Response(
@@ -306,4 +326,43 @@ async def submit_application(
         submission_id=submission.id,
         status="submitting",
         attempt=submission.attempt,
+    )
+
+
+@router.post(
+    "/{application_id}/manual-packet",
+    response_class=Response,
+    dependencies=[Depends(rate_limited(artifact_download_limit))],
+)
+async def manual_packet(
+    application_id: UUID, session: DbSession, settings: AppSettings, user: RequireOwner
+) -> Response:
+    from sqlalchemy import select
+
+    from packages.core.models import Profile
+    from packages.core.services.handoff_packet import generate_manual_packet
+
+    application = await session.scalar(
+        select(Application)
+        .join(Profile, Application.profile_id == Profile.id)
+        .where(Application.id == application_id, Profile.user_id == user.id)
+        .with_for_update(of=Application)
+    )
+    if application is None:
+        raise NotFoundError("application not found")
+    store = artifact_store(settings)
+    artifact = await generate_manual_packet(session, application=application, store=store)
+    data = await store.get(artifact.storage_key)
+    import hashlib
+
+    if hashlib.sha256(data).hexdigest() != artifact.sha256:
+        raise ArtifactIntegrityError("Manual packet integrity check failed")
+    await session.commit()
+    return Response(
+        content=data,
+        media_type=PACKET_CONTENT_TYPE,
+        headers={
+            "Content-Disposition": f'attachment; filename="jobforge-manual-{application_id}.zip"',
+            "Cache-Control": "private, no-store",
+        },
     )

@@ -45,3 +45,9 @@ these notable terms for anyone redistributing built images or bundles:
 Development-only tools (test runners, linters, Playwright, browsers) are not
 part of the application and keep their own licenses. Re-run a license review
 whenever dependencies change.
+
+## Resume PDF font
+
+`packages/services/rendering/fonts/NotoSans-Regular.ttf` is unmodified Noto Sans,
+Copyright 2022 The Noto Project Authors, licensed under SIL OFL 1.1. The license is retained
+in `packages/services/rendering/fonts/OFL.txt`. It is embedded in PDF exports.
