@@ -66,3 +66,31 @@ def test_owner_tracks_an_interview_and_follow_up_then_closes_it(
     expect(form.get_by_role("status")).to_contain_text("Tracking saved")
     owner.goto("/")
     expect(owner.get_by_test_id("follow-ups")).not_to_contain_text(title)
+
+
+def test_owner_records_a_manual_send_filters_and_clears_the_follow_up(
+    owner: Page, fresh: Accounts
+) -> None:
+    # The fixture's awaiting-approval application: JobForge has not sent it,
+    # so the owner records sending it by hand.
+    path = f"/applications/{fresh.application_id}"
+    title = f"E2E Cloud Engineer {fresh.run}"
+
+    owner.goto(path)
+    form = owner.get_by_role("form", name="Application tracking")
+    expect(form.get_by_test_id("applied-source")).to_have_text("Not recorded as sent")
+    form.get_by_role("button", name="I sent it today (follow up in 1 week)").click()
+    expect(form.get_by_test_id("applied-source")).to_contain_text("Sent by you on")
+
+    owner.goto("/applications")
+    owner.get_by_label("Outcome").select_option("waiting")
+    card = owner.locator("article", has_text=title)
+    expect(card.get_by_test_id("tracking-line")).to_contain_text("Applied · sent by you on")
+    owner.get_by_label("Outcome").select_option("not_applied")
+    expect(owner.locator("article", has_text=title)).to_have_count(0)
+
+    owner.goto("/")
+    follow_ups = owner.get_by_test_id("follow-ups")
+    expect(follow_ups.get_by_role("link", name=title)).to_contain_text("in 7 days")
+    follow_ups.get_by_role("button", name=f"Mark follow-up done: {title}").click()
+    expect(follow_ups.get_by_role("link", name=title)).to_have_count(0)
