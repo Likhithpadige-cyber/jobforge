@@ -315,12 +315,29 @@ async def redis_checks(settings: Any) -> list[Check]:
     ]
 
 
-def backup_check() -> Check:
-    # M21 adds the backup runner; until a verified backup exists this is a
-    # warning, and real data should not be loaded (M20 design §9 step 5).
-    marker = os.environ.get("JOBFORGE_LAST_VERIFIED_BACKUP")
+BACKUP_MAX_AGE_HOURS = 26
+
+
+def backup_check(now: Any = None) -> Check:
+    """Warning-level: the newest complete backup bundle (its name is passed in
+    by `prod.sh preflight` from JOBFORGE_BACKUP_DIR) is at most 26 hours old.
+    Real data should not be loaded until a verified backup exists (M20 §9)."""
+    from datetime import UTC, datetime
+
+    name = os.environ.get("JOBFORGE_LAST_VERIFIED_BACKUP", "")
+    if not name:
+        return Check(
+            "backup_ready", False, "no backup found (set JOBFORGE_BACKUP_DIR)", fatal=False
+        )
+    try:
+        taken = datetime.strptime(
+            name.removeprefix("jobforge-backup-") + "+0000", "%Y%m%dT%H%M%SZ%z"
+        )
+    except ValueError:
+        return Check("backup_ready", False, "unrecognised backup name", fatal=False)
+    age = ((now or datetime.now(UTC)) - taken).total_seconds() / 3600
     return Check(
-        "backup_ready", bool(marker), marker or "no verified backup recorded yet (M21)", fatal=False
+        "backup_ready", age <= BACKUP_MAX_AGE_HOURS, f"newest backup {age:.1f} h old", fatal=False
     )
 
 

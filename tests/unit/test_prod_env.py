@@ -174,10 +174,20 @@ def test_unverifiable_objects_counts_missing_mismatched_and_escaping_keys(tmp_pa
     assert prod_env.unverifiable_objects(rows[:1], root) == 0
 
 
-def test_backup_readiness_is_a_warning_until_m21(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_backup_readiness_is_a_warning_with_an_age_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import UTC, datetime
+
+    now = datetime(2026, 11, 10, 22, 0, tzinfo=UTC)
     monkeypatch.delenv("JOBFORGE_LAST_VERIFIED_BACKUP", raising=False)
-    check = prod_env.backup_check()
-    assert check.ok is False and check.fatal is False
+    missing = prod_env.backup_check(now)
+    assert missing.ok is False and missing.fatal is False
+    monkeypatch.setenv("JOBFORGE_LAST_VERIFIED_BACKUP", "jobforge-backup-20261110T020000Z")
+    assert prod_env.backup_check(now).ok is True
+    monkeypatch.setenv("JOBFORGE_LAST_VERIFIED_BACKUP", "jobforge-backup-20261108T020000Z")
+    stale = prod_env.backup_check(now)
+    assert stale.ok is False and stale.fatal is False and "68.0 h" in stale.detail
+    monkeypatch.setenv("JOBFORGE_LAST_VERIFIED_BACKUP", "../../etc/passwd")
+    assert prod_env.backup_check(now).ok is False
 
 
 def test_preflight_cli_fails_without_tracebacks_or_values() -> None:

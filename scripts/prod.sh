@@ -91,7 +91,16 @@ case "$command" in
   # As app_api inside the api container; fails closed. Then the host-side
   # exposure check.
   preflight)
-    "${compose[@]}" exec -T api python -m scripts.prod_env preflight "$@"
+    # Newest complete backup bundle (has a manifest) in JOBFORGE_BACKUP_DIR;
+    # only its name is passed in. Missing or old is a warning, not a failure.
+    last=""
+    if [[ -n "${JOBFORGE_BACKUP_DIR:-}" && -d "$JOBFORGE_BACKUP_DIR" ]]; then
+      for bundle in "$JOBFORGE_BACKUP_DIR"/jobforge-backup-*; do
+        [[ -f "$bundle/manifest.json" ]] && last=$(basename "$bundle")
+      done
+    fi
+    "${compose[@]}" exec -T -e JOBFORGE_LAST_VERIFIED_BACKUP="$last" api \
+      python -m scripts.prod_env preflight "$@"
     exec "$0" check-ports ;;
   check-ports)
     # Every published port of this project must be the edge on 127.0.0.1.
