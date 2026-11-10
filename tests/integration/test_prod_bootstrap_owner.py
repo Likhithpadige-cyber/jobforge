@@ -187,3 +187,65 @@ async def test_bootstrap_refuses_emails_the_login_endpoint_would_reject(engine, 
                 show=lambda u: None,
                 expected_db=name,
             )
+
+
+async def test_reset_totp_requires_password_and_a_verified_new_code(engine) -> None:
+    async with _scratch(engine) as (scratch, name):
+        box: dict[str, str] = {}
+        _, show = _io(box)
+        await prod_env.bootstrap_owner(
+            scratch,
+            email="owner@example.com",
+            encryption_key=KEY,
+            read_password=lambda: PASSWORD,
+            read_code=lambda: box["code"],
+            show=show,
+            expected_db=name,
+        )
+
+        async def stored() -> bytes:
+            async with scratch.connect() as conn:
+                return await conn.scalar(text("SELECT totp_secret_enc FROM users"))
+
+        original = await stored()
+        refused = "email or password not accepted"
+        for email, password in (
+            ("owner@example.com", "wrong-password-0000"),
+            ("nobody@example.com", PASSWORD),
+        ):
+            with pytest.raises(prod_env.ProdGuardError, match=refused):
+                await prod_env.reset_owner_totp(
+                    scratch,
+                    email=email,
+                    encryption_key=KEY,
+                    read_password=lambda p=password: p,
+                    read_code=lambda: "",
+                    show=lambda u: None,
+                    expected_db=name,
+                )
+        with pytest.raises(prod_env.ProdGuardError, match="did not verify"):
+            await prod_env.reset_owner_totp(
+                scratch,
+                email="owner@example.com",
+                encryption_key=KEY,
+                read_password=lambda: PASSWORD,
+                read_code=lambda: "000000",
+                show=lambda u: None,
+                expected_db=name,
+            )
+        assert await stored() == original  # every refusal wrote nothing
+
+        new: dict[str, str] = {}
+        shown, show_new = _io(new)
+        await prod_env.reset_owner_totp(
+            scratch,
+            email="owner@example.com",
+            encryption_key=KEY,
+            read_password=lambda: PASSWORD,
+            read_code=lambda: new["code"],
+            show=show_new,
+            expected_db=name,
+        )
+        replaced = await stored()
+        assert replaced != original
+        assert decrypt_totp_secret(replaced, KEY) == pyotp.parse_uri(shown[0]).secret

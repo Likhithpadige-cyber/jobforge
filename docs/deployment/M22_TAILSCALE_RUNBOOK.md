@@ -94,11 +94,11 @@ bound to 127.0.0.1; nothing listens on the LAN.
 
 1. Admin console → **Machines** → remove the device (cuts tailnet access).
 2. JobForge → Settings → **Sign out everywhere** (revokes every session).
-3. Change the JobForge password. If the authenticator was on that phone,
-   TOTP must be re-enrolled: **a re-enrolment command for an existing
-   owner is not built yet** (bootstrap refuses once an owner exists) —
-   tracked as remaining M22 work. Until it exists, keep the authenticator's
-   own backup (or a second device) so losing one phone does not lock you out.
+3. If the authenticator was on that phone, re-enrol TOTP from the Mac:
+   `scripts/prod.sh reset-totp --email you@example.com` (asks for the
+   current password, shows the new enrolment once, requires a code from the
+   new authenticator before writing, then revokes every session).
+   Changing the password itself is not exposed as a command yet.
 4. Review recent activity in Agent Activity / Alerts.
 
 ## 8. Troubleshooting

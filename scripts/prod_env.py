@@ -466,6 +466,56 @@ async def bootstrap_owner(
     return str(user_id)
 
 
+async def reset_owner_totp(
+    engine: Any,
+    *,
+    email: str,
+    encryption_key: str,
+    read_password: Any,
+    read_code: Any,
+    show: Any,
+    expected_db: str = PROD_DATABASE,
+) -> str:
+    """Re-enrol TOTP for an existing owner (lost or replaced authenticator).
+
+    Requires the owner's current password; the new authenticator URI is shown
+    once and a code from it must verify before the stored secret is replaced.
+    Returns the user id; the caller revokes that user's sessions.
+    """
+    from sqlalchemy import text
+
+    from packages.core.auth import generate_secret, provisioning_uri, verify_code, verify_password
+    from packages.core.crypto import encrypt_totp_secret
+
+    async with engine.connect() as conn:
+        name = await conn.scalar(text("SELECT current_database()"))
+        if name != expected_db:
+            raise ProdGuardError(f"connected to {name!r}, not {expected_db!r}")
+        row = (
+            await conn.execute(
+                text("SELECT id, password_hash FROM users WHERE role = 'owner' AND email = :e"),
+                {"e": email.strip().lower()},
+            )
+        ).first()
+    # One message for "no such owner" and "wrong password": no account probing.
+    refused = "email or password not accepted; nothing was changed"
+    if row is None or not row.password_hash:
+        read_password()
+        raise ProdGuardError(refused)
+    if not verify_password(read_password(), row.password_hash):
+        raise ProdGuardError(refused)
+    secret = generate_secret()
+    show(provisioning_uri(secret, email.strip().lower()))
+    if not verify_code(secret, read_code().strip()):
+        raise ProdGuardError("the authenticator code did not verify; nothing was written")
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE users SET totp_secret_enc = :t, updated_at = now() WHERE id = :id"),
+            {"t": encrypt_totp_secret(secret, encryption_key), "id": row.id},
+        )
+    return str(row.id)
+
+
 # -------------------------------------------------------------------- cli
 async def _bootstrap_cli(email: str) -> None:
     import getpass
@@ -501,6 +551,44 @@ async def _bootstrap_cli(email: str) -> None:
     print("owner created; sign in with the password and an authenticator code")
 
 
+async def _reset_totp_cli(email: str) -> None:
+    import getpass
+
+    from redis.asyncio import Redis
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from packages.core.auth import revoke_all_sessions
+    from packages.shared.config import get_settings
+
+    settings = get_settings()
+
+    def show(uri: str) -> None:
+        print("\nAdd this to the NEW authenticator now (shown once):\n\n  " + uri + "\n")
+
+    engine = create_async_engine(str(settings.database_url))
+    try:
+        user_id = await reset_owner_totp(
+            engine,
+            email=email,
+            encryption_key=settings.totp_encryption_key,
+            read_password=lambda: getpass.getpass("Current password (not echoed): "),
+            read_code=lambda: input("Code from the new authenticator: "),
+            show=show,
+        )
+    finally:
+        await engine.dispose()
+    redis = Redis.from_url(str(settings.redis_url))
+    try:
+        from uuid import UUID
+
+        await revoke_all_sessions(
+            redis, UUID(user_id), absolute_hours=settings.session_absolute_timeout_hours
+        )
+    finally:
+        await redis.aclose()
+    print("TOTP re-enrolled; every existing session for this owner was revoked")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.prod_env")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -509,6 +597,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("init")
     boot = sub.add_parser("bootstrap-owner")
     boot.add_argument("--email", required=True)
+    reset = sub.add_parser("reset-totp")
+    reset.add_argument("--email", required=True)
     pre = sub.add_parser("preflight")
     pre.add_argument("--bootstrap", action="store_true", help="allow no owner account yet")
     args = parser.parse_args(argv)
@@ -519,6 +609,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "bootstrap-owner":
             asyncio.run(_bootstrap_cli(args.email))
+            return 0
+        if args.command == "reset-totp":
+            asyncio.run(_reset_totp_cli(args.email))
             return 0
         if args.command == "init":
             asyncio.run(init())
