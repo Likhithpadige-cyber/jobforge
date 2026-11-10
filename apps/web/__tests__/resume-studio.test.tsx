@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { ResumeStudioView } from "@/components/ResumeStudioView";
 import { TailoringSnapshot } from "@/components/TailoringSnapshot";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import type { ApiClaim, ApiResume } from "@/lib/api";
+import { api, type ApiClaim, type ApiResume } from "@/lib/api";
+
+// The export panel asks the API which files exist; no test here needs a network.
+beforeEach(() => {
+  vi.restoreAllMocks();
+  vi.spyOn(api, "listResumeArtifacts").mockResolvedValue([]);
+});
 
 function claim(overrides: Partial<ApiClaim> = {}): ApiClaim {
   return {
@@ -179,14 +185,13 @@ describe("Tailoring Snapshot", () => {
 });
 
 describe("read-only scope", () => {
-  it("offers editing and export only as disabled placeholders", () => {
-    // Approve is deliberately absent from this list now. C2 made review a
-    // real action, so it is no longer a placeholder — see resume-review.test.tsx.
-    // Editing and export remain unbuilt and still say so.
+  it("offers export through the API and says editing is not available", async () => {
+    // Export is real now (resume-export.test.tsx covers downloads); editing
+    // is still unbuilt and says so rather than showing a dead button.
     render(<ResumeStudioView resume={resume()} />);
-    for (const label of [/Edit resume/, /Export PDF/]) {
-      expect(screen.getByRole("button", { name: label })).toBeDisabled();
-    }
+    expect(await screen.findByText(/No PDF or DOCX exists for version/)).toBeInTheDocument();
+    expect(screen.getByText(/Direct editing is not available yet/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Edit resume/ })).toBeNull();
   });
 
   it("shows no review panel when the API returned no review state", () => {

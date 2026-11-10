@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { JobFeedTable } from "@/components/JobFeedTable";
+import { JobImportPanel } from "@/components/JobImportPanel";
 import { NotWiredNotice } from "@/components/NotWiredNotice";
 import { SectionHeader } from "@/components/SectionHeader";
 import { api, type ApiJob, type ApiSource, type JobStatus } from "@/lib/api";
@@ -101,6 +102,8 @@ export default function JobFeedPage() {
             ) : undefined
           }
         />
+
+        <JobImportPanel sources={sources} onImported={() => void load(0, true)} />
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2.5 rounded-card border border-edge bg-surface p-3">

@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
+import { ResumeExportPanel } from "@/components/ResumeExportPanel";
 import { ResumeReviewPanel } from "@/components/ResumeReviewPanel";
 import { SectionHeader } from "@/components/SectionHeader";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -182,24 +183,12 @@ export function ResumeStudioView({
           )}
           <TailoringSnapshot resume={resume} />
           <div className="rounded-card border border-edge bg-surface p-5 shadow-raised"><h2 className="text-sm font-semibold text-ink">AI activity</h2><p className="mt-2 text-xs leading-5 text-ink-soft">This version was generated {formatTimestamp(resume.created_at)}. A step-by-step activity feed is not exposed by the current API.</p></div>
+          <ResumeExportPanel resumeId={resume.id} version={resume.version} />
           <div className="rounded-card border border-edge bg-surface p-5">
-            <h2 className="text-sm font-semibold text-ink">Next steps</h2>
+            <h2 className="text-sm font-semibold text-ink">Editing</h2>
             <p className="mt-1 text-xs text-ink-soft">
-              Editing and export arrive in a later phase. Review and approval
-              are live in the panel above.
+              Direct editing is not available yet. Request changes in the review panel to produce a new version.
             </p>
-            <div className="mt-3 space-y-2">
-              {["Edit resume", "Export PDF"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  disabled
-                  className="w-full cursor-not-allowed rounded-chip border border-edge bg-inset px-3 py-2 text-xs font-medium text-ink-soft"
-                >
-                  {label} · Coming next
-                </button>
-              ))}
-            </div>
           </div>
         </aside>
       </div>

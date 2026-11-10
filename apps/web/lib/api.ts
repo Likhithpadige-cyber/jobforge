@@ -207,6 +207,53 @@ async function request<T>(path: string, init?: RequestInit, options: RequestOpti
 /** Shared transport for feature clients such as lib/operations.ts. */
 export const apiRequest = request;
 
+/** The server's own explanation from an RFC 7807 body, else a fallback. */
+export function apiErrorText(cause: unknown, fallback: string): string {
+  if (cause instanceof ApiError) {
+    const body = cause.detail;
+    if (typeof body === "object" && body !== null && typeof (body as { detail?: unknown }).detail === "string") {
+      return (body as { detail: string }).detail;
+    }
+    return cause.message;
+  }
+  return cause instanceof Error ? cause.message : fallback;
+}
+
+/**
+ * GET an artifact's bytes. The server re-checks ownership, approval, current
+ * evidence and the stored checksum before answering; this never bypasses it.
+ */
+export async function downloadArtifactBytes(
+  artifactId: string,
+): Promise<{ bytes: ArrayBuffer; filename: string | null; contentType: string }> {
+  const baseUrl = process.env.NODE_ENV === "development" ? "" : env.apiBaseUrl;
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${env.apiPrefix}/artifacts/${artifactId}/content`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch (cause) {
+    throw new ApiError(`Cannot reach the API at ${env.apiBaseUrl}`, 0, cause);
+  }
+  if (!response.ok) {
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    throw new ApiError(`Request failed: ${response.status}`, response.status, body);
+  }
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return {
+    bytes: await response.arrayBuffer(),
+    filename: match?.[1] ?? null,
+    contentType: response.headers.get("Content-Type") ?? "application/octet-stream",
+  };
+}
+
 export const api = {
   liveness: () => request<Liveness>("/health"),
   readiness: () =>
@@ -236,6 +283,22 @@ export const api = {
 
   /** GET /api/v1/sources — the only way to turn source_id into a name. */
   listSources: () => request<ApiSource[]>(`${env.apiPrefix}/sources`),
+
+  /**
+   * POST /api/v1/jobs/import — owner-only manual import of pasted or
+   * uploaded postings. Nothing is fetched from the internet; the server
+   * parses, validates, de-duplicates and reports each posting's outcome.
+   */
+  /** GET /api/v1/resumes/{id}/artifacts — rendered files for a resume. */
+  listResumeArtifacts: (resumeId: string) =>
+    request<ApiArtifact[]>(`${env.apiPrefix}/resumes/${resumeId}/artifacts`),
+
+  importJobs: (payload: ImportJobsRequest) =>
+    request<ImportJobsResponse>(`${env.apiPrefix}/jobs/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
 
   /** GET /api/v1/applications — how Resume Studio finds an application. */
   listApplications: (params: { limit?: number; offset?: number } = {}) => {
@@ -476,4 +539,47 @@ export interface ApiExportPreview {
     contact: Record<string, string>; links: Record<string, string>;
     records: { section: string; source_table: string; source_id: string; fields: Record<string, string>; fact_ids: string[] }[];
   };
+}
+
+/** Body of POST /api/v1/jobs/import (apps/api/schemas/jobs.py ImportRequest). */
+export interface ImportJobsRequest {
+  source_slug: string;
+  format: "csv" | "json";
+  content: string;
+  max_age_days?: number;
+}
+
+/** One posting's server-side outcome (OutcomeRead). */
+export interface ImportOutcome {
+  url: string;
+  result: string;
+  job_id: string | null;
+  canonical_id: string | null;
+  reason: string | null;
+  warnings: string[];
+}
+
+/** Response of POST /api/v1/jobs/import (ImportResponse). */
+export interface ImportJobsResponse {
+  source_slug: string;
+  total: number;
+  created: number;
+  duplicates: number;
+  updated: number;
+  rejected: number;
+  outcomes: ImportOutcome[];
+}
+
+/** One rendered file (apps/api/schemas/artifacts.py ArtifactRead). */
+export interface ApiArtifact {
+  id: string;
+  kind: string;
+  content_type: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  resume_id: string | null;
+  resume_version: number | null;
+  approval_id: string | null;
+  template_version: string | null;
+  created_at: string;
 }
