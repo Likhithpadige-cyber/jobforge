@@ -95,9 +95,25 @@ Python: `/Users/padige/Projects/jobforge-c3-design-review/jobforge-phase5/.venv/
 scripts as modules: `mypy -m scripts.backup -m scripts.restore -m scripts.prod_env`.
 Docker's VM has ~4 GB: run one JobForge stack at a time.
 
+## Latest session results (2026-11-10, resumed)
+
+- Full backend at `a382f59`: 3,754 passed, 0 skipped, 0 errors; safety 1,783;
+  API E2E 6; readiness 22/22; H3 100/100; 0 provider calls.
+- Added: .docx master-résumé text extraction (`d922e6c`), phone-width
+  journeys (`test_m22_mobile.py`). Frontend 421 passed; Playwright 34/34.
+- All throwaway services stopped.
+
 ## Next task
 
-Re-run the full backend regression on the latest commit (last full run predates reset-totp/backup-age), then master résumé PDF/DOCX extraction and mobile Playwright for tracking.
+All remaining items need an owner decision or owner action:
+1. Integration: push branch for hosted CI, fast-forward `dev`/`main`.
+2. PDF résumé extraction: ship a PDF parser (e.g. promote pypdf) in the
+   production image, or keep paste-only (current).
+3. Real deployment: generate prod.env, keygen, bootstrap owner, first
+   backup + drill, Tailscale per `docs/deployment/M22_TAILSCALE_RUNBOOK.md`.
+4. Cleanup of rehearsal/drill stacks, volumes and images.
+If none is approved, safe optional work: re-run the prodtest rehearsal on
+the latest images (DOCX extraction not yet exercised in the production image).
 
 ## Uncommitted changes
 

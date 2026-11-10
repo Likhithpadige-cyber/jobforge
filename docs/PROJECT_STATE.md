@@ -144,12 +144,18 @@ Design in `docs/deployment/M21_M22_PLAN.md`; runbook still to write.
 5. Bulk-import sources stay disabled pending ToS review; pasted postings
    need no source.
 
-## Next three tasks
+## Latest verification (2026-11-10)
 
-1. M22 Tailscale runbook and acceptance checklist (documentation; owner
-   performs the installs and admin-console changes).
-2. M21 operator runbook and the backup-recorded marker for preflight.
-3. Product: fit score on the job page; Playwright re-run on the ovn demo.
+Backend 3,754 passed / 0 skipped; safety 1,783; API E2E 6; readiness 22/22;
+H3 100/100; 0 provider calls; frontend 421; Playwright 34/34 (incl. 375 px).
+New since M21: Tailscale and backup runbooks, owner TOTP re-enrolment,
+backup age in preflight, fit score on the job page, .docx résumé import.
+
+## Next three tasks (all need the owner)
+
+1. Approve integration (push branch → hosted CI → fast-forward dev/main).
+2. Decide on PDF résumé parsing in production (currently paste-only).
+3. Approve and perform the private deployment (M20 → M21 → M22 runbooks).
 
 ## Resume commands
 
