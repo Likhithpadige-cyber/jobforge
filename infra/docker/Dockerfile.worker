@@ -28,6 +28,10 @@ FROM base AS production
 COPY --chown=1000:1000 apps ./apps
 COPY --chown=1000:1000 packages ./packages
 COPY --chown=1000:1000 workers ./workers
+# Read-only: the schema guard compares the database with this release's
+# Alembic head before a worker consumes anything (never runs migrations).
+COPY --chown=1000:1000 migrations ./migrations
+COPY --chown=1000:1000 alembic.ini ./
 RUN useradd --create-home --uid 1000 app && chown -R app:app /app \
     && install -d -o app -g app -m 700 /var/lib/jobforge/artifacts
 # A new named volume mounted here inherits this ownership, so the

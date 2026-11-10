@@ -61,14 +61,14 @@ def test_generated_env_is_private_complete_and_dsn_safe(tmp_path: Path) -> None:
         assert not set(values[name]) & set(":@/?#%"), name
 
 
-def test_generated_env_is_accepted_by_settings_and_the_wrapper(tmp_path: Path) -> None:
+def test_generated_env_is_accepted_by_settings_and_the_wrapper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     target = tmp_path / "prod.env"
     prod_env.generate_env(target)
-    values = _parse(target)
-    settings = Settings(
-        _env_file=None,
-        **{k.lower(): v for k, v in values.items() if k != "JOBFORGE_PROD_ENVIRONMENT"},
-    )
+    for key, value in _parse(target).items():
+        monkeypatch.setenv(key, value)
+    settings = Settings(_env_file=None)
     assert all(c.ok for c in prod_env.config_checks(settings) if c.name != "artifact_backend")
     env = {k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "LANG", "TMPDIR")}
     result = subprocess.run(  # noqa: S603 - our own script
@@ -87,6 +87,20 @@ def test_generated_env_is_accepted_by_settings_and_the_wrapper(tmp_path: Path) -
     )
     # Every wrapper validation passed; only docker (pointed nowhere) failed.
     assert "refusing" not in result.stderr, result.stderr
+
+
+def test_generated_env_loads_through_pydantic_settings_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (found in the M20 rehearsal): values must parse exactly as
+    the containers read them - from environment variables, not kwargs."""
+    target = tmp_path / "prod.env"
+    prod_env.generate_env(target)
+    for key, value in _parse(target).items():
+        monkeypatch.setenv(key, value)
+    settings = Settings(_env_file=None)
+    assert settings.cors_origins == ["http://127.0.0.1:8480"]
+    assert settings.environment.value == "production"
 
 
 def test_generate_env_refuses_unsafe_destinations(tmp_path: Path) -> None:
@@ -181,4 +195,4 @@ def test_preflight_cli_fails_without_tracebacks_or_values(
         get_settings.cache_clear()
     out = capsys.readouterr()
     assert "Traceback" not in out.err and "CANARY-PREFLIGHT" not in out.out + out.err
-    assert "totp_encryption_key" in out.err
+    assert "preflight failed: invalid configuration" in out.err and "totp_encryption_key" in out.err

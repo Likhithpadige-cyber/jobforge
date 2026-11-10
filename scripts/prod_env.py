@@ -66,7 +66,9 @@ def generate_env(path: Path) -> list[str]:
         "REDIS_PASSWORD": _secret(),
         "SESSION_SECRET": secrets.token_urlsafe(48),
         "TOTP_ENCRYPTION_KEY": base64.b64encode(secrets.token_bytes(32)).decode(),
-        "CORS_ORIGINS": "http://127.0.0.1:8480",
+        # JSON: pydantic-settings decodes list settings from the environment as
+        # JSON before any validator runs; a bare URL fails startup.
+        "CORS_ORIGINS": json.dumps(["http://127.0.0.1:8480"]),
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -379,9 +381,9 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(exc, ValidationError):
             # Settings hide their input, so the messages name settings only.
             reasons = "; ".join(e["msg"] for e in exc.errors(include_input=False))
-            print(f"preflight failed: invalid configuration: {reasons}", file=sys.stderr)
+            print(f"{args.command} failed: invalid configuration: {reasons}", file=sys.stderr)
         else:
-            print(f"preflight failed before checks: {type(exc).__name__}", file=sys.stderr)
+            print(f"{args.command} failed: {type(exc).__name__}", file=sys.stderr)
         return 1
     failed = [c for c in checks if not c.ok and c.fatal]
     print(json.dumps({"ok": not failed, "checks": [asdict(c) for c in checks]}, indent=2))
