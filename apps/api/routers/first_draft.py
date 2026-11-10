@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 
@@ -17,11 +17,17 @@ from apps.api.deps import (
     require_owner,
 )
 from packages.core.cache.rate_limit import Limit
-from packages.core.models import Event, ProcessedEvent, Resume
+from packages.core.models import Event, ProcessedEvent, Profile, Resume
 from packages.core.services.first_draft import request_first_draft
 from packages.core.services.master_resume import MasterResumeData, import_master
+from packages.core.services.resume_text_extraction import (
+    DOCX_MIME,
+    MAX_DOCX_BYTES,
+    ExtractionError,
+    extract_docx_text,
+)
 from packages.shared.config import Settings
-from packages.shared.errors import NotFoundError
+from packages.shared.errors import NotFoundError, ValidationError
 
 router = APIRouter(tags=["first-draft"], dependencies=[Depends(authenticated_api)])
 
@@ -31,6 +37,14 @@ def first_draft_limit(settings: Settings) -> Limit:
         "first-draft",
         settings.rate_limit_revision_per_user,
         settings.rate_limit_revision_window_seconds,
+    )
+
+
+def resume_extract_limit(settings: Settings) -> Limit:
+    return Limit(
+        "resume-extract",
+        settings.rate_limit_import_per_user,
+        settings.rate_limit_import_window_seconds,
     )
 
 
@@ -67,6 +81,39 @@ async def latest_master_resume(
         "created_at": resume.created_at.isoformat(),
         "source_label": content.get("source_label"),
     }
+
+
+@router.post(
+    "/profiles/{profile_id}/master-resumes/extract-text",
+    dependencies=[Depends(rate_limited(resume_extract_limit))],
+)
+async def extract_master_resume_text(
+    profile_id: UUID,
+    request: Request,
+    session: DbSession,
+    _owner: RequireOwner,
+    _csrf: CsrfProtected,
+) -> dict[str, object]:
+    """Owner-only: plain text from a DOCX for the editable import preview.
+
+    Stores nothing. The body is the raw .docx (Content-Type DOCX); size and
+    archive limits are enforced before parsing. PDF is not accepted here.
+    """
+    if await session.get(Profile, profile_id) is None:
+        raise NotFoundError("profile not found")
+    content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type != DOCX_MIME:
+        raise ValidationError("only .docx files can be read here; paste PDF text instead")
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_DOCX_BYTES:
+        raise ExtractionError("the file is larger than 2 MB")
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_DOCX_BYTES:
+            raise ExtractionError("the file is larger than 2 MB")
+    text = extract_docx_text(bytes(body))
+    return {"text": text, "lines": text.count("\n") + 1, "source": "docx"}
 
 
 @router.post("/profiles/{profile_id}/master-resumes", status_code=201)

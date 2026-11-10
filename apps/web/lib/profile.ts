@@ -21,6 +21,8 @@ const send = (method: string, body?: unknown): RequestInit => ({
 });
 
 // ----------------------------------------------------------------- profile
+
+export const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 export interface Profile {
   id: string;
   full_name: string;
@@ -163,6 +165,13 @@ export const profile = {
     apiRequest<{ resume_id: string; profile_id: string; version: number; kind: string }>(
       `${env.apiPrefix}/profiles/${profileId}/master-resumes`,
       send("POST", data),
+    ),
+
+  /** Owner-only: plain text from a .docx for the editable preview. Stores nothing. */
+  extractDocxText: (profileId: string, file: Blob) =>
+    apiRequest<{ text: string; lines: number; source: "docx" }>(
+      `${env.apiPrefix}/profiles/${profileId}/master-resumes/extract-text`,
+      { method: "POST", headers: { "Content-Type": DOCX_MIME }, body: file },
     ),
 
   facts: (status?: FactStatus) =>

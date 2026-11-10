@@ -48,11 +48,35 @@ describe("MasterResumeImport", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview lines" }));
   }
 
-  it("refuses files other than plain text", async () => {
+  it("refuses PDF and other files with paste guidance", async () => {
+    const spy = vi.spyOn(profile, "extractDocxText");
     render(<MasterResumeImport profileId="p1" onSaved={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Import master resume" }));
-    fireEvent.change(screen.getByLabelText(/open a text file/), { target: { files: [new File(["x"], "resume.pdf")] } });
-    expect(await screen.findByRole("alert")).toHaveTextContent(/Only .txt or .md/);
+    fireEvent.change(screen.getByLabelText(/Or open a file/), { target: { files: [new File(["x"], "resume.pdf")] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(/For a PDF, copy its text and paste it/);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("reads a .docx through the API into the editable text, saving nothing", async () => {
+    const extract = vi.spyOn(profile, "extractDocxText").mockResolvedValue({ text: "Jordan Example\n## Experience\n- Ran Linux hosts.", lines: 3, source: "docx" });
+    const save = vi.spyOn(profile, "importMasterResume");
+    render(<MasterResumeImport profileId="p1" onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Import master resume" }));
+    const file = new File(["PK"], "resume.docx");
+    fireEvent.change(screen.getByLabelText(/Or open a file/), { target: { files: [file] } });
+    await waitFor(() => expect(screen.getByLabelText("Resume text")).toHaveValue("Jordan Example\n## Experience\n- Ran Linux hosts."));
+    expect(extract).toHaveBeenCalledWith("p1", file);
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Preview lines" }));
+    expect(screen.getByLabelText("Text of line 2")).toHaveValue("Ran Linux hosts.");
+  });
+
+  it("shows the server's reason when a .docx cannot be read", async () => {
+    vi.spyOn(profile, "extractDocxText").mockRejectedValue(new ApiError("x", 422, { detail: "the document is compressed suspiciously well" }));
+    render(<MasterResumeImport profileId="p1" onSaved={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Import master resume" }));
+    fireEvent.change(screen.getByLabelText(/Or open a file/), { target: { files: [new File(["PK"], "resume.docx")] } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("compressed suspiciously");
   });
 
   it("lets the owner correct sections, edit and remove lines before saving", async () => {

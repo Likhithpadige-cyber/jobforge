@@ -8,7 +8,9 @@
  * only when the owner confirms. Saving stores the reviewed lines through
  * POST /profiles/{id}/master-resumes, which never verifies anything: these
  * lines are not evidence until individual facts are verified in Profile &
- * Facts. PDF/DOCX text extraction is not offered here.
+ * Facts. A .docx is converted to text by the API (stored nowhere) and lands
+ * in the same editable preview. PDF extraction is not offered: no PDF parser
+ * ships in the production image (owner decision pending).
  */
 
 import { useState } from "react";
@@ -16,6 +18,7 @@ import { apiErrorText } from "@/lib/api";
 import { profile as profileApi, type MasterSectionName } from "@/lib/profile";
 
 export const MAX_MASTER_BYTES = 200_000;
+export const MAX_DOCX_BYTES = 2_000_000;
 export const SECTION_NAMES: MasterSectionName[] = [
   "summary",
   "experience",
@@ -94,7 +97,19 @@ export function MasterResumeImport({ profileId, onSaved }: { profileId: string; 
   async function readFile(file: File | undefined) {
     setProblem(null);
     if (!file) return;
-    if (!/\.(txt|md)$/i.test(file.name)) return setProblem("Only .txt or .md files can be read here. Copy the text of a PDF or DOCX and paste it instead.");
+    if (/\.docx$/i.test(file.name)) {
+      if (file.size > MAX_DOCX_BYTES) return setProblem("The .docx file is larger than 2 MB.");
+      try {
+        // Server-side extraction (python-docx); nothing is stored until Save.
+        const result = await profileApi.extractDocxText(profileId, file);
+        setText(result.text);
+        setLabel(file.name);
+      } catch (cause) {
+        setProblem(apiErrorText(cause, "The .docx file could not be read."));
+      }
+      return;
+    }
+    if (!/\.(txt|md)$/i.test(file.name)) return setProblem("Only .docx, .txt or .md files can be read here. For a PDF, copy its text and paste it.");
     if (file.size > MAX_MASTER_BYTES) return setProblem("The file is larger than 200 KB.");
     setText(await file.text());
     setLabel(file.name);
@@ -139,7 +154,7 @@ export function MasterResumeImport({ profileId, onSaved }: { profileId: string; 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="master-import-heading" className="text-base font-semibold text-ink">Master resume</h2>
-          <p className="mt-1 text-sm text-ink-soft">Paste your resume text or open a .txt/.md file, review the lines, then save.</p>
+          <p className="mt-1 text-sm text-ink-soft">Paste your resume text or open a .docx, .txt or .md file, review the lines, then save.</p>
         </div>
         <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`${BUTTON} bg-surface text-ink`}>
           {open ? "Close" : "Import master resume"}
@@ -152,8 +167,8 @@ export function MasterResumeImport({ profileId, onSaved }: { profileId: string; 
             <textarea className="mt-1 min-h-48 w-full rounded-chip border border-edge bg-surface px-3 py-2 text-sm text-ink" value={text} onChange={(e) => setText(e.target.value)} />
           </label>
           <label className="block text-sm text-ink">
-            Or open a text file (.txt or .md, up to 200 KB)
-            <input className="mt-1 block text-sm" type="file" accept=".txt,.md,text/plain,text/markdown" onChange={(e) => void readFile(e.target.files?.[0])} />
+            Or open a file (.docx up to 2 MB, or .txt/.md up to 200 KB)
+            <input className="mt-1 block text-sm" type="file" accept=".docx,.txt,.md,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => void readFile(e.target.files?.[0])} />
           </label>
           <button type="button" onClick={buildPreview} className={`${BUTTON} bg-surface text-ink`}>Preview lines</button>
           {preview && (
