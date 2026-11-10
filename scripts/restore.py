@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -62,30 +63,46 @@ def _wait_healthy(cid: str, seconds: int = 180) -> None:
     raise BackupError("a service did not become healthy in time")
 
 
-def _pipe_decrypted(bundle: Path, name: str, private: Any, argv: list[str], expected: str) -> None:
-    """Decrypt into a consumer's stdin; authenticate and hash-check it all."""
-    # stderr is discarded, not piped: an unread pipe can deadlock a chatty
-    # pg_restore, and its messages may quote restored data rows.
-    proc = subprocess.Popen(  # noqa: S603 - fixed argv built here
-        argv,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    assert proc.stdin is not None
-    digest = hashlib.sha256()
-    try:
-        with (bundle / f"{name}.jfenc").open("rb") as fh:
-            for chunk in bc.decrypt_stream(fh, private):
-                digest.update(chunk)
-                proc.stdin.write(chunk)
-    finally:
-        proc.stdin.close()
-        proc.wait()
-    if digest.hexdigest() != expected:
-        raise BackupError(f"{name}: decrypted content does not match the manifest")
-    if proc.returncode != 0:
-        raise BackupError(f"{name}: restore command failed ({proc.returncode})")
+def _pipe_decrypted(
+    bundle: Path,
+    name: str,
+    private: Any,
+    argv: list[str],
+    expected: str,
+    *,
+    env: dict[str, str],
+    diagnose: bool = False,
+) -> None:
+    """Decrypt into a consumer's stdin; authenticate and hash-check it all.
+
+    Consumer stderr goes to a private temporary file, never a pipe (an unread
+    pipe can deadlock a chatty pg_restore). Only for `diagnose` steps (tar of
+    artifact paths) is its last line reported; database tools' messages can
+    quote restored rows and are never shown.
+    """
+    with tempfile.TemporaryFile() as errors:
+        proc = subprocess.Popen(  # noqa: S603 - fixed argv built here
+            argv, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=errors, env=env
+        )
+        assert proc.stdin is not None
+        digest = hashlib.sha256()
+        try:
+            with (bundle / f"{name}.jfenc").open("rb") as fh:
+                for chunk in bc.decrypt_stream(fh, private):
+                    digest.update(chunk)
+                    proc.stdin.write(chunk)
+        finally:
+            proc.stdin.close()
+            proc.wait()
+        if digest.hexdigest() != expected:
+            raise BackupError(f"{name}: decrypted content does not match the manifest")
+        if proc.returncode != 0:
+            detail = ""
+            if diagnose:
+                errors.seek(0)
+                lines = errors.read().decode(errors="replace").strip().splitlines()
+                detail = f": {lines[-1][:200]}" if lines else ""
+            raise BackupError(f"{name}: restore command failed ({proc.returncode}){detail}")
 
 
 def _refuse_existing(project: str) -> None:
@@ -139,6 +156,7 @@ def restore(
             'psql -q -v ON_ERROR_STOP=0 -U "$POSTGRES_USER" -d postgres',
         ],
         files["globals.sql"]["plaintext_sha256"],
+        env=env,
     )
     # The roles dump carries the SOURCE owner's password; restore the target's.
     _run(
@@ -167,7 +185,10 @@ def restore(
             'pg_restore --exit-on-error -U "$POSTGRES_USER" -d "$POSTGRES_DB"',
         ],
         files["database.dump"]["plaintext_sha256"],
+        env=env,
     )
+    # Create the api service's container/volume once before streaming into it.
+    _run([*compose, "run", "--rm", "--no-deps", "-T", "--entrypoint", "true", "api"], env=env)
     _pipe_decrypted(
         bundle,
         "artifacts.tar",
@@ -187,6 +208,8 @@ def restore(
             "-",
         ],
         files["artifacts.tar"]["plaintext_sha256"],
+        env=env,
+        diagnose=True,
     )
     _run(
         [

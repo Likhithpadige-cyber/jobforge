@@ -204,3 +204,16 @@ def test_preflight_cli_fails_without_tracebacks_or_values() -> None:
     assert "Traceback" not in out and "CANARY-PREFLIGHT" not in out
     assert "preflight failed: invalid configuration" in result.stderr
     assert "totp_encryption_key" in result.stderr
+
+
+def test_undecryptable_totp_secrets_detects_a_key_mismatch() -> None:
+    """Regression from the M21 drill: restoring with a different
+    TOTP_ENCRYPTION_KEY must fail preflight instead of locking the owner out."""
+    from packages.core.crypto import encrypt_totp_secret, generate_encryption_key
+
+    source_key, other_key = generate_encryption_key(), generate_encryption_key()
+    blobs = [encrypt_totp_secret("JBSWY3DPEHPK3PXP", source_key) for _ in range(2)]
+    assert prod_env.undecryptable_totp_secrets(blobs, source_key) == 0
+    assert prod_env.undecryptable_totp_secrets(blobs, other_key) == 2
+    assert prod_env.undecryptable_totp_secrets([b"garbage"], source_key) == 1
+    assert prod_env.undecryptable_totp_secrets(blobs, "") == 2  # no key: fails closed

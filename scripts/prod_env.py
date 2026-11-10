@@ -154,8 +154,28 @@ def artifact_root_checks(root: Path) -> list[Check]:
     ]
 
 
+def undecryptable_totp_secrets(blobs: list[bytes], key: str) -> int:
+    """How many stored TOTP secrets the configured key cannot decrypt.
+    Nothing decrypted is kept, returned or printed."""
+    from packages.core.crypto import DecryptionError, decrypt_totp_secret
+    from packages.core.crypto.totp_secret import MissingEncryptionKeyError
+
+    bad = 0
+    for blob in blobs:
+        try:
+            decrypt_totp_secret(blob, key)
+        except (DecryptionError, MissingEncryptionKeyError):  # no usable key: fail closed
+            bad += 1
+    return bad
+
+
 async def database_checks(
-    engine: Any, *, expected_db: str, expected_role: str, bootstrap: bool
+    engine: Any,
+    *,
+    expected_db: str,
+    expected_role: str,
+    bootstrap: bool,
+    totp_key: str = "",
 ) -> list[Check]:
     from sqlalchemy import text
 
@@ -202,6 +222,26 @@ async def database_checks(
             text(
                 "SELECT count(*) FROM users WHERE role = 'owner' AND password_hash IS NOT NULL "
                 "AND totp_secret_enc IS NOT NULL"
+            )
+        )
+        # A restore with a different TOTP_ENCRYPTION_KEY would leave every
+        # owner unable to sign in (found in the M21 restore drill).
+        blobs = list(
+            (
+                await conn.execute(
+                    text(
+                        "SELECT totp_secret_enc FROM users "
+                        "WHERE role = 'owner' AND totp_secret_enc IS NOT NULL"
+                    )
+                )
+            ).scalars()
+        )
+        bad = undecryptable_totp_secrets(blobs, totp_key) if blobs else 0
+        out.append(
+            Check(
+                "owner_totp_decryptable",
+                bad == 0,
+                f"{len(blobs) - bad}/{len(blobs)} owner TOTP secrets open with the configured key",
             )
         )
         out.append(
@@ -296,7 +336,11 @@ async def preflight(*, bootstrap: bool) -> list[Check]:
     engine = create_async_engine(str(settings.database_url), connect_args={"timeout": 5})
     try:
         checks += await database_checks(
-            engine, expected_db=PROD_DATABASE, expected_role="app_api", bootstrap=bootstrap
+            engine,
+            expected_db=PROD_DATABASE,
+            expected_role="app_api",
+            bootstrap=bootstrap,
+            totp_key=settings.totp_encryption_key,
         )
         if root.is_dir():
             checks += await artifact_integrity_checks(engine, root)
