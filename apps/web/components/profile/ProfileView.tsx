@@ -16,6 +16,7 @@ import {
 } from "@/lib/profile";
 import { reviewError, type ReviewError } from "@/lib/review";
 import { FactsPanel } from "./FactsPanel";
+import { MasterResumeImport } from "./MasterResumeImport";
 
 /**
  * The candidate profile and the facts everything generated must cite.
@@ -112,6 +113,16 @@ export function ProfileView() {
           />
         ))}
       </div>
+
+      {isOwner && (
+        <MasterResumeImport
+          profileId={detail.id}
+          onSaved={(message) => {
+            setNotice(message);
+            setFactsVersion((value) => value + 1);
+          }}
+        />
+      )}
 
       <FactsPanel isOwner={isOwner} reloadKey={factsVersion} />
     </div>

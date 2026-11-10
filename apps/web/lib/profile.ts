@@ -152,6 +152,13 @@ export const profile = {
   get: () => apiRequest<ProfileDetail>(base()),
   update: (input: ProfileInput, version: number) => apiRequest<Profile>(base(), send("PUT", { ...input, version })),
 
+  /** POST /api/v1/profiles/{id}/master-resumes — owner-reviewed lines; never verifies facts. */
+  importMasterResume: (profileId: string, data: MasterResumeData) =>
+    apiRequest<{ resume_id: string; profile_id: string; version: number; kind: string }>(
+      `${env.apiPrefix}/profiles/${profileId}/master-resumes`,
+      send("POST", data),
+    ),
+
   facts: (status?: FactStatus) =>
     apiRequest<Fact[]>(`${facts()}${status ? `?status=${encodeURIComponent(status)}` : ""}`),
   factSummary: () => apiRequest<FactSummary>(`${facts()}/summary`),
@@ -174,3 +181,13 @@ export const profile = {
   setSubmissionEnabled: (enabled: boolean) =>
     apiRequest<{ submission_enabled: boolean }>(`${env.apiPrefix}/settings/submission-enabled`, send("PUT", { enabled })),
 };
+
+/** Sections accepted by the master resume import (MasterSection.name). */
+export type MasterSectionName = "summary" | "experience" | "skills" | "projects" | "education" | "certifications";
+
+/** Body of POST /profiles/{id}/master-resumes (MasterResumeData, schema_version 1). */
+export interface MasterResumeData {
+  schema_version: 1;
+  source_label: string;
+  sections: { name: MasterSectionName; entries: { text: string; fact_ids?: string[] }[] }[];
+}
