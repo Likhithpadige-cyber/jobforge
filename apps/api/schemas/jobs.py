@@ -32,6 +32,22 @@ class ImportRequest(StrictModel):
     max_age_days: int = Field(default=60, ge=1, le=365)
 
 
+class ManualPostingRequest(StrictModel):
+    """One posting the signed-in owner typed or pasted.
+
+    Nothing here is fetched. The link is stored as the posting's identity for
+    de-duplication and shown back to the owner; JobForge never requests it.
+    That is why this path is exempt from domain site policies, which govern
+    automated fetching, crawling and external connectors.
+    """
+
+    title: Annotated[str, Field(min_length=1, max_length=300)]
+    company_name: Annotated[str, Field(min_length=1, max_length=300)]
+    url: Annotated[str, Field(min_length=10, max_length=2048, pattern=r"^https?://[^\s]+$")]
+    location: Annotated[str | None, Field(max_length=300)] = None
+    description: Annotated[str, Field(min_length=40, max_length=50_000)]
+
+
 class OutcomeRead(BaseModel):
     url: str
     result: str

@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import cast
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from packages.agents.resume_optimizer.requirements import extract_requirements
@@ -42,6 +43,13 @@ from packages.shared.ids import uuid7
 from packages.shared.logging import get_logger
 
 log = get_logger(__name__)
+
+#: The one internal source for postings the signed-in owner typed or pasted.
+#: Nothing under it is ever fetched, so domain site policies (which govern
+#: automated fetching, crawling and connectors) do not apply to it. It can
+#: only be reached through `IngestionPipeline.ingest_owner_pasted`.
+OWNER_PASTED_SLUG = "owner-pasted"
+OWNER_PASTED_DOMAIN = "owner-pasted.jobforge.invalid"
 
 
 def snapshot_policy(policy_row: object | None, domain: str) -> PolicySnapshot:
@@ -94,8 +102,19 @@ class IngestionPipeline:
 
     # ---------------------------------------------------------- one item
     async def ingest_one(
-        self, source: Source, raw: RawPosting, *, max_age_days: int = 60
+        self,
+        source: Source,
+        raw: RawPosting,
+        *,
+        max_age_days: int = 60,
+        owner_provided: bool = False,
     ) -> IngestOutcome:
+        if owner_provided and (
+            source.slug != OWNER_PASTED_SLUG or source.domain != OWNER_PASTED_DOMAIN
+        ):
+            # The policy exemption belongs to the owner-pasted source only; it
+            # is never a general switch another caller can flip.
+            raise ValidationError("owner-provided ingestion requires the owner-pasted source")
         try:
             normalized = normalize_job(
                 title=raw.title,
@@ -121,7 +140,7 @@ class IngestionPipeline:
 
         # A posting whose apply URL leaves the reviewed domain is not ingested.
         posting_domain = extract_domain(normalized.url)
-        if posting_domain and posting_domain != source.domain:
+        if not owner_provided and posting_domain and posting_domain != source.domain:
             policy_row = await self.policies.get_by_domain(posting_domain)
             verdict = evaluate_ingestion(
                 snapshot_policy(policy_row, posting_domain), source.ingestion_method
@@ -240,6 +259,53 @@ class IngestionPipeline:
         return job
 
     # --------------------------------------------------------- batch
+    async def owner_pasted_source(self) -> Source:
+        """The internal owner-pasted source, created on first use."""
+        source = await self.sources.get_by_slug(OWNER_PASTED_SLUG)
+        if source is None:
+            source = Source(
+                id=uuid7(),
+                name="Pasted by owner",
+                slug=OWNER_PASTED_SLUG,
+                domain=OWNER_PASTED_DOMAIN,
+                ingestion_method=IngestionMethod.MANUAL_IMPORT,
+                config={"owner_provided": True, "fetches": False},
+                enabled=True,
+            )
+            try:
+                async with self.session.begin_nested():
+                    self.session.add(source)
+            except IntegrityError:
+                # A concurrent first use created it; use that row.
+                source = await self.sources.get_by_slug(OWNER_PASTED_SLUG)
+                if source is None:
+                    raise
+        if (
+            source.domain != OWNER_PASTED_DOMAIN
+            or source.ingestion_method is not IngestionMethod.MANUAL_IMPORT
+            or not source.enabled
+        ):
+            raise ValidationError("the owner-pasted source is misconfigured")
+        return source
+
+    async def ingest_owner_pasted(self, raw: RawPosting, *, max_age_days: int = 60) -> IngestReport:
+        """Record one posting the signed-in owner supplied verbatim.
+
+        Exempt from domain site policies because nothing is fetched: the
+        title, company, description and link all come from the owner, and the
+        link is stored only as the posting's identity. Normalisation,
+        staleness, de-duplication, deterministic requirement extraction and
+        the normal events still apply. Automated connectors, crawling and
+        `ingest_batch` keep full policy enforcement.
+        """
+        source = await self.owner_pasted_source()
+        report = IngestReport(source_slug=OWNER_PASTED_SLUG)
+        report.record(
+            await self.ingest_one(source, raw, max_age_days=max_age_days, owner_provided=True)
+        )
+        log.info("ingestion.owner_pasted", created=report.created, rejected=report.rejected)
+        return report
+
     async def ingest_batch(
         self, source_slug: str, postings: list[RawPosting], *, max_age_days: int = 60
     ) -> IngestReport:

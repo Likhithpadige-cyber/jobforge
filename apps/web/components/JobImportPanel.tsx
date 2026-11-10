@@ -52,16 +52,16 @@ export function validatePosting(posting: PastedPosting): string[] {
   return problems;
 }
 
-/** The one-item JSON body the server's manual JSON parser accepts. */
-export function postingToJson(posting: PastedPosting): string {
-  const row: Record<string, string> = {
+/** Body for POST /jobs/manual: exactly what the owner typed, trimmed. */
+export function pastedRequest(posting: PastedPosting) {
+  const body: { title: string; company_name: string; url: string; description: string; location?: string } = {
     title: posting.title.trim(),
     company_name: posting.company.trim(),
     url: posting.url.trim(),
     description: posting.description.trim(),
   };
-  if (posting.location.trim()) row.location = posting.location.trim();
-  return JSON.stringify([row]);
+  if (posting.location.trim()) body.location = posting.location.trim();
+  return body;
 }
 
 export function fileFormat(name: string): "csv" | "json" | null {
@@ -99,12 +99,11 @@ export function JobImportPanel({
   async function submit() {
     setResult(null);
     const found: string[] = [];
-    if (!slug) found.push("No enabled job source is available to record this import against.");
+    if (mode === "file" && !slug) found.push("No enabled job source is available to record this import against.");
     let format: "csv" | "json" = "json";
-    let content = "";
+
     if (mode === "paste") {
       found.push(...validatePosting(posting));
-      content = postingToJson(posting);
     } else if (!file) {
       found.push("Choose a .csv or .json file.");
     } else {
@@ -118,8 +117,10 @@ export function JobImportPanel({
     if (found.length) return;
     setBusy(true);
     try {
-      if (mode === "file" && file) content = await file.text();
-      const response = await api.importJobs({ source_slug: slug, format, content });
+      const response =
+        mode === "paste"
+          ? await api.importPastedJob(pastedRequest(posting))
+          : await api.importJobs({ source_slug: slug, format, content: file ? await file.text() : "" });
       setResult(response);
       if (response.created || response.updated) {
         if (mode === "paste") setPosting(EMPTY);
@@ -131,8 +132,8 @@ export function JobImportPanel({
         /site.?polic/i.test(text)
           ? [
               text,
-              "JobForge only records postings from domains with a reviewed site policy that permits manual import. " +
-                "No such policy covers this link's domain yet.",
+              "Bulk files are only accepted from domains with a reviewed site policy that permits manual import. " +
+                "To add a single posting you have open, paste it instead - pasted postings are never fetched.",
             ]
           : [text],
       );
@@ -152,7 +153,7 @@ export function JobImportPanel({
             Add a job
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Paste a posting or upload a CSV/JSON export. JobForge never visits the link.
+            Paste a posting you have open, or upload a CSV/JSON export. JobForge never visits the link.
           </p>
         </div>
         <button
@@ -187,7 +188,7 @@ export function JobImportPanel({
             </label>
           </fieldset>
 
-          {enabled.length > 1 && (
+          {mode === "file" && enabled.length > 1 && (
             <label className="block text-sm text-ink">
               Source
               <select className={`${FIELD} mt-1`} value={slug} onChange={(e) => setSourceSlug(e.target.value)}>

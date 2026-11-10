@@ -7,6 +7,7 @@ still applies to the source and to each posting's domain.
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -26,6 +27,8 @@ from apps.api.schemas.jobs import (
     JobDetail,
     JobRead,
     JobStatusCounts,
+    ManualPostingRequest,
+    OutcomeRead,
     SourceCreate,
     SourceRead,
 )
@@ -37,7 +40,24 @@ from packages.core.repositories import (
 )
 from packages.services.ingestion import IngestionPipeline
 from packages.services.ingestion.connectors import parse_csv, parse_json
+from packages.services.ingestion.pipeline import OWNER_PASTED_DOMAIN, OWNER_PASTED_SLUG
+from packages.services.ingestion.types import IngestReport, RawPosting
 from packages.shared.errors import NotFoundError, ValidationError
+
+
+def _import_response(report: IngestReport) -> ImportResponse:
+    """Serialise a pipeline report. Outcomes are dataclasses, so each is
+    converted explicitly rather than handed to the model as-is."""
+    return ImportResponse(
+        source_slug=report.source_slug,
+        total=report.total,
+        created=report.created,
+        duplicates=report.duplicates,
+        updated=report.updated,
+        rejected=report.rejected,
+        outcomes=[OutcomeRead.model_validate(asdict(o)) for o in report.outcomes],
+    )
+
 
 router = APIRouter(prefix="/jobs", tags=["jobs"], dependencies=[Depends(authenticated_api)])
 sources_router = APIRouter(
@@ -61,15 +81,32 @@ async def import_jobs(payload: ImportRequest, session: DbSession) -> Any:
         payload.source_slug, postings, max_age_days=payload.max_age_days
     )
     await session.commit()
-    return ImportResponse(
-        source_slug=report.source_slug,
-        total=report.total,
-        created=report.created,
-        duplicates=report.duplicates,
-        updated=report.updated,
-        rejected=report.rejected,
-        outcomes=report.outcomes,
+    return _import_response(report)
+
+
+@router.post(
+    "/manual",
+    response_model=ImportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Record one posting pasted by the owner (nothing is fetched)",
+    dependencies=[Depends(require_owner), Depends(rate_limited(import_limit))],
+)
+async def import_owner_pasted(payload: ManualPostingRequest, session: DbSession) -> Any:
+    """Owner-supplied text only; exempt from site policies because no request
+    is ever made to the posting's link. Bulk CSV/JSON imports and every
+    automated connector stay subject to site policies."""
+    pipeline = IngestionPipeline(session)
+    report = await pipeline.ingest_owner_pasted(
+        RawPosting(
+            title=payload.title.strip(),
+            url=payload.url.strip(),
+            company_name=payload.company_name.strip(),
+            location=(payload.location or "").strip() or None,
+            description=payload.description.strip(),
+        )
     )
+    await session.commit()
+    return _import_response(report)
 
 
 @router.get("", response_model=list[JobRead], summary="List jobs")
@@ -141,6 +178,9 @@ async def list_sources(session: DbSession) -> Any:
 )
 async def create_source(payload: SourceCreate, session: DbSession) -> Any:
     repo = SourceRepository(session)
+    if payload.slug == OWNER_PASTED_SLUG or payload.domain == OWNER_PASTED_DOMAIN:
+        # Reserved for owner-pasted postings, created internally on first use.
+        raise ValidationError(f"source {payload.slug!r} is reserved")
     if await repo.get_by_slug(payload.slug) is not None:
         raise ValidationError(f"source {payload.slug!r} already exists")
     # `enabled` is deliberately not settable here. A source is switched on

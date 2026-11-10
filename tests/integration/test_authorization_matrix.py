@@ -309,6 +309,7 @@ OWNER_ONLY = frozenset(
         ("POST", "/api/v1/profile/facts/{fact_id}/retire"),
         ("POST", "/api/v1/profile/facts/{fact_id}/evidence"),
         ("POST", "/api/v1/jobs/import"),
+        ("POST", "/api/v1/jobs/manual"),
         ("GET", "/api/v1/sources"),
         ("POST", "/api/v1/sources"),
         # M11 Phase 1. The persisted submission-dispatch switch: as

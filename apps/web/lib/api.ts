@@ -301,6 +301,18 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  /**
+   * POST /api/v1/jobs/manual — one posting the owner typed or pasted. Exempt
+   * from employer-domain site policies because nothing is ever fetched; bulk
+   * imports (`importJobs`) stay subject to them.
+   */
+  importPastedJob: (payload: PastedJobRequest) =>
+    request<ImportJobsResponse>(`${env.apiPrefix}/jobs/manual`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
+
   importJobs: (payload: ImportJobsRequest) =>
     request<ImportJobsResponse>(`${env.apiPrefix}/jobs/import`, {
       method: "POST",
@@ -590,4 +602,13 @@ export interface ApiArtifact {
   approval_id: string | null;
   template_version: string | null;
   created_at: string;
+}
+
+/** Body of POST /api/v1/jobs/manual (ManualPostingRequest). */
+export interface PastedJobRequest {
+  title: string;
+  company_name: string;
+  url: string;
+  location?: string;
+  description: string;
 }

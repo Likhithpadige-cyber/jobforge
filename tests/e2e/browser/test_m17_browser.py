@@ -23,22 +23,23 @@ DESCRIPTION = (
 )
 
 
-def test_owner_import_is_wired_and_surfaces_the_site_policy_refusal(owner: Page) -> None:
-    # The fictional demo's only site policy (demo-cloud.example) blocks
-    # ingestion, and unknown domains are blocked too. The panel must send the
-    # posting to the server and show the server's refusal - not a fake success.
+def test_owner_pastes_a_job_from_an_unreviewed_domain_and_opens_it(owner: Page) -> None:
+    # Owner-pasted postings are exempt from employer-domain site policies
+    # because nothing is fetched; the link's domain has no policy at all.
     run = uuid4().hex[:8]
+    title = f"E2E Pasted Role {run}"
     owner.goto("/job-feed")
     owner.get_by_role("button", name="Add a job").click()
     form = owner.locator("#job-import-form")
-    form.get_by_label("Job title").fill(f"E2E Imported Role {run}")
+    form.get_by_label("Job title").fill(title)
     form.get_by_label("Company").fill("E2E Synthetic Company")
-    form.get_by_label("Posting link").fill(f"https://demo-cloud.example/jobs/e2e-{run}")
+    form.get_by_label("Posting link").fill(f"https://careers.unreviewed.invalid/jobs/{run}")
     form.get_by_label("Job description").fill(DESCRIPTION)
     form.get_by_role("button", name="Import").click()
-    alert = form.get_by_role("alert")
-    expect(alert).to_contain_text(re.compile(r"site polic|blocked", re.I))
-    expect(owner.get_by_role("status")).to_have_count(0)
+    expect(owner.get_by_role("status")).to_contain_text("1 added")
+    owner.get_by_role("link", name="Open job").click()
+    expect(owner).to_have_url(re.compile(r"/job-feed/[0-9a-f-]{36}$"))
+    expect(owner.get_by_text(title).first).to_be_visible()
 
 
 def test_import_validation_and_reviewer_denial(owner: Page, reviewer: Page) -> None:
