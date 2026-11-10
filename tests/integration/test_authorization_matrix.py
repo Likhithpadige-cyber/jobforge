@@ -320,6 +320,8 @@ OWNER_ONLY = frozenset(
         # M11 Phase 2. Submitting an application is an external side-effecting
         # action with real-world consequences, owner-only.
         ("POST", "/api/v1/applications/{application_id}/submit"),
+        # M19. Tracking is the owner's own record of what happened next.
+        ("PATCH", "/api/v1/applications/{application_id}/tracking"),
     }
 )
 
@@ -362,6 +364,8 @@ OWNER_AND_REVIEWER = frozenset(
         # answers is shared review access, same as resume review above -
         # preparation itself (owner only) is in OWNER_ONLY.
         ("GET", "/api/v1/applications/{application_id}/questions"),
+        ("GET", "/api/v1/applications/{application_id}/tracking"),
+        ("GET", "/api/v1/follow-ups"),
         ("PATCH", "/api/v1/applications/{application_id}/answers/{answer_id}"),
         ("POST", "/api/v1/applications/{application_id}/package/approve"),
         ("POST", "/api/v1/applications/{application_id}/package/request-changes"),

@@ -13,7 +13,7 @@ docs/DATABASE_IMPLEMENTATION.md for why the CHECKs alone were not enough.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -118,6 +118,9 @@ class Application(TimestampMixin, UUIDPrimaryKeyMixin, Base):
     error_reason: Mapped[str | None] = mapped_column(Text)
     abandon_reason: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # M19 tracking (0011): owner-recorded, never written by agents.
+    applied_on: Mapped[date | None]
+    follow_up_on: Mapped[date | None]
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     job: Mapped[Job] = relationship(back_populates="application")
@@ -159,6 +162,15 @@ class Application(TimestampMixin, UUIDPrimaryKeyMixin, Base):
         ),
         Index("idx_applications_status", "status", sa_text("updated_at DESC")),
         Index("idx_applications_outcome", "outcome", sa_text("submitted_at DESC")),
+        CheckConstraint(
+            "outcome = 'pending' OR applied_on IS NOT NULL",
+            name="outcome_requires_applied",
+        ),
+        Index(
+            "idx_applications_follow_up",
+            "follow_up_on",
+            postgresql_where=sa_text("follow_up_on IS NOT NULL"),
+        ),
     )
 
 

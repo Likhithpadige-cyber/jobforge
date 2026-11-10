@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/components/AuthGuard";
 import { DashboardGreeting } from "@/components/DashboardGreeting";
+import { FollowUpsCard } from "@/components/dashboard/FollowUpsCard";
 import { Icon } from "@/components/Icon";
 import { PipelineTrack } from "@/components/PipelineTrack";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -169,6 +170,8 @@ export function Dashboard() {
           </div>
         </section>
       </div>
+
+      <FollowUpsCard />
     </div>
   );
 }

@@ -24,6 +24,7 @@ import {
 } from "@/lib/review";
 import { ReviewErrorState, ReviewLoading, SectionCard } from "./ReviewStates";
 import { PrepareQuestionsPanel } from "@/components/review/PrepareQuestionsPanel";
+import { TrackingPanel } from "@/components/tracking/TrackingPanel";
 
 interface Snapshot {
   readiness: SubmissionReadiness;
@@ -258,6 +259,10 @@ export function ApplicationWorkspace({ applicationId }: { applicationId: string 
           )}
         </SectionCard>
       </div>
+
+      <SectionCard title="Tracking">
+        <TrackingPanel applicationId={applicationId} />
+      </SectionCard>
 
       <SectionCard title="Waiting for a decision">
         {failed("decisions") ? (
