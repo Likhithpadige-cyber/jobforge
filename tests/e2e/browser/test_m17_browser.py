@@ -67,3 +67,30 @@ def test_import_validation_and_reviewer_denial(owner: Page, reviewer: Page) -> N
         headers={"Content-Type": "application/json", **csrf_headers(reviewer)},
     )
     assert response.status == 403
+
+
+def _seeded_submission_application(page: Page) -> str:
+    rows = page.request.get("/api/v1/applications?limit=200&offset=0").json()
+    matches = [
+        row["id"]
+        for row in rows
+        if row["job_title"] == "Platform Engineer" and row["status"] == "submission_ready"
+    ]
+    if not matches:
+        pytest.skip("the seeded submission demo is missing - run `make demo-seed`")
+    return sorted(matches)[0]
+
+
+def test_export_panel_lists_files_and_relays_the_ownership_refusal(owner: Page) -> None:
+    # The run's E2E owner does not own the candidate profile, so the
+    # contact-bearing PDF must be refused by the server and the refusal shown.
+    # (The profile owner's successful download is covered by API journeys
+    # and integration tests; this suite never signs in as the seeded owner.)
+    app_id = _seeded_submission_application(owner)
+    owner.goto(f"/resume-studio/{app_id}")
+    export = owner.locator("section", has=owner.get_by_role("heading", name="Export"))
+    download = export.get_by_role("button", name="Download PDF")
+    expect(download).to_be_visible()
+    download.click()
+    expect(export.get_by_role("alert")).to_contain_text("artifact not found")
+    expect(export.get_by_role("button", name="Download DOCX")).to_be_visible()
