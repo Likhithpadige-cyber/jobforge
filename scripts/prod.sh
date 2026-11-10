@@ -46,7 +46,9 @@ env_file=${JOBFORGE_PROD_ENV_FILE:-}
 [[ -f "$env_file" ]] || die "env file not found"
 env_file=$(cd "$(dirname "$env_file")" && pwd)/$(basename "$env_file")
 case "$env_file" in "$ROOT"/*) die "the env file must live outside the repository" ;; esac
-perm=$(stat -f '%Lp' "$env_file" 2>/dev/null || stat -c '%a' "$env_file")
+# GNU stat first: on Linux `stat -f` means *filesystem* status and succeeds
+# with unrelated output, so trying the BSD form first broke Linux (CI caught it).
+perm=$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")
 [[ "$perm" == "600" ]] || die "env file permissions must be 600 (are $perm)"
 
 value() { grep -E "^$1=" "$env_file" | tail -n1 | cut -d= -f2- || true; }
