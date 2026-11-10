@@ -288,7 +288,8 @@ FastAPI, versioned under `/api/v1`. All responses are envelope-free JSON with RF
 | `POST` | `/api/v1/applications/{id}/regenerate-resume` | New resume version |
 | `POST` | `/api/v1/applications/{id}/submit` | Only valid from `approved`; emits `submission.requested` |
 | `POST` | `/api/v1/applications/{id}/abandon` | Terminal stop with reason |
-| `PATCH` | `/api/v1/applications/{id}/outcome` | Record acknowledged/rejected/interview/offer |
+| `PATCH` | `/api/v1/applications/{id}/tracking` | Owner records outcome (acknowledged/interview/offer/rejected/...), applied date, follow-up date, notes (M19; built as `/tracking`, not `/outcome`) |
+| `GET` | `/api/v1/follow-ups` | Open applications with a follow-up due on or before `on + within_days` (M19) |
 | `GET` | `/api/v1/applications/{id}/packet` | Download human-handoff packet (zip) |
 
 ### 5.3 Resumes & documents

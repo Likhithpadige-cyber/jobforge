@@ -1,6 +1,6 @@
 # JobForge project state
 
-Updated: 2026-11-10 (second session, after the overnight run). Keep this short; it is the handover
+Updated: 2026-11-10 (third session: M17 completed, M19 started). Keep this short; it is the handover
 for the next session. Verified means executed in this session, not reported.
 
 ## Where things are
@@ -31,41 +31,54 @@ Evidence, runners and logs: `../jobforge-overnight-evidence/` (outside the repo)
   H3/source-repair tests pass (on b9031f6 they fail at import); offline
   evaluation 0 provider calls; frontend 386; Playwright 28/28.
 
-## M17 core workflow UI — in progress
+## M17 core workflow UI — complete (locally)
 
-Latest verification (branch tip, 2026-11-10, isolated services): backend
-3,554 passed / 0 skipped; safety 1,656; API E2E 6; main's 22 readiness 22/22;
-H3 regressions 100/100; offline eval 0 provider calls; frontend 391;
-Playwright 28/28 (plus the 3 M17 journeys run separately: 3/3).
+Latest verification: see "Verification" below.
 
-Done:
+- Owner-pasted job import (approved 2026-11-10): owner-only
+  `POST /jobs/manual` under the internal `owner-pasted` source, no
+  employer-domain policy because the link is never fetched. Bulk CSV/JSON
+  and connectors keep full site-policy enforcement.
+- Master résumé import from pasted text or .txt/.md, editable preview.
+- Résumé Studio export with a client-side SHA-256 check.
+- First-draft panel on the job page. `GET /settings/runtime-modes` drives
+  an explicit banner: **replay** = "demonstration only, live AI disabled"
+  (a draft exists only for recorded fixtures; a new job is refused by the
+  worker, nothing invented); **live** = "may be billable". Prerequisites
+  (profile, master résumé via `GET /profiles/{id}/master-resumes/latest`,
+  evaluation) are listed when missing. Reviewers see owner-only text.
+- Question preparation at `resume_ready`. The e2e fixture now builds a
+  run-unique synthetic application left at `resume_ready`. The demo runs no
+  application worker (it would also need an artifact store), so the browser
+  journey covers UI→API; the worker step is covered by an integration test
+  that rebuilds questions from the event payload.
+- Workspace shows "Questions have not been prepared yet" (not "0
+  questions") at `resume_ready`; the job page's fit-score notice no longer
+  claims the evaluation endpoint is missing (the score is just not shown).
 
-- Owner-pasted job import (approved decision, 2026-11-10): owner-only
-  `POST /jobs/manual` records one typed/pasted posting under the internal
-  `owner-pasted` source without an employer-domain site policy, because the
-  link is never fetched. Bulk CSV/JSON import and connectors keep full
-  site-policy enforcement; the exemption is refused for any other source and
-  the reserved source name cannot be registered. Also fixed: successful
-  `POST /jobs/import` responses previously raised a 500.
-- Master résumé import from pasted text or a .txt/.md file with an editable,
-  sectioned preview (`POST /profiles/{id}/master-resumes`); nothing verified.
+Still open: showing the fit score/matched requirements on the job page;
+PDF/DOCX text extraction for the master résumé; a browser download as the
+seeded profile owner (covered by API/integration tests).
 
-- Job Feed "Add a job": paste a posting or upload CSV/JSON via the existing
-  `POST /jobs/import`. Owner-only. The posting link is never fetched.
-- Resume Studio export: download the current version's PDF/DOCX through
-  `GET /artifacts/{id}/content`, with a client-side SHA-256 check.
-- Application workspace: owner enters the employer's questions (or "No
-  extra questions") at `resume_ready`; `POST /applications/{id}/prepare`
-  grounds answers offline.
-- Playwright: pasted import success, validation and reviewer denial, export
-  panel with the server's ownership refusal.
+## M19 application tracking — started (first slice done)
 
-Not done yet: first-draft trigger (needs live AI or recorded replay; must
-show an honest disabled/demo state); a browser journey for question
-preparation (no seeded application reaches `resume_ready`); a successful
-contact-bearing download in the browser (the suite never signs in as the
-seeded profile owner; covered by API/integration tests); PDF/DOCX text
-extraction for the master résumé; M19 tracking.
+- Migration `0011_application_tracking`: `applications.applied_on`,
+  `follow_up_on` (DATE); CHECK that an outcome beyond `pending` has an
+  applied date; partial index for follow-ups. Not in app_agent's grant.
+- Uses the existing orthogonal `outcome` enum (ARCHITECTURE §7.3):
+  pending (shown as "Applied" once dated), acknowledged, screening,
+  interviewing, offer, accepted, rejected, no_response, withdrawn.
+- `GET/PATCH /applications/{id}/tracking` (PATCH owner-only + CSRF; never
+  touches pipeline status or `submitted_at`; emits
+  `application.outcome.updated` with source "human" on outcome change);
+  `GET /follow-ups?on=&within_days=` (excludes accepted/rejected/withdrawn
+  and abandoned).
+- Web: Tracking card in the application workspace (reviewers read-only);
+  Follow-ups card on the dashboard (due now + next 7 days, browser date).
+
+Not built yet: tracking for jobs that have no application row; outcome
+filter/column in the applications list; automatic `no_response` aging;
+mailbox signals; reminders by email/notification.
 
 ## Outstanding blockers and decisions awaiting approval
 
@@ -84,18 +97,18 @@ extraction for the master résumé; M19 tracking.
 
 ## Next three tasks
 
-1. First-draft entry point with an honest replay/disabled state (no live AI).
-2. A deterministic `resume_ready` demo fixture, then a question-preparation
-   browser journey.
-3. M19 tracking: applied/interview/rejected/offer, follow-up date and notes,
-   due-follow-ups list.
+1. Approval to integrate `overnight/m16.6-m17` into `dev` (merge, then
+   hosted CI); nothing has been pushed.
+2. M19 next slice: outcome column/filter on the applications list and
+   tracking for applications recorded outside the pipeline.
+3. Show the stored deterministic fit score on the job page.
 
 ## Resume commands
 
 ```sh
 cd /Users/padige/Projects/jobforge-c3-design-review/jobforge-overnight
 git status && git log --oneline -5
-(cd apps/web && npx vitest run)                  # frontend, ~391 tests
+(cd apps/web && npx vitest run)                  # frontend, ~404 tests
 ../jobforge-overnight-evidence/sco.sh ps         # isolated demo (ports 55883/56883/8383)
 bash ../jobforge-overnight-evidence/run_full.sh  # full backend on throwaway services (55721/56721/9721)
 bash ../jobforge-overnight-evidence/run_targeted.sh tests/integration/test_owner_pasted_import.py  # targeted

@@ -377,6 +377,9 @@ CREATE TABLE applications (
   error_reason       TEXT,
   abandon_reason     TEXT,
   notes              TEXT,
+  applied_on         DATE,         -- M19 (0011): owner-recorded; distinct from submitted_at
+  follow_up_on       DATE,         -- M19 (0011): owner reminder; partial index when set
+  -- ck_applications_outcome_requires_applied: outcome = 'pending' OR applied_on IS NOT NULL
   version            INTEGER NOT NULL DEFAULT 1,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),

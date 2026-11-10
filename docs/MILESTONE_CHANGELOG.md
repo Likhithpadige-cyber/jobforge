@@ -2215,3 +2215,14 @@ with existing terminal-state reopening limits documented. Full backend 3,535,
 safety 1,642, API E2E 6, Playwright 26, frontend 366 and schema 12 pass.
 See the verification report and evidence-binding design. No live data repair,
 merge, push, deployment or SMTP behavior change was made.
+
+## M17 completion and M19 first slice (2026-11-10, local branch `overnight/m16.6-m17`)
+
+- M17: first-draft panel with explicit replay/live labelling
+  (`GET /settings/runtime-modes`, `GET /profiles/{id}/master-resumes/latest`);
+  run-unique `resume_ready` e2e fixture; question-preparation and replay-banner
+  browser journeys; worker payload round-trip integration test.
+- M19: migration 0011 (`applied_on`, `follow_up_on`, outcome-requires-applied
+  CHECK); `GET/PATCH /applications/{id}/tracking`, `GET /follow-ups`; Tracking
+  card and dashboard Follow-ups card; integration, unit and browser tests.
+- No live AI, no push, no merge into shared branches, no deployment.

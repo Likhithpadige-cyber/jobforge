@@ -68,6 +68,7 @@ UP_SQL = SqlFiles(
     "0008_artifact_binding.up.sql",
     "0009_application_preferences.up.sql",
     "0010_submission_retry_schedule.up.sql",
+    "0011_application_tracking.up.sql",
 )
 DOWN_SQL = SqlFiles(
     "0002_core_schema.down.sql",
@@ -77,6 +78,7 @@ DOWN_SQL = SqlFiles(
     "0008_artifact_binding.down.sql",
     "0009_application_preferences.down.sql",
     "0010_submission_retry_schedule.down.sql",
+    "0011_application_tracking.down.sql",
 )
 GRANTS_SQL = SqlFiles("0003_roles_grants.up.sql", "0005_revision_attempts.grants.up.sql")
 
@@ -328,7 +330,7 @@ def check_fk_order() -> None:
                 problems.append(f"{table} references {target} before it is created")
 
     # The deferred cycle FKs are added by ALTER after both tables exist.
-    deferred = re.findall(r"ALTER TABLE (\w+) ADD CONSTRAINT", sql)
+    deferred = re.findall(r"ALTER TABLE (\w+) ADD CONSTRAINT \w+\s+FOREIGN KEY", sql)
     if problems:
         record(FAIL, "FK targets created in order", "; ".join(problems[:5]))
     else:
