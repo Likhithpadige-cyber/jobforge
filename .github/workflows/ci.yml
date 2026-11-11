@@ -54,7 +54,9 @@ jobs:
   backend-test:
     name: Backend tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The full suite, the separate safety run and API E2E take ~18 min on a
+    # hosted runner; 20 left no headroom (one run was cancelled at the limit).
+    timeout-minutes: 35
     services:
       postgres:
         image: pgvector/pgvector:pg16
